@@ -142,8 +142,8 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   WM_LOCK: { label: 'LOCK state', unit: '%', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 35, weight: 1, relations: OWN },
   WM_READY: { label: 'READY state', unit: '%', mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY', 'QR_TCB'], triggers: [], notableAt: 5, notableMultiple: 2, weight: 0.5, relations: OWN },
   // FICTIONAL: Db2 does not trace the wait for a thread at MAXDBAT in SMF 101 (Db2 13 Managing Performance p.143);
-  // the analyst's clue is the count of requests queued at the limit (QDSTQDBT, -DISPLAY DDF DETAIL,
-  // Db2 13 Command Reference p.303), shown per Db2 member per hour.
+  // the analyst's clue is the number of work items that had to wait for a DBAT (QUEDBAT/QDSTQDBT, cumulative since
+  // restart, -DISPLAY DDF DETAIL, Db2 13 Command Reference p.303), shown per Db2 member per hour.
   DBAT_QUEUE: { label: 'DBAT queue', unit: '', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },

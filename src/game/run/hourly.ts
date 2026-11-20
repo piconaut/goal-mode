@@ -53,13 +53,12 @@ export function accumulateHour(run: RunState): RunState {
       parts,
     };
   }
-  // Peak DBAT requests queued at MAXDBAT during the hour, per LPAR running a Db2 member.
+  // Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR running a Db2 member
+  // (QUEDBAT/QDSTQDBT, Db2 13 Command Reference p.303: work items that had to wait for a DBAT).
   const dbatQueuedByLpar = { ...h.dbatQueuedByLpar };
-  for (const [key, queued] of Object.entries(run.sim.env.slotQueue ?? {})) {
-    if (key.endsWith(':DBAT')) {
-      const lparId = key.slice(0, key.length - 5);
-      dbatQueuedByLpar[lparId] = Math.max(dbatQueuedByLpar[lparId] ?? 0, queued);
-    }
+  for (const lt of run.sim.last.lpars) {
+    const waited = lt.dbatWaited;
+    if (waited !== undefined && waited > 1e-9) dbatQueuedByLpar[lt.lparId] = (dbatQueuedByLpar[lt.lparId] ?? 0) + waited;
   }
   let capped = 0;
   let delivered = 0;

@@ -409,6 +409,17 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['DB2_ACCT'] },
   },
   {
+    id: 'db2-ddf',
+    title: 'Db2 statistics and DISPLAY DDF (QUEDBAT)',
+    category: 'Measurement',
+    body: 'Db2 does not trace a request\'s wait for a database access thread (DBAT) in SMF 101: the request waits before the thread exists, so the wait appears in no accounting record. The clue is the count of work items that had to wait for a DBAT. `-DISPLAY DDF DETAIL` reports QUEDBAT, "the cumulative number of new work items that had to wait for a DBAT to become available", which corresponds to QDSTQDBT in the statistics record (IFCID 1) and is reset only at Db2 restart, not per interval. A non-zero value means MAXDBAT was reached and requests queued for a slot; with a large enough backlog, throughput and response time suffer. Raise MAXDBAT (or spread the work over more members) to relieve it. This game shows the cumulative count of DBAT requests that waited during the hour, per Db2 member, in the Db2 statistics view.',
+    sources: [
+      { label: 'IBM Db2 13 Command Reference p.303: DISPLAY DDF DETAIL, QUEDBAT/QDSTQDBT', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=303' },
+      { label: 'IBM Db2 13 for z/OS Managing Performance p.143: MAXDBAT queue not traced, IFCID 73 reports the count', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=143' },
+    ],
+    discover: { tools: ['DB2_ACCT'] },
+  },
+  {
     id: 'smf110',
     title: 'CICS monitoring (SMF 110)',
     category: 'Measurement',

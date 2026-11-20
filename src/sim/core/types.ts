@@ -200,6 +200,8 @@ export interface LparTick {
   iipcpReported?: boolean;
   /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
   cicsStorage?: CicsStorageTick[];
+  /** DBAT requests that waited for a slot this tick (reporting: QUEDBAT/IFCID 73). */
+  dbatWaited?: number;
   roleHealth: Record<string, { health: number; queueRatio: number }>;
 }
 

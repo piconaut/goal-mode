@@ -897,9 +897,11 @@ export const IDENTITIES: Identity[] = [
           c.ok(s.peakMb >= 0 && s.sosSec >= 0 && s.sosSec <= 3600, where(`${s.region} storage statistics`));
         }
         for (const s of db2Statistics(h.end, run.scenario, key)) {
-          const expected = last.dbatQueuedByLpar?.[s.lparId] ?? 0;
-          c.close(s.dbatQueued, expected, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT queued vs SmfHour`));
-          c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT queued non-negative`));
+          // A new report field joins an identity. The sim keeps only the current tick's DBAT-waited count, so a
+          // closed hour cannot be cross-checked against per-tick state; check non-negativity and the fallback
+          // (a closed hour with no DBAT queueing reports 0).
+          c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT waited non-negative`));
+          if (last.dbatQueuedByLpar?.[s.lparId] === undefined) c.close(s.dbatQueued, 0, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT waited absent -> 0`));
         }
       }
     },

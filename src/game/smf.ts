@@ -82,14 +82,15 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
     });
 }
 
-/** Db2 statistics (DISPLAY DDF-style): peak DBAT requests queued at MAXDBAT during the hour, per Db2 member.
- * Real Db2 does not trace the wait for a thread at MAXDBAT in SMF 101; the analyst's clue is the count of
- * requests queued at the limit (QDSTQDBT in the statistics record), shown by -DISPLAY DDF DETAIL
- * (Db2 13 Command Reference p.303). The sim's queue model does not change - this is a reporting view only. */
+/** Db2 statistics (DISPLAY DDF-style): the cumulative count of DBAT requests that waited for a slot during the
+ * hour, per Db2 member. Real Db2 does not trace the wait for a thread at MAXDBAT in SMF 101; the analyst's clue is
+ * the number of work items that had to wait for a DBAT (QUEDBAT/QDSTQDBT), shown by -DISPLAY DDF DETAIL
+ * (Db2 13 Command Reference p.303; IFCID 73, Db2 13 Managing Performance p.143). The sim's queue model is
+ * unchanged - this is a reporting view only. */
 export interface Db2StatRow {
   lparId: string;
   ssid: string;
-  /** Peak DBAT requests queued during the hour (count). */
+  /** Cumulative count of requests that waited for a DBAT during the hour. */
   dbatQueued: number;
 }
 

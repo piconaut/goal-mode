@@ -207,7 +207,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'pin': {
       let req = c.req;
       // Same gate as the view the browser pins from.
-      const view = req.source === 'DB2' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
+      const view = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
       if (view && !hasFeature(run, view)) return fail(needsText(view, `A ${req.source} pin`));
       if (req.source === 'WLMGL') {
         const index = c.intervalId !== undefined ? intervalIndex(run, c.intervalId) : req.index;
@@ -222,7 +222,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
         req = { ...req, index };
       }
-      if (req.source === 'DB2' || req.source === 'CICS' || req.source === 'CICS_STORAGE') {
+      if (req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'CICS_STORAGE') {
         const hour = smfHourKey(run, req.hour);
         if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source === 'CICS_STORAGE' ? 'CICS' : req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
         req = { ...req, hour };
