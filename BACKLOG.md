@@ -371,7 +371,7 @@ the markers already kept) so a front-trim cannot hide a new line. Done when: a u
 
 Source: bug hunt 2026-11-20. `scaleEventCommands` scales every `SET_MODIFIER` value with
 `scaleExcess = max(0.05, 1 + (value − 1) × mult)` (`src/game/difficulty.ts:39`), which is right for a multiplier
-over 1 (`rate`, `ziipEligMult`) but wrong for an absolute fraction. SICK_AOR sets `regionFailFrac 0.35`
+(`rate` over 1, `ziipEligMult 0.3` below it) but wrong for an absolute fraction. SICK_AOR sets `regionFailFrac 0.35`
 (`src/content/events/harbourline-events.ts:35`): Story (`eventSeverityMult 0.7`) turns it into 0.545 — a 55 % failure
 rate on the easy difficulty — and Hard (1.25) into 0.1875, so a harder game makes the sick AOR milder. Measured with
 `scaleEventCommands`: 0.35 → 0.5450 (Story), 0.3500 (Normal), 0.1875 (Hard). Change: scale a fraction in proportion
