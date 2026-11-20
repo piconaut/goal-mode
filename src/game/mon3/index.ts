@@ -231,6 +231,8 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         cpcId: l.cpcId,
         cpcCapacityMsu: box.engines.CP * msuCp,
         imageCapacityMsu: Math.min(...limits),
+        // APPROX: RMF's WLM Capping % is the share of the range WLM capped the partition (RMF Report Analysis p.98);
+        // this live view shows the instant state, 100 while the image is capped.
         wlmCappingPct: softCapped(sim, l.id) ? 100 : 0,
         r4haMsu: r4?.r4ha ?? 0,
         max4hMsu: r4 ? Math.max(0, ...r4.slots) : 0,
