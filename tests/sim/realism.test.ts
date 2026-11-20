@@ -97,6 +97,56 @@ describe('priority inversion through dependencies', () => {
   });
 });
 
+describe('a starved server carries its dependents at its granted share, not at every arrival (RF-09)', () => {
+  // STCMED (Db2 MSTR, DBM1, DIST) capped to 1 SU/s: the agents that hold commits and getpages cannot run, so the
+  // dependents mostly stop completing instead of all completing late.
+  const db2Work = new Set(MIDWEST.workloads.filter((w) => w.servers.some((x) => x.role.startsWith('DB2.'))).map((w) => w.id));
+  const run = (capSu: number | null) => {
+    let s = midday();
+    if (capSu !== null) {
+      const def = s.wlm.definition;
+      s = {
+        ...s,
+        wlm: {
+          ...s.wlm,
+          definition: {
+            ...def,
+            resourceGroups: [...def.resourceGroups, { id: 'RGSTC', type: 3 as const, min: null, max: capSu }],
+            classes: def.classes.map((c) => (c.id === 'STCMED' ? { ...c, resourceGroup: 'RGSTC' } : c)),
+          },
+        },
+      };
+    }
+    let completions = 0;
+    let failed = 0;
+    let cpu = 0;
+    for (let i = 0; i < 120; i++) {
+      s = step(s, [], MIDWEST);
+      for (const w of s.last.workloads) {
+        if (!db2Work.has(w.id)) continue;
+        completions += w.completions;
+        failed += w.failed;
+        cpu += w.parts.cpu ?? 0;
+      }
+    }
+    const health = Math.min(...s.last.lpars.flatMap((l) => Object.entries(l.roleHealth).filter(([r]) => r.startsWith('DB2.')).map(([, h]) => h.health)));
+    return { completions, failed, cpu, health };
+  };
+
+  it('stops dependent work completing and lets its CPU fall with the completions', () => {
+    const free = run(null);
+    const starved = run(1);
+    // Db2's system agents get a few percent of their demand, so only that share of the work gets through.
+    expect(starved.health).toBeLessThan(0.2);
+    expect(starved.completions).toBeGreaterThan(0);
+    expect(starved.completions).toBeLessThan(0.25 * free.completions);
+    // The rest times out in the dependent's limits instead of completing late ...
+    expect(starved.failed).toBeGreaterThan(3 * starved.completions);
+    // ... and the CPU of the dependents falls with them: work waiting for the agent does not run above it.
+    expect(starved.cpu).toBeLessThan(0.25 * free.cpu);
+  }, 120_000);
+});
+
 describe('equal-DP work shares by ready units, not by demand (PROGRESS realism fix, #111)', () => {
   // ONLHI (heavily backlogged) ties with Db2 at one DP on a 2-engine image. By demand Db2 would get 0.2/(2.4+40/10)
   // of the level; as a dozen lightly loaded SRBs it is served first and only the transactions queue.
