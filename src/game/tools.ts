@@ -170,7 +170,7 @@ export const REPORT_FEATURE: Record<string, ToolFeature | null> = {
 };
 
 /** Which tool feature each SMF analytics view needs. */
-export const SMF_FEATURE = { DB2: 'DB2_ACCOUNTING', CICS: 'CICS_MONITORING', BATCH: 'BATCH_GANTT', SMF113: 'SMF113' } as const satisfies Record<string, ToolFeature>;
+export const SMF_FEATURE = { DB2: 'DB2_ACCOUNTING', DB2_STATS: 'DB2_ACCOUNTING', CICS: 'CICS_MONITORING', BATCH: 'BATCH_GANTT', SMF113: 'SMF113' } as const satisfies Record<string, ToolFeature>;
 
 /** Name the tool to buy, not the internal feature it unlocks: one wording for the CLI and the shared layer. */
 export function needsText(feature: ToolFeature, what: string): string {

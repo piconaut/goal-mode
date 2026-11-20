@@ -3,7 +3,8 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { cardMechanisms } from '../../src/content/footprint';
 import { lsprCategory } from '../../src/content/smf';
 import { advance, newRun, startDay } from '../../src/game/run';
-import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../../src/game/smf';
+import { addPin } from '../../src/game/evidence';
+import { batchNight, cicsMonitoring, db2Accounting, db2Statistics, smf113, smfHourRefs } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
 import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
@@ -88,6 +89,32 @@ describe('Db2 accounting', () => {
     const r = advance({ ...noon, pendingCommands: [{ kind: 'SET_LOCK_BOOST', value: 6 }] }, MIDWEST, content, 30);
     const after = db2Accounting(r, MIDWEST, 'current').find((x) => x.workloadId === 'RBANK')!;
     expect(after.lockMs).toBeGreaterThan(before.lockMs * 1.5 + 0.1);
+  });
+
+  it('Db2 statistics counts the DBAT requests that waited (QUEDBAT), not the peak queue depth', () => {
+    // MAXDBAT 1 on every member: DDF threads queue, so requests wait for a DBAT.
+    const starved = advance({ ...noon, pendingCommands: MIDWEST.world.db2.map((m) => ({ kind: 'SET_DB2' as const, ssid: m.ssid, maxDbat: 1 })) }, MIDWEST, content, 30);
+    // The open hour carries the last tick's wait (B1: accumulateHour must return the count).
+    const tick = starved.sim.last.lpars.reduce((a, l) => a + (l.dbatWaited ?? 0), 0);
+    expect(tick).toBeGreaterThan(0);
+    expect(db2Statistics(starved, MIDWEST, 'current').reduce((a, r) => a + r.dbatQueued, 0)).toBeGreaterThanOrEqual(tick);
+    // The closed hour keeps the hour's total, one row per member, and the DBAT_QUEUE pin reads it.
+    const r = advance(starved, MIDWEST, content, HOUR - 30);
+    const h = r.smfHours.at(-1)!;
+    const key = `${h.day}:${h.hourOfDay}`;
+    for (const row of db2Accounting(r, MIDWEST, key)) expect(row).not.toHaveProperty('dbatQueueMs');
+    const stats = db2Statistics(r, MIDWEST, key);
+    const byLpar = h.dbatQueuedByLpar ?? {};
+    for (const m of MIDWEST.world.db2) {
+      const row = stats.find((x) => x.ssid === m.ssid)!;
+      expect(row.lparId).toBe(m.lparId);
+      expect(row.dbatQueued).toBe(byLpar[m.lparId] ?? 0);
+    }
+    const busiest = Object.entries(byLpar).sort((a, b) => b[1] - a[1])[0]!;
+    expect(busiest[1]).toBeGreaterThan(0);
+    const pinned = addPin(r, MIDWEST, { source: 'DB2_STATS', hour: key, lparId: busiest[0], metric: 'DBAT_QUEUE' });
+    expect(pinned.ok, pinned.message).toBe(true);
+    expect(pinned.run.pins.at(-1)!.value).toBe(busiest[1]);
   });
 });
 

@@ -88,6 +88,8 @@ export interface TickCtx {
   onlineDb2Rate: number;
   /** Transactions queued for a task slot (MXT, MAXDBAT) per `lparId:kind`. */
   slotQueue: Record<string, number>;
+  /** DBAT requests that waited for a slot this tick, per LPAR (reporting: QUEDBAT/IFCID 73). */
+  dbatWaitedByLpar: Record<string, number>;
   /** CICS region storage per LPAR (reporting only). */
   cicsStorageBy: Record<string, CicsStorageTick[]>;
 }

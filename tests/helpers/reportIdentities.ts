@@ -11,7 +11,7 @@ import { tieredMonthlyCost } from '../../src/content/pricing';
 import { VELOCITY_FLOOR } from '../../src/content/wlm/tuning';
 import { financeView } from '../../src/game/finance';
 import type { Mon3Row } from '../../src/game/mon3';
-import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../../src/game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics, smf113 } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { allWorkloads } from '../../src/game/workloads';
@@ -899,7 +899,7 @@ export const IDENTITIES: Identity[] = [
             c.close(x.avgRtMs, r.class1Ms, ROUNDING, where(`${r.workloadId} response time 110 vs class 1`));
             c.close(x.cpuMs, r.cpuMs, ROUNDING, where(`${r.workloadId} CPU 110 vs 101`));
           }
-          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs + r.dbatQueueMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
+          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
         }
         for (const x of cics) {
           const w = h.workloads[x.workloadId];
@@ -910,6 +910,21 @@ export const IDENTITIES: Identity[] = [
         }
         for (const s of cicsStorageStats(h.end, key)) {
           c.ok(s.peakMb >= 0 && s.sosSec >= 0 && s.sosSec <= 3600, where(`${s.region} storage statistics`));
+        }
+        for (const s of db2Statistics(h.end, run.scenario, key)) {
+          // A new report field joins an identity. QUEDBAT counts the hour's waits, and the run keeps only the last
+          // tick's share, so a closed hour can prove the non-negativity and the absent -> 0 fallback.
+          c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT waited non-negative`));
+          if (last.dbatQueuedByLpar?.[s.lparId] === undefined) c.close(s.dbatQueued, 0, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT waited absent -> 0`));
+        }
+      }
+      // The open hour's count includes every tick so far, the last one included, and the run state keeps that
+      // tick's share (LparTick.dbatWaited): the report can never be below it (RF-02 B1).
+      const open = run.final.hour;
+      if (open && open.ticks > 0) {
+        for (const s of db2Statistics(run.final, run.scenario, 'current')) {
+          const tick = run.final.sim.last.lpars.find((l) => l.lparId === s.lparId)?.dbatWaited ?? 0;
+          c.atMost(tick, s.dbatQueued, ROUNDING, () => `open hour ${s.lparId} ${s.ssid} DBAT waited vs its last tick`);
         }
       }
     },

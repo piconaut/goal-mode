@@ -164,6 +164,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     lparTicks: [],
     onlineDb2Rate: 0,
     slotQueue: {},
+    dbatWaitedByLpar: {},
     cicsStorageBy: {},
   };
   for (const l of zosLpars) lparDemand(t, l);

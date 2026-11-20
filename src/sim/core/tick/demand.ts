@@ -104,7 +104,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   // Task-slot queues persist across ticks: offered load above MXT / MAXDBAT builds a backlog that only
   // drains at limit / hold time, and times out (MAXCONQW for DDF).
   const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
-    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0 };
+    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0, waited: 0 };
     const key = kind === 'MXT' ? img.mxtKey : img.dbatKey;
     const hold = rate > 0 ? holdW / rate : 0;
     const refHold = rate > 0 ? refW / rate : 0;
@@ -112,10 +112,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     if (r.queued > 1e-9) t.slotQueue[key] = r.queued;
     // Same queue at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
     const refSec = rate * refHold >= Math.max(1, Math.floor(limit)) ? r.waitSec : slotQueueStep(0, rate, refHold, limit, timeoutSec, TICK_SEC).waitSec;
-    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac };
+    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac, waited: r.waited };
   };
   const mxt = slotQ('MXT', aors.length > 0, cicsRate, cicsRtWeighted, cicsRefWeighted, maxTasks, SLOT_QUEUE.cicsQueueTimeoutSec);
   const dbat = slotQ('DBAT', !!db2, ddfRate, ddfRtWeighted, ddfRefWeighted, db2?.maxDbat ?? 0, SLOT_QUEUE.ddfQueueTimeoutSec);
+  if (dbat.waited > 1e-9) t.dbatWaitedByLpar[l.id] = dbat.waited;
 
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {

@@ -16,7 +16,7 @@ import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
-import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
+import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Db2StatRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
 import type { GoalIssue, WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
@@ -39,10 +39,11 @@ export interface PendingPolicyView {
   goalIssues: GoalIssue[];
 }
 
-export type SmfKind = 'DB2' | 'CICS' | 'BATCH' | 'SMF113';
+export type SmfKind = 'DB2' | 'DB2_STATS' | 'CICS' | 'BATCH' | 'SMF113';
 
 export type SmfData =
   | { kind: 'DB2'; hour: string; rows: Db2AcctRow[] }
+  | { kind: 'DB2_STATS'; hour: string; rows: Db2StatRow[] }
   | { kind: 'CICS'; hour: string; rows: CicsTxnRow[]; storage: CicsStorageRow[] }
   | { kind: 'BATCH'; night: BatchNight | null }
   | { kind: 'SMF113'; rows: Smf113Row[] };

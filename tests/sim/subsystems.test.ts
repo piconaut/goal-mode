@@ -169,6 +169,18 @@ describe('Db2, CICS, storage', () => {
     // A backlog drains at limit / hold once load falls.
     expect(slotQueueStep(50, 0, 1, 2, 120, 10).queued).toBeCloseTo(30);
   });
+  it('counts the arrivals that waited for a slot (QUEDBAT): every arrival when saturated, Erlang-C odds below it', () => {
+    // Idle: no arrival waits, and the count is 0, not the queue depth.
+    expect(slotQueueStep(0, 100, 1, 400, 120, 10).waited).toBe(0);
+    // MAXDBAT 1 at 10 DBATs wanted: all 10 arrivals/s × 10 s waited.
+    expect(slotQueueStep(0, 10, 1, 1, 120, 10).waited).toBeCloseTo(100);
+    // A backlog from an earlier tick makes every arrival wait too.
+    expect(slotQueueStep(5, 10, 1, 400, 120, 10).waited).toBeCloseTo(100);
+    // Below saturation it is the Erlang-C wait probability: 1 slot at ρ = 0.9 waits for 90 % of arrivals.
+    expect(slotQueueStep(0, 0.9, 1, 1, 120, 10).waited).toBeCloseTo(0.9 * 10 * 0.9);
+    // No arrivals, no count, however deep the queue.
+    expect(slotQueueStep(50, 0, 1, 2, 120, 10).waited).toBe(0);
+  });
   it('the QR TCB saturates at one engine', () => {
     expect(qrTcb(0.5).failFrac).toBe(0);
     expect(qrTcb(0.9).qrWaitRatio).toBeCloseTo(9);

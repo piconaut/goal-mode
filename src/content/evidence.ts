@@ -141,7 +141,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   JOB_APPL: { label: 'job EAppl CPU', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK'], notableAt: 25, weight: 1, relations: ['server', 'competitor'] },
   WM_LOCK: { label: 'LOCK state', unit: '%', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 35, weight: 1, relations: OWN },
   WM_READY: { label: 'READY state', unit: '%', mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY', 'QR_TCB'], triggers: [], notableAt: 5, notableMultiple: 2, weight: 0.5, relations: OWN },
-  DBAT_QUEUE: { label: 'DBAT queue ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
+  // FICTIONAL: Db2 does not trace the wait for a thread at MAXDBAT in SMF 101 (Db2 13 Managing Performance p.143);
+  // the analyst's clue is the number of work items that had to wait for a DBAT (QUEDBAT/QDSTQDBT, cumulative since
+  // restart, -DISPLAY DDF DETAIL, Db2 13 Command Reference p.303), shown per Db2 member per hour.
+  DBAT_QUEUE: { label: 'DBAT queue', unit: '', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   FAIL_PCT: { label: 'failed % of transactions', unit: '%', mechanisms: ['ROUTING'], triggers: [], notableAt: 1, weight: 1, relations: OWN },
@@ -348,7 +351,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
   }] },
   THREAD_LIMIT: { predicates: [{
-    label: 'queued for a slot: MXT wait or DBAT queue ≥ 5 ms/txn, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
+    label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
     label: 'not slower work holding the slots: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',

@@ -101,6 +101,9 @@ export interface SmfHour {
   cpuVsBase?: Record<string, number>;
   /** CICS storage manager statistics per AOR (absent without the CICS monitoring tool). */
   cicsStorage?: Record<string, CicsStorageHour>;
+  /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member
+   * (QUEDBAT/QDSTQDBT, Db2 13 Command Reference p.303). */
+  dbatQueuedByLpar?: Record<string, number>;
 }
 
 /** CICS storage manager statistics for one region over an hour. */
@@ -147,6 +150,8 @@ export interface HourAcc {
   cpByImportance: Record<string, number[]>;
   lockIndexSum: number;
   cicsStorage?: Record<string, CicsStorageHour>;
+  /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member. */
+  dbatQueuedByLpar: Record<string, number>;
 }
 
 /** The figures the capacity decision used, for the verdict the player is shown. Kept on the incident when the

@@ -94,6 +94,13 @@ function placeFor(kind: Kind, o: PredicateOption, relation: string): Pick<Eviden
   }
   if (m === 'CF_SYNC' || m === 'CF_ASYNC_PCT') return relation === 'server' ? { source: 'CF', subject: 'CF01', system: 'CF01' } : null;
   if (m.startsWith('DASD_')) return relation === 'server' ? { source: 'DASD', subject: '21', system: '*PLEX' } : null;
+  if (m === 'DBAT_QUEUE') {
+    // Db2 statistics names the member's LPAR, not the workload row.
+    const lparId = MIDWEST.world.db2[0]?.lparId;
+    return relation === 'self' && kind !== 'BATCH' && lparId !== undefined
+      ? { source: 'Db2 statistics', subject: lparId, system: '*PLEX' }
+      : null;
+  }
   if (DB2_FAMILY.has(m)) return relation === 'self' && kind !== 'BATCH' ? { source: 'Db2 101', subject: workloadId, system: '*PLEX' } : null;
   if (CICS_FAMILY.has(m)) return relation === 'self' && kind === 'CICS' ? { source: 'CICS 110', subject: workloadId, system: '*PLEX' } : null;
   if (m === 'SOS_MIN') return relation === 'server' && kind === 'CICS' ? { source: 'CICS 110', subject: 'CICSAOR1', system: '*PLEX' } : null;

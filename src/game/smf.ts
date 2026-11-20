@@ -22,10 +22,10 @@ export function smfHourRefs(run: RunState): SmfHourRef[] {
   return out;
 }
 
-function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number> } | null {
-  if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC } : null;
+function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number>; dbatQueuedByLpar?: Record<string, number> } | null {
+  if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC, dbatQueuedByLpar: run.hour.dbatQueuedByLpar } : null;
   const h = run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key);
-  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}) } : null;
+  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}), ...(h.dbatQueuedByLpar ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}) } : null;
 }
 
 /** A closed hour's frozen ratio (none if the workload had no baseline yet then, e.g. a new workload's first hour);
@@ -52,8 +52,6 @@ export interface Db2AcctRow {
   cfMs: number;
   /** CPU queueing (not a class 3 suspension, but shows in class 2 not-accounted time). */
   notAccountedMs: number;
-  /** DDF: waits for a DBAT before Db2 starts the thread (queued at MAXDBAT). */
-  dbatQueueMs: number;
 }
 
 export function db2Accounting(run: RunState, scenario: Scenario, key: string): Db2AcctRow[] {
@@ -79,10 +77,28 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
           syncIoMs: perTxnMs(h, 'io'),
           cfMs: perTxnMs(h, 'cf'),
           notAccountedMs: perTxnMs(h, 'cpuQueue') + perTxnMs(h, 'ziipQueue') + perTxnMs(h, 'dependency'),
-          dbatQueueMs: w.subsystem === 'DDF' ? perTxnMs(h, 'outside') : 0,
         } satisfies Db2AcctRow,
       ];
     });
+}
+
+/** Db2 statistics (DISPLAY DDF-style): the cumulative count of DBAT requests that waited for a slot during the
+ * hour, per Db2 member. Real Db2 does not trace the wait for a thread at MAXDBAT in SMF 101; the analyst's clue is
+ * the number of work items that had to wait for a DBAT (QUEDBAT/QDSTQDBT), shown by -DISPLAY DDF DETAIL
+ * (Db2 13 Command Reference p.303; IFCID 73, Db2 13 Managing Performance p.143). The sim's queue model is
+ * unchanged - this is a reporting view only. */
+export interface Db2StatRow {
+  lparId: string;
+  ssid: string;
+  /** Cumulative count of requests that waited for a DBAT during the hour. */
+  dbatQueued: number;
+}
+
+export function db2Statistics(run: RunState, scenario: Scenario, key: string): Db2StatRow[] {
+  const d = hourData(run, key);
+  if (!d) return [];
+  const byLpar = d.dbatQueuedByLpar ?? {};
+  return scenario.world.db2.map((m) => ({ lparId: m.lparId, ssid: m.ssid, dbatQueued: byLpar[m.lparId] ?? 0 }));
 }
 
 export interface CicsTxnRow {
