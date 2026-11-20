@@ -353,7 +353,7 @@ word for word where the loops read them. Done when: each rule is stated once, a 
 only the new doc and links to it, and the review header strings are unchanged.
 
 
-### CL-43 · Monitor III chart markers stop once the run log reaches its 300-line cap
+### CL-46 · Monitor III chart markers stop once the run log reaches its 300-line cap
 `list: cleanup · status: ready · priority: high · size: S · area: game`
 
 Source: bug hunt 2026-11-20. `newMarkers` scans new lines with `run.log.slice(st.logSeen)`
@@ -366,7 +366,7 @@ Change: scan by a count of lines seen from the front that the trim can maintain 
 the markers already kept) so a front-trim cannot hide a new line. Done when: a unit test appends an `EVENT` line to a
 300-line log and `recordMon3` records the marker, and the tests that read `markers` pass.
 
-### CL-44 · The sick-AOR failure fraction gets harsher on Story and milder on Hard
+### CL-47 · The sick-AOR failure fraction gets harsher on Story and milder on Hard
 `list: cleanup · status: ready · priority: high · size: S · area: game`
 
 Source: bug hunt 2026-11-20. `scaleEventCommands` scales every `SET_MODIFIER` value with
@@ -379,7 +379,7 @@ shortfall from 1 (`1 − (1 − value) × mult`) or leave fractions unscaled, an
 only `regionFailFrac` is affected today. Done when: a test pins Story/Normal/Hard for a `regionFailFrac` card and the
 scaling of the other `SET_MODIFIER` cards (`rate`, `ziipEligMult`) is unchanged.
 
-### CL-45 · PROCU service classes show the EAppl figure under "Time on CP % Total" too
+### CL-48 · PROCU service classes show the EAppl figure under "Time on CP % Total" too
 `list: cleanup · status: ready · priority: low · size: S · area: ui`
 
 Source: bug hunt 2026-11-20. In the PROCU "Service classes" table (`src/ui/monitor/WorkloadViews.tsx:129-153`) the
@@ -390,7 +390,7 @@ different headers. A class row (`Mon3Row`, `src/game/mon3/types.ts:28-31`) carri
 CP once with its IIP subset), or add a class-level time-on-CP figure if one is worth adding to `Mon3Row`. Done when:
 no table shows one value under two headers, and the UI tests that read the PROCU view pass.
 
-### CL-46 · A Db2/CICS/statistics pin on the open hour is labelled with the previous hour
+### CL-49 · A Db2/CICS/statistics pin on the open hour is labelled with the previous hour
 `list: cleanup · status: ready · priority: low · size: S · area: game`
 
 Source: bug hunt 2026-11-20. `hourEndTick` returns `run.sim.tick` for the open hour (`src/game/evidence.ts:420`), and
