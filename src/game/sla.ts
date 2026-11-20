@@ -250,7 +250,7 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
 /** Pseudo-workload id of a missed batch window's incident. */
 export const BATCH_INCIDENT = 'BATCH';
 
-/** Sums an hour into the night's accumulator (busy sums and capped ticks add, capped fractions keep their max). */
+/** Sums an hour into the night's accumulator (counts, busy sums and capped ticks add, capped fractions keep their max). */
 export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   if (!acc) return { ...h, workloads: {} };
   const sum = (a: Record<string, number> | undefined, b: Record<string, number> | undefined) => {
@@ -260,8 +260,7 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   };
   const cappedByLpar = { ...acc.cappedByLpar };
   for (const [k, v] of Object.entries(h.cappedByLpar)) cappedByLpar[k] = Math.max(cappedByLpar[k] ?? 0, v);
-  const dbatQueuedByLpar = { ...acc.dbatQueuedByLpar };
-  for (const [k, v] of Object.entries(h.dbatQueuedByLpar ?? {})) dbatQueuedByLpar[k] = Math.max(dbatQueuedByLpar[k] ?? 0, v);
+  const dbatQueuedByLpar = sum(acc.dbatQueuedByLpar, h.dbatQueuedByLpar);
   const cappedTicksByLpar = sum(acc.cappedTicksByLpar, h.cappedTicksByLpar);
   const cpByImportance = { ...acc.cpByImportance };
   for (const [k, v] of Object.entries(h.cpByImportance)) cpByImportance[k] = v.map((x, i) => x + (cpByImportance[k]?.[i] ?? 0));
