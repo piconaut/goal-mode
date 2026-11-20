@@ -325,7 +325,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'CPU delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
     options: CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'),
   }, {
-    label: 'a cap held it: the image capped ≥ 5 % of the interval (Partition Data), or CAP delay ≥ 5 % on the class (WLMGL)',
+    label: 'a cap held it: the cap removed ≥ 5 % of the image\'s demand (Partition Data CAPPED), or CAP delay ≥ 5 % on the class (WLMGL)',
     options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, SELF)],
   }] },
   DEPENDENCY: { predicates: [{

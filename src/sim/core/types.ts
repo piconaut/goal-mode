@@ -146,8 +146,11 @@ export interface LparPoolRuntime {
   mvsBusyFrac: number;
   /** Share of demand a binding cap (soft, absolute or initial) removed; PR/SM contention excluded. */
   cappedFrac: number;
-  /** The part of cappedFrac due to WLM soft capping (Partition Data WLM%). */
+  /** The part of cappedFrac due to WLM soft capping: the share of demand the soft cap removed. */
   softCappedFrac: number;
+  /** WLM considers to cap this pool (defined capacity or capacity group in force), whether or not the cap bound;
+   *  Partition Data WLM% is the share of ticks this is true (SMF70NSW ÷ SMF70DSA, MVS SMF p.603). */
+  softCapInForce: boolean;
 }
 
 export interface LparRuntime {
