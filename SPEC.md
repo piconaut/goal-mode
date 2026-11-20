@@ -746,7 +746,11 @@ CPU demand  = share × the offered cost  // their CPU follows completions: a tim
 APPROX: the dependent's queue is fluid, so the waiting part is a timeout fraction rather than a per-request queue,
 and a timed-out request's CPU is not charged; only roles recorded on the dependent's own image are seen, so work
 served from another image keeps the latency form. An image-wide CP shortage is not a capped role and keeps the bounded
-delay, because it takes the dependents' own CPU with it. Above the threshold the bounded delay is unchanged.
+delay, because it takes the dependents' own CPU with it, and neither is a role starved only by a lowered importance or
+by competition: the rule models a server whose own cap (resource group, discretionary cap) withheld its CPU. Only the
+CPU demand follows completions: I/O, the Db2 rate and the MXT/DBAT slot queues still see the arrivals, so the surviving
+fraction's response time is dominated by the queue it piles up in (the entry's "times out there") rather than by the
+bounded dependency delay, and RMF still reports the arrivals' I/O. Above the threshold the bounded delay is unchanged.
 
 **Dependency graph (starting scenario):**
 
