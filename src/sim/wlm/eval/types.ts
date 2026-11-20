@@ -284,7 +284,7 @@ export interface LparEvalResult {
   scps: ScpTick[];
   /** Report classes (only when the policy assigns any). */
   rcs?: ReportClassTick[];
-  roleHealth: Record<string, { health: number; queueRatio: number }>;
+  roleHealth: Record<string, { health: number; queueRatio: number; capped?: boolean }>;
 }
 
 /** Per-slice demand and its per-period totals: everything in an evaluation that does not depend on DPs. */
