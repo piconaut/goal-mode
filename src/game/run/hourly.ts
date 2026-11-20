@@ -111,6 +111,7 @@ export function accumulateHour(run: RunState): RunState {
       lparBusyById,
       cpByImportance,
       lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
+      dbatQueuedByLpar,
       ...(cicsStorage ? { cicsStorage } : {}),
     },
   };
