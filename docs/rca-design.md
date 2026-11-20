@@ -705,9 +705,8 @@ claim. Where the build differs from the table:
   [p.530](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530) END/S,
   [p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534) APPL% CP with IIPCP as its subset),
   refused on a CICS transaction row, which reports no service consumption
-  ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). Batch rows have none: the sim
-  counts a job end only for a period with a response-time goal (RF-07), and every shipped batch class has a velocity or
-  discretionary goal, so their END/S is 0 and the pin is refused there.
+  ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). Batch rows report END/S too since
+  RF-07 (every job end is an ended transaction, whatever the goal), so the pin reads their CP per ended job.
 - **An ended rate's baseline is the slot baseline** (§4.4): the same interval or SMF hour on earlier days the report
   still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.7×
   surge (measured: MOBILE on PROD2 at noon on day 1, seed 7: 145 against 84 ended/s). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.

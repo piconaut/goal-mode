@@ -836,12 +836,11 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'smf30-vs-wlmgl',
-    title: 'SMF 30 against WLMGL: a batch class with a response time goal ends one transaction per job, at queue + elapsed time',
+    title: 'SMF 30 against WLMGL: a batch class ends one transaction per job, at queue + elapsed time, whatever its goal',
     basis: 'z/OS',
     // "The number of batch transactions equals number of jobs"; the response time includes the "Time waiting for an
-    // Initiator" (TRANS-TIME ACTUAL = execution + queued + ...).
-    // Left out: the same count for batch classes with a velocity or discretionary goal. RMF's ENDED has no goal-type
-    // condition, but the sim counts job ends only into response-time-goal periods (BACKLOG RF-07).
+    // Initiator" (TRANS-TIME ACTUAL = execution + queued + ...). ENDED has no goal-type condition (RMF Report
+    // Analysis 3.1 p.530-531), so a velocity or discretionary batch class counts its job ends too.
     source: 'WLM Planning 3.1 p.71; JES2 Initialization and Tuning Guide 3.1 p.113–114; RMF Report Analysis 3.1 p.530–531',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -849,17 +848,30 @@ export const IDENTITIES: Identity[] = [
         const def = o.def;
         const jobs = o.iv.jobs.map((j) => {
           const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick && x.lparId === j.lparId)!;
-          return { ...j, serviceClass: classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass };
+          return { ...j, cls: classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }) };
         });
+        // A class or report class that also serves transaction workloads holds their completions in the same row.
+        const workloadScs = workloadClasses(run, o);
+        const workloadRcs = new Set(
+          allWorkloads(run.scenario, o.end)
+            .flatMap((w) => Object.keys(o.end.sim.routing[w.id] ?? w.routing).map((lparId) => classify(def, { ...w.work, SY: lparId }).reportClass))
+            .filter((x): x is string => x !== null),
+        );
         for (const lparId of systemsOf(o.iv)) {
-          for (const sc of new Set(jobs.filter((j) => j.lparId === lparId).map((j) => j.serviceClass))) {
-            const cls = def.classes.find((x) => x.id === sc);
-            // Every period a response time goal, and no transaction workload in the class: its ENDED are jobs.
-            if (!cls || !cls.periods.every((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT') || workloadClasses(run, o).has(sc)) continue;
-            const mine = jobs.filter((j) => j.lparId === lparId && j.serviceClass === sc);
-            const rows = scRows(o.iv, lparId).filter((r) => r.serviceClass === sc);
-            c.close(sum(rows.map((r) => r.ended)), mine.length, ROUNDING, () => `${at(o)} ${lparId} ${sc} ENDED vs jobs ended`);
-            c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(mine.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} response time vs queue + elapsed`);
+          const mine = jobs.filter((j) => j.lparId === lparId);
+          for (const sc of new Set(mine.map((j) => j.cls.serviceClass))) {
+            if (!def.classes.some((x) => x.id === sc) || workloadScs.has(sc)) continue;
+            const inClass = mine.filter((j) => j.cls.serviceClass === sc);
+            const rows = scRows(o.iv, lparId).filter((r) => !r.reportClass && r.serviceClass === sc);
+            c.close(sum(rows.map((r) => r.ended)), inClass.length, ROUNDING, () => `${at(o)} ${lparId} ${sc} ENDED vs jobs ended`);
+            c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inClass.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} response time vs queue + elapsed`);
+          }
+          for (const rc of new Set(mine.map((j) => j.cls.reportClass).filter((x): x is string => x !== null))) {
+            if (workloadRcs.has(rc)) continue;
+            const inRc = mine.filter((j) => j.cls.reportClass === rc);
+            const rows = (o.iv.wlmRc ?? []).filter((r) => r.lparId === lparId && r.serviceClass === rc);
+            c.close(sum(rows.map((r) => r.ended)), inRc.length, ROUNDING, () => `${at(o)} ${lparId} report class ${rc} ENDED vs jobs ended`);
+            c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inRc.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} report class ${rc} response time vs queue + elapsed`);
           }
         }
       }
@@ -936,7 +948,7 @@ export const IDENTITIES: Identity[] = [
           return classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
         })));
         for (const group of workloadGroups(run, h.end, def)) {
-          // A batch job that ended in a class with a response time goal is a transaction there too (smf30-vs-wlmgl).
+          // A batch job that ended in a class is a transaction there too, whatever the goal (smf30-vs-wlmgl, RF-07).
           if (group.classes.some((sc) => jobClasses.has(sc))) continue;
           const rows = ivs.flatMap((o) => o.iv.wlm.filter((r) => r.lparId === '*PLEX' && group.classes.includes(r.serviceClass)));
           const recs = group.workloads.map((id) => last.workloads[id]).filter((x) => !!x);
@@ -1240,10 +1252,10 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
   'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
   'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
-  'batch jobs ended in a class with a response time goal': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
+  'batch jobs ended in a class': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
     const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick);
     const sc = rt && classify(o.def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
-    return !!o.def.classes.find((x) => x.id === sc)?.periods.every((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT');
+    return !!o.def.classes.find((x) => x.id === sc);
   })),
   'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
   'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),

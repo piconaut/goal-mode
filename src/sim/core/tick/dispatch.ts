@@ -293,17 +293,19 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       );
       if (ended && jr.job.startTick !== null) {
         const goal = goalInfo(def, ref.slice.scKey)?.goal;
-        if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
-          // A batch transaction is a job (WLM Planning 3.1 p.71); use stepRmf's queue + elapsed time.
-          const rtSec = (jr.job.endTick! - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
-          const measured = [res.scps.find((x) => x.scKey === ref.slice.scKey)!];
-          // Report classes carry completions, RT and buckets too (WLM Planning 3.1 p.113).
-          if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
-          for (const target of measured) {
-            target.completions += 1;
-            target.rtSumSec += rtSec;
+        // A batch transaction is a job, and ENDED counts every job that ends whatever the period's goal type
+        // (WLM Planning 3.1 p.71; RMF Report Analysis 3.1 p.530-531). Its response time is stepRmf's queue + elapsed.
+        const rtSec = (jr.job.endTick! - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
+        const measured = [res.scps.find((x) => x.scKey === ref.slice.scKey)!];
+        // Report classes carry completions, RT and buckets too (WLM Planning 3.1 p.113).
+        if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
+        for (const target of measured) {
+          target.completions += 1;
+          target.rtSumSec += rtSec;
+          if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
             // The initiator wait, which a DP move cannot change; kept apart for the batch RT projection (WT-12).
             target.rtQueueSumSec = (target.rtQueueSumSec ?? 0) + (jr.job.startTick - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
+            // Buckets stay for response time goals: RMF's per-system distribution for velocity periods is not modelled.
             addToBuckets(target.buckets, goal.rtSec, 1, rtSec, 0);
           }
         }

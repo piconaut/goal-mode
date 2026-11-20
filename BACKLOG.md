@@ -253,22 +253,6 @@ three-scenario sweep. Done when: the identity "MSU Act = header MSU = Partition 
 added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Matches", SPEC §17 is updated and the
 sweep is recorded.
 
-### RF-07 · WLMGL ENDED counts job ends only for batch classes with a response time goal
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: cross-report invariant suite (2026-11-14; identity `smf30-vs-wlmgl`, left-out part). "The number of batch
-transactions equals number of jobs" (WLM Planning 3.1 p.71) and RMF's ENDED is "the number of transactions that ended
-during the interval" with no condition on the goal type; the book's own velocity-goal sample shows ENDED 9 (RMF
-Report Analysis 3.1 p.530, p.522). The sim adds a completion, its response time and a bucket observation only when the
-job's period has an AVG or PCT goal (`src/sim/core/tick/dispatch.ts`, added with WT-12), so every shipped batch class
-(velocity or discretionary) shows ENDED 0 and no response time while SMF 30 lists its job ends (Midwest seed 7: 20
-jobs ended in a discretionary class, WLMGL ENDED 0). Change: count every ended job as an ended transaction with its
-queue + elapsed response time in its ending period and report class; response-time buckets stay for response time
-goals (RMF also prints a per-system distribution for velocity periods: docs/research.md, not modelled). `acc.completions`
-feeds no velocity PI, but it is WLM state, so goldens change: check with `npm run compare` that DPs, the WLM log and SLA
-results are unchanged. Done when: the left-out part of `smf30-vs-wlmgl` is restored for every goal type, Monitor III
-shows the ended rate, and docs/research.md and SPEC §17 "Batch response-time goals" are updated.
-
 ### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
 `list: realism-fixes · status: blocked: research · priority: low · size: M · area: sim`
 
