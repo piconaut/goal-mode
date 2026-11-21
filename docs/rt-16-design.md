@@ -92,8 +92,8 @@ CAPPING when, on the judged host, any of:
 - the image was capped for ≥ `CAPPING.minHourShare` of the hour's ticks (as now, but only the judged host: U-9);
 - a period of the hurt work on that host, or the server period holding its regions, shows CAP delay ≥
   `CAPPING.capDelayFrac` (5 %) of its samples (7). WLMGL CAP is delay from "a resource group maximum … or
-  discretionary goal management", and "is NOT part of the CPU delay" (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF
-  p.540 (printed 500); docs/research.md row "WLMGL CAP delay");
+  discretionary goal management", and "is NOT part of the CPU delay" (z/OS 3.1 RMF Report Analysis SC34-2665-60
+  PDF p.540 (printed 500); docs/research.md row "WLMGL CAP delay");
 - a server role the work depends on (`w.servers`, `w.hostRole`) on that host was capped (8) for ≥ `minHourShare` of
   the ticks.
 
