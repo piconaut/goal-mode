@@ -410,19 +410,6 @@ test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at 
 
 Source: the #436 review and #437; moved here from `cleanup` (user request 2026-11-21).
 
-### CL-59 · CI check: no new bare page citations
-`list: page-citations · status: ready · priority: high · size: S · area: tooling`
-
-Source: page-citation rule (CLAUDE.md "Realism policy", #435) and the #436 review. That PR proposed relabelling all
-~1,000 old citations (CL-50…CL-58, closed unmerged; those IDs are not used). The rule instead relabels old citations
-when they are touched, so the thing to stop is new bare ones. Change: add `tools/ci/citations.ts`, run from
-`.github/workflows/pr-gates.yml`. It reads the lines the PR adds (`git diff origin/<base>...HEAD`, added lines only) in
-`.ts`, `.tsx` and `.md` files and fails on a `p.N`, `pp.N–M` or `page N` citation that has no `PDF` label before it.
-The rule must not catch a `p.N` that isn't a page citation, and a `#page=N` link whose label says `PDF p.N` passes.
-The output names file, line and the rule's wording. Unit-test the matcher on its own (bare, labelled, range, link,
-non-citation). Done when: the gate fails on a PR that adds `RMF Report Analysis p.401`, passes one that adds
-`RMF Report Analysis PDF p.401 (printed 361)`, ignores untouched lines, and `docs/tools.md` lists the tool.
-
 ### CL-60 · Page citations: label the docs/research.md ledger
 `list: page-citations · status: ready · priority: high · size: M · area: tooling`
 

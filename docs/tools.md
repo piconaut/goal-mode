@@ -34,6 +34,7 @@ npm run compare -- [--base origin/dev] [--head <ref>] [--scenarios a,b] [--drop 
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
 npx tsx tools/ci/behaviourNote.ts origin/dev     # CI gate: goldens changed ⇒ PR body needs "## Behaviour change" (PR_BODY env)
+npx tsx tools/ci/citations.ts origin/dev         # CI gate: page citations on added lines are labelled `PDF p.N (printed M)` and match their #page= links
 npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot sweep inside balance bands (victories as a share of runs) (see .github/workflows/ci.yml)
 # In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).
 ```
@@ -43,5 +44,5 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 ## Where the rest of the tooling lives
 
 - `tools/` — the headless runners above plus the strategy bots (`bot.ts`, `strategies.ts`, `tune.ts`).
-- `tools/ci/` — the PR gates: `balanceGate` (`ci.yml`) and `behaviourNote` (`pr-gates.yml`).
+- `tools/ci/` — the PR gates: `balanceGate` (`ci.yml`), `behaviourNote` and `citations` (`pr-gates.yml`).
 - [`docs/agents.md`](agents.md) — the full play CLI reference and the agent roles that play through it.

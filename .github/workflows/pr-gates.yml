@@ -32,6 +32,21 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
 
+  # Page citations on added lines must give the labelled PDF page index (CLAUDE.md "Realism policy").
+  citations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx tools/ci/citations.ts "origin/${{ github.base_ref }}"
+
   # A PR labelled `perf` (or titled "perf…") claims to be an optimisation: the end-of-day state hash must match the
   # base branch's. Passes at once for other PRs.
   perf-hash:
