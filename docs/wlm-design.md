@@ -203,7 +203,10 @@ given with its tier.
   transactions in the same regions get a free ride ([SG24-6472 p.62–63][r62]).
 - "The external service class of a server is ignored" unless the region is managed to its own goal by its
   classification rule, or is serving no transactions ([SG24-6472 p.89][r89]; [WLM Planning p.122][wp122]).
-- Enclaves are managed as work of their own class; no topology ([SG24-6472 p.86][r86]).
+- Enclaves are managed as work of their own class, and their server address spaces (DDF, CB, IWEB, NETV) also get a
+  dynamic internal service class period (`$SRMSnnn`) — the enclave server topology ([SG24-6472 PDF p.82–83
+  (printed 64–65)][r82]). APPROX: the sim manages a DDF enclave to its own class but models no enclave server
+  period.
 
 ### 3.12 CPU protection
 
@@ -622,7 +625,8 @@ The terms:
 How it behaves:
 - **Velocities.** Both leave out server and queue-delay samples, and the 0.1 % floor applies. The queue time is
   already in Q̄, and queued WLM-initiator jobs add `delayQueue` to measured ticks only.
-- **Only Ē changes.** A DP move can't shorten the JES initiator wait (SG24-6472 p.222).
+- **Only Ē changes.** A DP move can't shorten the JES initiator wait: "WLM cannot do anything to help a job waiting
+  for an initiator", though the wait is part of batch response time (SG24-6472 PDF p.221–222 (printed 203–204)).
 - **RECOVERING keeps its meaning.** The base uses `v'` at the current DPs, so a period is recovering when
   sustained-demand speed already meets the goal.
 - **Null means no move.** The PI is null with no unexpired completion or no running job of the period: no DP
@@ -789,6 +793,9 @@ Real WLM behaviour the sim doesn't model, each documented as an approximation (S
   adjustment action in the sim (approximation 5).
 - **Started tasks** report no transaction completions, so a response-time goal on one has no PI.
 - **REGION/BOTH region management** keeps a DP per served class (§5.8).
+- **Enclave server periods** (§3.11). Real WLM puts enclave server address spaces (DDF, CB, IWEB, NETV) in a
+  `$SRMSnnn` period managed toward the enclaves' goals. The sim manages DDF enclaves to their own class and builds
+  server periods for CICS TRANSACTION regions only (`src/sim/wlm/holders.ts`).
 
 Open questions:
 - Whether zIIP service is normalised to CP speed for period durations: not found (§3.1).
@@ -833,6 +840,7 @@ Open questions:
 [r66]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66
 [r67]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=67
 [r68]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=68
+[r82]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=82
 [r86]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=86
 [r89]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=89
 [r190]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=190

@@ -79,9 +79,10 @@ separate two causes at all); **n/a** (the card never opens an incident).
 - WLMGL CAP delay is resource-group capping and discretionary goal management, not LPAR capping, and is not part of
   CPU delay ([RMF Report Analysis p.540](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=540));
   LPAR capping is Partition Data WLM% ([p.401](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=401)).
-- CICS 110 separates QR TCB wait (QRMODDLY) from first-dispatch delay by MXT (MXTDELAY)
-  ([CICS Monitoring p.251–254](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=253)),
-  and a short-on-storage region defers new task attaches ([CICS Performance p.76](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/performance_pdf.pdf#page=76)).
+- CICS 110 separates QR TCB wait (QRMODDLY, field 249) from first-dispatch delay by MXT (MXTDELAY, field 127)
+  ([CICS Monitoring PDF p.290 (printed 282)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=290),
+  [PDF p.295 (printed 287)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=295)),
+  and a short-on-storage region defers new task attaches ([CICS Performance PDF p.76 (printed 68)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/performance_pdf.pdf#page=76)).
 - Db2 accounting class 3 holds lock/latch and I/O suspensions ([Db2 13 Managing Performance p.709](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=709)).
 
 Game truth is from the code; **(R-n)** marks rows confirmed by a replay. "Collateral" means a workload the card
