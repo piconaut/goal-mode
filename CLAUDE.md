@@ -162,7 +162,7 @@ npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
   Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
   before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
   vetting and balance calls stay on the main agent.
-  Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
+- Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
   agent and the model it is itself running as, read from its own system prompt or environment. Never copy a trailer
   from a coordinator's brief or reminder, and if the agent can't tell which model it is, it omits the model name
   rather than guessing. For Claude sessions the line is `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
