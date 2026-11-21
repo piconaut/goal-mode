@@ -625,8 +625,8 @@ The terms:
 How it behaves:
 - **Velocities.** Both leave out server and queue-delay samples, and the 0.1 % floor applies. The queue time is
   already in Q̄, and queued WLM-initiator jobs add `delayQueue` to measured ticks only.
-- **Only Ē changes.** A DP move can't shorten the JES initiator wait: it is part of batch response time, not of
-  execution (SG24-6472 PDF p.222 (printed 204)).
+- **Only Ē changes.** A DP move can't shorten the JES initiator wait: "WLM cannot do anything to help a job waiting
+  for an initiator", though the wait is part of batch response time (SG24-6472 PDF p.221–222 (printed 203–204)).
 - **RECOVERING keeps its meaning.** The base uses `v'` at the current DPs, so a period is recovering when
   sustained-demand speed already meets the goal.
 - **Null means no move.** The PI is null with no unexpired completion or no running job of the period: no DP
