@@ -1385,8 +1385,8 @@ understated when healthy work already queues a little). A CPU win uses RT-32's h
   of CPU delay (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500)). A resource-group or server cap is
   POLICY unless a card is blamed, and its cause is `none:CAPPING:<host>:rg:<group>` (the capped class's group), so it
   does not group with an image cap on the same host; the basis records `capBy` IMAGE/GROUP/SERVER. Discretionary goal
-  management only caps work that overachieves, so it cannot hold the hurt period (no special case). A night retains
-  its existing summed-hour, any-host rule pending RT-21.
+  management only caps work that overachieves, so it cannot hold the hour (no special case). An hour with no judged host
+  (a night, a loaded partial hour) keeps the any-host image rule; RT-21 owns the night.
 - Otherwise CPU_CAPACITY iff CPC busy ≥ 90 % or image busy ≥ 95 % on the judged pool, and displaceable consumption
   < `CPU_CAPACITY.displaceableFrac` (10 %); else CPU_PRIORITY. Existing RT-07 bands read displaceable consumption:
   host room < 85 % rules capacity out; host busy ≥ 95 % and displaceable < 5 % leave capacity alone; otherwise both.

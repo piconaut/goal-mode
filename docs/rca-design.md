@@ -560,7 +560,8 @@ For a CPU-family primary, or a `serverCpu` dependency:
    `none:CAPPING:<host>:rg:<group>`, so a group cap does not group with an image cap on the same image. Discretionary
    goal management caps only work that overachieves, so no special case. The CAPPING recipe's symptom predicate also
    reads CAP delay ≥ 10 %: a resource-group cap's wait is CAP delay, not CPU delay (PDF p.540 (printed 500)), so a `DELAY_CAP` row is
-   both the symptom and the proof. Nights keep the old any-host, summed-hour rule pending RT-21.
+   both the symptom and the proof. An hour with no judged host (a night, a loaded partial hour) keeps the old any-host
+  image rule; RT-21 owns the night.
 4. **Capacity or priority by displaceable CPU.** Replace "CP used by lower importance" with **displaceable CP**: CP
    on that image used by work that is not system work (SYSTEM, SYSSTC), not a server or region of the hurt workload,
    and not work whose own SLA was at risk that hour. The WLM importance of the consumer does not enter. A looping

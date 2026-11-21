@@ -113,6 +113,22 @@ describe('CAPPING triggers on the judged host (RT-33)', () => {
     expect(mechanismOf({ cpuQueue: 1 }, {}, h, hosts, ctx())).toBe('CPU_PRIORITY');
   });
 
+  it('an hour with no judged host falls back to today\'s any-host image rule, not the group or role triggers', () => {
+    // A night or a loaded partial hour has no wait ledger, so there is no judged host to scope §3.3 to.
+    const c = ctx({ serverRoles: ['DB2.DBM1'] });
+    const h = hour({ cpuWaitByWorkloadLpar: undefined, capDelayByScpLpar: { PROD2: {
+      'DDFPRD#1': { cap: 90, samples: 100 }, [SERVER_KEY]: { cap: 90, samples: 100 },
+    } }, roleCappedTicks: { 'PROD2:DB2.DBM1': 90 } });
+    expect(cappingOf(h, hosts[1]!, c)).toEqual({ by: 'GROUP', group: 'RGMOB' });
+    expect(cappingVerdict(h, hosts, c)).toBeNull();
+    expect(mechanismOf({ cpuQueue: 1 }, {}, h, hosts, c)).toBe('CPU_PRIORITY');
+    expect(capacityBasis(h, hosts, c)?.capBy).toBeUndefined();
+    // The image rule still works on any host, as it did before the split.
+    const capped = { ...h, cappedTicksByLpar: { PROD2: 90 } };
+    expect(cappingVerdict(capped, hosts, c)).toMatchObject({ lparId: 'PROD2', by: 'IMAGE' });
+    expect(mechanismOf({ cpuQueue: 1 }, {}, capped, hosts, c)).toBe('CAPPING');
+  });
+
   it('an LPAR cap and a group cap on one image get different cause identities, and so do two groups', () => {
     expect(cause(basisOf({ capBy: 'IMAGE' }))).toBe('none:CPU:PROD1');
     expect(cause(basisOf({ capBy: 'GROUP', capGroup: 'RGMOB' }))).toBe('none:CAPPING:PROD1:rg:RGMOB');
@@ -171,6 +187,10 @@ describe('a resource-group maximum on the hurt class is CAPPING (RT-33 realism)'
     if (typeof def === 'string') throw new Error(def);
     const run = { ...started, sim: applyCommands(started.sim, [{ kind: 'ACTIVATE_POLICY', definition: def }]) };
     const h = hour({ capDelayByScpLpar: { PROD1: { 'DDFPRD#1': { cap: 30, samples: 100 } } },
+      cpuWaitByWorkloadLpar: { MOBILE: {
+        PROD1: { cp: 100, ziip: 0, backlog: 0, completions: 100 },
+        PROD2: { cp: 1, ziip: 0, backlog: 0, completions: 100 },
+      } },
       workloads: { MOBILE: { completions: 1000, failed: 0, withinSla: 500, rtSumSec: 5000, parts: { cpuQueue: 5000 } } } });
     const closed = closeHour({ ...run, sim: { ...run.sim, tick: TICKS_PER_HOUR }, hour: h }, MIDWEST, game);
     const inc = closed.incidents.find((i) => i.workloadId === 'MOBILE')!;

@@ -109,7 +109,11 @@ export interface CapVerdict {
 
 /** Which cap held the work on this image, if any: its own image cap, a resource-group maximum on the hurt work's
  * periods or on the server period holding its regions (WLMGL CAP delay), or a resource-group cap on a server role
- * the work depends on. Pure. */
+ * the work depends on. Pure.
+ *
+ * The identity's group is the capped class definition's `resourceGroup`. A row with no group (a discretionary cap,
+ * which design §3.3 says cannot hold the hurt period) falls back to the class or role name, so two such caps on one
+ * image never collapse into a single empty group. */
 export function cappingOf(hour: HourAcc, host: IncidentHost, ctx?: CpuJudgement): CapVerdict | null {
   if (cappedForHour(hour, host.lparId)) return { by: 'IMAGE', group: null };
   if (!ctx) return null;
@@ -135,11 +139,19 @@ export function cappingOf(hour: HourAcc, host: IncidentHost, ctx?: CpuJudgement)
   return null;
 }
 
-/** Which host's cap decided the hour, resolved like `mechanismOf`: the judged host, else the legacy any-host rule. */
+/** What decides a host's cap verdict: the full §3.3 test on a judged host, or today's image-only any-host rule when
+ * the hour has no judged host (an old or partial hour, and a night: RT-21 owns the night). */
+function capForVerdict(hour: HourAcc, host: IncidentHost, judged: boolean, ctx?: CpuJudgement): CapVerdict | null {
+  if (judged) return cappingOf(hour, host, ctx);
+  return cappedForHour(hour, host.lparId) ? { by: 'IMAGE', group: null } : null;
+}
+
+/** Which host's cap decided the hour, resolved like `mechanismOf`: the judged host, else the legacy any-host image
+ * rule. */
 export function cappingVerdict(hour: HourAcc, hosts: readonly IncidentHost[], ctx?: CpuJudgement): (CapVerdict & { lparId: string; cpcId: string }) | null {
   const judged = judgedCpuHosts(hour, hosts, ctx);
   for (const h of judged.length ? judged.slice(0, 1) : hosts) {
-    const v = cappingOf(hour, h, ctx);
+    const v = capForVerdict(hour, h, judged.length > 0, ctx);
     if (v) return { lparId: h.lparId, cpcId: h.cpcId, ...v };
   }
   return null;
@@ -201,7 +213,7 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[], ctx
   let best: CapacityBasis | null = null;
   const judged = judgedCpuHosts(hour, hosts, ctx);
   for (const h of judged.length ? judged.slice(0, 1) : hosts) {
-    const cap = cappingOf(hour, h, ctx);
+    const cap = capForVerdict(hour, h, judged.length > 0, ctx);
     const wait = ctx && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId]?.[h.lparId];
     const pool = judged.length && wait && wait.ziip > wait.cp + wait.backlog ? 'ZIIP' : 'CP';
     const cpc = avg(pool === 'CP' ? hour.cpcBusyById[h.cpcId] : hour.ziipBusyById?.[h.cpcId]);
@@ -257,7 +269,7 @@ export function cpuAlternates(hour: HourAcc, hosts: readonly IncidentHost[], ctx
   for (const h of judged.slice(1).filter((h) => h.excessSharePct >= 100 * CPU_SPLIT.coHostFrac)) {
     const basis = capacityBasis(hour, [h], ctx);
     overflowBlocked ||= basis?.overflowBlocked ?? false;
-    mechanisms.push(cappingOf(hour, h, ctx) ? 'CAPPING' : basis?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY');
+    mechanisms.push(capForVerdict(hour, h, true, ctx) ? 'CAPPING' : basis?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY');
   }
   const lead = judged[0];
   const wait = lead && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId]?.[lead.lparId];
