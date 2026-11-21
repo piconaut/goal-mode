@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-21: CL-49 current-hour Db2/CICS evidence labels start at :00 through capture time; closed-hour labels, values and judging timestamps unchanged (SPEC §10).
 - 2026-11-21: CL-48 PROCU's game-only class summary shows EAppl CP once, with its IIPCP subset and zIIP column; all evidence metrics remain available, job columns unchanged (SPEC §8).
 - 2026-11-21: CL-47 sick-AOR event severity scales the absolute failure fraction from zero (Story 0.245, Normal 0.35, Hard/Ironman 0.4375), capped at 1; other modifier scaling unchanged (SPEC §11.2).
 - 2026-11-21: RT-33 CAPPING also for a resource-group cap on the judged host: CAP delay ≥ 5 % on the hurt period or its server period, or a group-capped server role; trigger POLICY, cause `none:CAPPING:<host>:rg:<group>`; a DELAY_CAP pin alone proves it; no shipped policy has resource groups, so compare is identical (#449).

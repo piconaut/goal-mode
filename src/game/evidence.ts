@@ -448,15 +448,20 @@ const fmtValue = (m: EvidenceMetric, v: number) => {
   return d.unit === '×' ? `×${v.toFixed(2)}` : `${v >= 100 ? v.toFixed(0) : v.toFixed(1)}${d.unit ? ` ${d.unit}` : ''}`.replace(' %', '%');
 };
 
-// Db2 101 and CICS 110 pins sit at their SMF hour's end tick; label the hour itself (10:00–11:00).
-const pinWhen = (p: Located): string =>
-  p.source === 'Db2 101' || p.source === 'CICS 110' || p.source === 'Db2 statistics'
-    ? `${formatClock(p.tick - TICKS_PER_HOUR).slice(0, -3)}–${hhmm(p.tick)}`
-    : formatClock(p.tick).slice(0, -3);
+// Closed SMF hours end on the boundary; a current-hour pin covers only :00 through now.
+function pinWhen(p: Located, req: PinRequest): string {
+  if (p.source === 'Db2 101' || p.source === 'CICS 110' || p.source === 'Db2 statistics') {
+    const startTick = 'hour' in req && req.hour === 'current'
+      ? Math.floor(p.tick / TICKS_PER_HOUR) * TICKS_PER_HOUR
+      : p.tick - TICKS_PER_HOUR;
+    return `${formatClock(startTick).slice(0, -3)}–${hhmm(p.tick)}`;
+  }
+  return formatClock(p.tick).slice(0, -3);
+}
 
-function pinText(p: Located): string {
+function pinText(p: Located, req: PinRequest): string {
   const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
-  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
+  return `${p.source} ${pinWhen(p, req)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
 }
 
 /** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */
@@ -465,7 +470,7 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest, histo
   if (typeof loc === 'string') return { run, ok: false, message: loc };
   const pins = run.pins ?? [];
   if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
-  const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc) };
+  const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc, req) };
   return { run: placePin(run, pin), ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
 }
 
