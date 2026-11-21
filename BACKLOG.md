@@ -120,7 +120,8 @@ and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are record
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
 - **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. An agent playtest of four 8-day runs (2026-11-21)
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
-  RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), then RT-17; the playtest's
+  RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
+  (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
   findings RT-28 … RT-31 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
@@ -128,25 +129,22 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
-`list: rca-truth · status: ready · priority: high · size: L · area: sim`
+### RT-16 · CPU split, part 1: reporting fields for CPU wait by host and CPU by consumer
+`list: rca-truth · status: ready · priority: high · size: M · area: sim`
 
-Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q7: yes). Agent playtest 2026-11-21 evidence: Revenue seed 23
-D8, a runaway DDF query in the hurt work's own class with PROD2's only zIIP 100 % busy (WLMGL zIIP delay 99.6 %) was
-judged CPU_PRIORITY only on "CPC 72.7 % busy"; Harbourline seed 37 D2–D4, CPU_PRIORITY at 60–68 % CPC busy with CPU
-delay 2–8 % on every system. After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
-(prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
-displaceable CP instead of lower-importance CP; bands from `content/incidents.ts`; CAPPING also for a resource-group
-maximum on the class or its server, with `DELAY_CAP` as its evidence (RMF Report Analysis p.540); the basis and
-`mechanismExplanation` name the judged host (A4–A6). Moves truth mechanisms and `buyCapacityForIncidents`: sweep.
-Done when: R-13 is CPU_PRIORITY/POLICY, R-2's basis names PROD2, U-9 … U-11 are tests, SPEC §10 and §17 are updated.
-Cross-note (WLM audit 2026-11-10): WT-09 (landed) makes CICS regions' CPU belong to a server period; take "CP use by address-space role" and the hurt work's own servers from it (docs/archive/wlm-audit-2026-11.md §7, §8 Q1).
-Cross-note (#307 review, 2026-11-12): since WT-07 WLM also takes CPU from a happy more important period, down to its
-goal, while `capacityBasis` counts only less important CP; displaceable CP should count that headroom
-(`docs/rca-design.md` A4, SPEC §17 "Incident ground truth").
+Design: [docs/rt-16-design.md](docs/rt-16-design.md) §2 (user decisions 2026-11-21: Q7 yes, and Q7a … Q7e as
+recommended there, including this three-way split with RT-32 and RT-33). Reporting-only sim fields, read by nothing in
+`src/sim`: `WorkloadTick.cpuWaitByLpar` (CP queue, zIIP queue and backlog wait per image, completion-weighted),
+`LparTick.cpByRole` and `LparTick.cpByWorkload` (granted CP and zIIP engines of server address spaces by role and of
+transactions by workload); and the game hour accumulators of §2 items 4–9 (CPU wait per workload per image, CP per
+period, role and workload per image, CAP delay per period, capped server-role ticks, zIIP busy per CPC and image).
+`cpByImportance` stays for hours accumulated before the change. No reader yet (RT-32, RT-33 read them).
+Done when: `npm run compare -- --base origin/dev --drop cpuWaitByLpar,cpByRole,cpByWorkload` reports no difference,
+unit tests check each accumulator over a few ticks (sums match `parts` and `scps` totals), and the bench shows no
+slowdown beyond noise.
 
 ### RT-17 · Healthy baseline per hour of day
-`list: rca-truth · status: blocked: after RT-16 · priority: high · size: M · area: game`
+`list: rca-truth · status: blocked: after RT-32 · priority: high · size: M · area: game`
 
 Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q6: yes for this entry; RT-19 and RT-20 stay parked). Agent
 playtest 2026-11-21 evidence: Harbourline seed 37 MKTORD at 318/s and 345/s against 133–204/s in other hours was
@@ -158,7 +156,7 @@ wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done whe
 `LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
 
 ### RT-28 · A grouped RCA reply says which victim each line is about
-`list: rca-truth · status: blocked: after RT-16 · priority: high · size: S · area: game`
+`list: rca-truth · status: blocked: after RT-32 · priority: high · size: S · area: game`
 
 Source: agent playtest 2026-11-21, Midwest seed 11 D8 INC11 (run not committed). The reply's header names the lead's
 primary (`CPU_PRIORITY/Change regression`, RBANK), while the explanation comes from the member whose truth matches the
@@ -167,7 +165,7 @@ policy, was short", so the reply seems to contradict itself. The accepted reason
 (`groupAcceptedOf`) without naming whose they are, so RBANK, the REBIND's direct victim, reads as accepted "as a
 neighbour". Harbourline seed 37 D8 INC63 shows the same header/explanation clash. Change: when members' primaries
 differ, the header names each distinct primary with its workloads, and every accepted reason names the member it came
-from. After RT-16 because RT-16 rewrites `mechanismExplanation`. Done when: a test with a two-member group whose
+from. After RT-32 because RT-32 rewrites `mechanismExplanation`. Done when: a test with a two-member group whose
 members have different primaries shows both primaries and per-member reasons, and a single incident's reply is
 unchanged (`npm run compare` reporting-only).
 
@@ -205,7 +203,7 @@ After RT-28 (same reply code). Done when: reply snapshots in the play CLI tests 
 panel shows the same text.
 
 ### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
-`list: rca-truth · status: blocked: design (after RT-16) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: design (after RT-32) · priority: low · size: M · area: game`
 
 Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
 (CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
@@ -213,9 +211,39 @@ clock-hour average of every tick (87.1 %). Every CPU line and every RT-16 band i
 (docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
 in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
 use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
-whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-16,
+whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-32,
 so the choice applies to its bands. The reply wording half is RT-30's. Done when: the user decides, the INC6 shape
 (one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
+
+### RT-32 · CPU split, part 2: the judged host and pool, by displaceable CPU
+`list: rca-truth · status: blocked: after RT-16 · priority: high · size: L · area: game`
+
+Design: [docs/rt-16-design.md](docs/rt-16-design.md) §3.1, §3.2, §3.4, §3.5, §4, §6 (user decisions 2026-11-21).
+Judge a CPU verdict on the host image with the largest CPU-wait excess (a second host with ≥ ⅓ adds its verdict to the
+accepted set; ≥ ⅔ on one host while another had room adds ROUTING); on the zIIP pool when zIIP wait dominates, with
+IIPHONORPRIORITY=NO or a class's honorPriority off and CPs with room giving CPU_PRIORITY and POLICY; capacity vs
+priority by **displaceable** CPU (not system work, not the hurt work's own transactions or regions, not its servers by
+role, not SLA work at risk: attainment within the margin of target, or critical batch whose forecast end is within the
+margin of its deadline; importance does not enter, so a happy more important class counts in full). Lines and bands
+as RT-07/RT-08 with `donorFrac` renamed; new tunables in `content/incidents.ts` (FICTIONAL). `CapacityBasis` gains
+pool, excess share, displaceable share and top consumers; `mechanismExplanation` names the judged host and consumers;
+the CPU_PRIORITY proof recipe's `displaceable` uses the same helper (`game/displaceable.ts`). Report identities for
+the basis figures. Moves truth mechanisms and `buyCapacityForIncidents`: three-scenario `npm run sweep:remote`.
+Done when: R-13 is CPU_PRIORITY/POLICY, R-2's basis names PROD2, U-9 … U-11 are tests, the agent playtest's Revenue
+seed 23 D8 zIIP incident is judged on PROD2's zIIP pool with the runaway query named, and SPEC §10 and §17 and
+docs/rca-design.md §4.3 say what was built.
+
+### RT-33 · CPU split, part 3: a resource-group cap on the class or its server is CAPPING
+`list: rca-truth · status: blocked: after RT-32 · priority: high · size: M · area: game`
+
+Design: [docs/rt-16-design.md](docs/rt-16-design.md) §3.3. On the judged host, CAPPING also when the hurt work's
+periods or the server period holding its regions show WLMGL CAP delay ≥ `CAPPING.capDelayFrac` of their samples, or a
+server role it depends on was resource-group capped (RF-09's `roleHealth.capped`) for ≥ `CAPPING.minHourShare` of the
+ticks (CAP delay is resource-group or discretionary capping and not part of CPU delay: z/OS 3.1 RMF Report Analysis
+SC34-2665-60 PDF p.540 (printed 500)). Fallback trigger POLICY; cause `none:CAPPING:<host>:rg:<group>`; the RCA
+form's CAPPING help reads "the image or the class"; the CAPPING recipe's `DELAY_CAP` adds the `server` relation.
+Sweep. Done when: a realism test shows a resource-group maximum on the hurt class is CAPPING, not CPU_PRIORITY, a
+DELAY_CAP pin proves it, and the docs/research.md "WLMGL CAP delay" row's sim status is updated.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
@@ -248,7 +276,7 @@ MAXCONQW-style DBAT timeout hour is THREAD_LIMIT.
 ### RT-21 · BATCH incidents under the same rules
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4) · priority: low · size: M · area: game`
 
-After RT-14 and RT-16. Cards whose footprint reaches the critical jobs' images or LCUs during the night qualify;
+After RT-14 and RT-32. Cards whose footprint reaches the critical jobs' images or LCUs during the night qualify;
 JOB_FAILURE only when the ABEND's lost time is the largest cause or the job never finished; co-dominant causes
 accepted; capping by share of the night (A12). Done when: a DASD_DEGRADED at 22:00 that makes the window miss is
 IO/HARDWARE_FAULT.
