@@ -76,6 +76,11 @@ describe('citation gate: diff', () => {
     expect(findings.map((f) => `${f.file}:${f.line}`)).toEqual(['src/a.ts:11']);
   });
 
+  it('reads an added line that starts with "++" as content, not a file header', () => {
+    const md = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -0,0 +1,2 @@\n+++ counter (p.3)\n+RMF p.4';
+    expect(checkDiff(md).map((f) => `${f.file}:${f.line}`)).toEqual(['a.md:1', 'a.md:2']);
+  });
+
   it('skips a deleted file', () => {
     expect(checkDiff('--- a/src/a.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-// p.3')).toEqual([]);
   });

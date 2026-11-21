@@ -59,16 +59,24 @@ export function addedLines(diff: string): { file: string; line: number; text: st
   const out: { file: string; line: number; text: string }[] = [];
   let file = '';
   let next = 0;
+  // `+++ ` names the file only in a file header (before its first hunk): an added line "++ x" also starts with it.
+  let inHeader = true;
   for (const raw of diff.split('\n')) {
-    if (raw.startsWith('+++ ')) {
+    if (raw.startsWith('diff --git ')) {
+      inHeader = true;
+      continue;
+    }
+    if (inHeader && raw.startsWith('+++ ')) {
       file = raw.startsWith('+++ b/') ? raw.slice(6) : '';
       continue;
     }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
     if (hunk) {
       next = Number(hunk[1]);
+      inHeader = false;
       continue;
     }
+    if (inHeader) continue;
     if (raw.startsWith('+') && file) out.push({ file, line: next++, text: raw.slice(1) });
   }
   return out;
