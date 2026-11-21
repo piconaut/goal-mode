@@ -204,7 +204,7 @@ describe('proof recipe vocabulary (RT-13)', () => {
     expect(single.sort()).toEqual(['CAPPING', 'CHANGE_REGRESSION', 'DEMAND_SURGE']);
     for (const c of single) {
       // A cost row carries its rate beside it; a CAP-delay row (RT-33) is the cap's symptom and its proof, since WLMGL
-      // CAP delay is capping delay and not CPU delay (RMF Report Analysis 3.1 PDF p.540 (printed 500)).
+      // CAP delay is capping delay and not CPU delay (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500)).
       const choices = minPins(recipeOf(c).predicates).options;
       expect(choices.some((o) => o.reading === 'rate') || choices.every((o) => o.metric === 'DELAY_CAP'), c).toBe(true);
     }
