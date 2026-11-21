@@ -5,6 +5,9 @@ repros, the order of work, the user's decisions, and each entry's results. Agent
 when a question needs the history. The living design (real WLM, the model as built, its invariants,
 approximations and known gaps) is [docs/wlm-design.md](../wlm-design.md).
 
+Its page citations (`p.N`) predate the page-citation rule (CLAUDE.md "Realism policy", #435) and may be printed or
+PDF page numbers, which differ by a per-book offset; check both readings before reporting one as wrong.
+
 Frozen on 2026-11-13, when WT-17 split the design document. Section numbers are the original ones, so older
 references (`§9.12`, `W3`, `S-1`) still resolve here. §3 (real WLM) and §5 (the model) continue, updated, in the
 design document; references to them below point there. The `wlm-truth` list (WT-01 … WT-17) is closed except for
