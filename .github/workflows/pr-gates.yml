@@ -1,5 +1,6 @@
-# PR-only gates that depend on the PR's body, title or labels, so they re-run when those are edited without
-# re-running the full CI. Required status checks: `behaviour-note` and `perf-hash`.
+# PR-only gates. `behaviour-note` and `perf-hash` depend on the PR's body, title or labels, so they re-run when those
+# are edited without re-running the full CI; `citations` reads only the PR's diff. Required status checks:
+# `behaviour-note` and `perf-hash` (`citations` blocks merges once it is added to branch protection).
 name: PR gates
 
 on:
