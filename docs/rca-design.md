@@ -531,7 +531,8 @@ Displaceable pool use includes CP + IIPCP on CP, native zIIP on zIIP, and exclud
 workload, completion-proportioned shared region base CPU, dependency roles and other SLA work at risk. The PCT
 threshold is target + ¼ of the remaining headroom (points); the AVG limit is 0.8 × RT target; during the batch
 window, running critical jobs are protected
-when `sim.batch.projectedCriticalEndSec` (the batch view forecast) reaches ¾ of `batchDeadlineSec`.
+when `sim.batch.projectedCriticalEndSec` (the batch view forecast) is within `CPU_SPLIT.atRiskMargin` of the night
+window before the deadline (03:00 for the default 06:00 deadline), not of the absolute deadline.
 `CPU_SPLIT.coHostFrac = ⅓`, `atRiskMargin = ¼`; primary lines remain 90/95 % busy and < 10 % displaceable, RT-07
 bands remain 85/95 % and < 5 %. These are FICTIONAL game rules; period/region apportionment and counting whole happy
 consumers are APPROX. Truth and proof read the same frozen `subjects.cpu` exclusions. Top consumers are eligible

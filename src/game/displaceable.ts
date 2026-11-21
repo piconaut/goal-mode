@@ -1,11 +1,11 @@
 // APPROX: RCA's displaceable CPU is a game rule, not a prediction of a WLM adjustment.
 import { CPU_SPLIT } from '../content/incidents';
 import type { Scenario } from '../sim/core/scenario';
-import { clockAt } from '../sim/core/clock';
 import { classify } from '../sim/wlm/classify';
 import type { WorkloadDef } from '../sim/workload/types';
 import type { CpuGrant } from '../sim/core/types';
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
+import { batchAtRiskFromSec, nightStartTick } from './night';
 import type { CpuConsumers, HourAcc, IncidentSubjects, RunState } from './types';
 
 export const poolUse = (g: CpuGrant | undefined, pool: 'CP' | 'ZIIP'): number =>
@@ -27,6 +27,11 @@ export function snapshotCpuConsumers(run: RunState, scenario: Scenario, hour: Ho
   const roleClass = (role: string, host: string) => spaces.filter((a) => a.role === role && a.lparId === host)
     .map((a) => classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: host }).serviceClass);
   const cpu: NonNullable<IncidentSubjects['cpu']> = {};
+  // The game's own batch night (18:00 to the day end), with the deadline margin as a share of that window.
+  const hourStartTick = hour.hourIndex * TICKS_PER_HOUR;
+  const nightDay = Math.floor(hourStartTick / TICKS_PER_DAY);
+  const inNight = hourStartTick >= nightStartTick(nightDay) && hourStartTick < (nightDay + 1) * TICKS_PER_DAY;
+  const atRiskFromSec = batchAtRiskFromSec(nightDay, run.batchDeadlineSec);
   for (const host of subjects.hosts) {
     const activeOnHost = (w: WorkloadDef) => {
       const g = hour.cpByWorkloadLpar?.[host]?.[w.id];
@@ -101,11 +106,10 @@ export function snapshotCpuConsumers(run: RunState, scenario: Scenario, hour: Ho
         // APPROX: all shipped instances of a role on an image use the same class; split equally otherwise.
         for (const c of cls) subtract(c, use / cls.length);
       }
-      const hourOfDay = clockAt((hour.hourIndex + 1) * TICKS_PER_HOUR).hourOfDay;
       const forecast = run.sim.batch.projectedCriticalEndSec;
       const protectedJobs = new Set<string>();
-      if (hourOfDay >= 18 || hourOfDay <= 6) for (const j of run.sim.batch.jobs) {
-        if (!j.def.critical || j.status !== 'RUNNING' || j.lparId !== host || forecast === null || forecast < run.batchDeadlineSec * (1 - CPU_SPLIT.atRiskMargin)) continue;
+      if (inNight && forecast !== null) for (const j of run.sim.batch.jobs) {
+        if (!j.def.critical || j.status !== 'RUNNING' || j.lparId !== host || forecast < atRiskFromSec) continue;
         const cls = classify(run.sim.wlm.definition, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: host }).serviceClass;
         if (cls) atRiskClasses.add(cls);
         for (const key of keysOf(cls)) classes[key]!.displaceable = 0;

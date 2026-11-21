@@ -1386,8 +1386,9 @@ understated when healthy work already queues a little). A CPU win uses RT-32's h
 - Displaceable: captured pool engines excluding SYSTEM/SYSSTC, the hurt workload's own transactions (by workload,
   not shared class), its regions' completion-proportioned base CPU and its dependency roles (not their entire mixed
   STC class). Also exclude other SLA periods/server roles at risk: PCT attainment < target + ¼ of remaining percentage,
-  AVG RT > 0.8 × budget (or failures); critical running batch during its window when the batch view's projected
-  critical end is ≥ ¾ of its deadline. Margin is `CPU_SPLIT.atRiskMargin` (¼). Importance does not enter.
+  AVG RT > 0.8 × budget (or failures); critical running batch during the game's night (18:00 to the day end) when
+  the batch view's projected critical end is within `CPU_SPLIT.atRiskMargin` (¼) of the night window before the
+  deadline (03:00 for the default 06:00 deadline). Importance does not enter.
   APPROX: whole happy classes count, workload CPU is apportioned across its class periods by observed use, and shared
   region base CPU by completions; these are not predictions of WLM's next adjustment.
 

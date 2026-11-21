@@ -177,18 +177,25 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[], ctx
   return best;
 }
 
-/** Other substantial hosts contribute their verdict; imbalance is independently visible in host wait shares. */
+/** Substantial co-hosts contribute their verdict; imbalance is independently visible in host wait shares. The
+ * judged host's own verdict is the primary already, and its blocked-overflow reading comes from the basis. */
 export function cpuAlternates(hour: HourAcc, hosts: readonly IncidentHost[], ctx: CpuJudgement): { mechanisms: Mechanism[]; overflowBlocked: boolean } {
   const judged = judgedCpuHosts(hour, hosts, ctx);
   const mechanisms: Mechanism[] = [];
   let overflowBlocked = false;
-  for (const h of judged.filter((h, i) => i === 0 || h.excessSharePct >= 100 * CPU_SPLIT.coHostFrac)) {
+  for (const h of judged.slice(1).filter((h) => h.excessSharePct >= 100 * CPU_SPLIT.coHostFrac)) {
     const basis = capacityBasis(hour, [h], ctx);
     overflowBlocked ||= basis?.overflowBlocked ?? false;
     mechanisms.push(cappedForHour(hour, h.lparId) ? 'CAPPING' : basis?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY');
   }
-  if (judged[0] && judged[0].excessSharePct >= 100 * (1 - CPU_SPLIT.coHostFrac) && judged.slice(1).some((h) =>
-    hour.ticks > 0 && (hour.lparBusyById[h.lparId] ?? 0) / hour.ticks < CPU_BANDS.hostRoomFrac)) mechanisms.push('ROUTING');
+  const lead = judged[0];
+  const wait = lead && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId]?.[lead.lparId];
+  const pool = wait && wait.ziip > wait.cp + wait.backlog ? 'ZIIP' : 'CP';
+  const busy = pool === 'CP' ? hour.lparBusyById : hour.ziipLparBusyById;
+  if (lead && lead.excessSharePct >= 100 * (1 - CPU_SPLIT.coHostFrac) && judged.slice(1).some((h) => {
+    const peerBusy = busy?.[h.lparId];
+    return peerBusy !== undefined && hour.ticks > 0 && peerBusy / hour.ticks < CPU_BANDS.hostRoomFrac;
+  })) mechanisms.push('ROUTING');
   return { mechanisms, overflowBlocked };
 }
 
@@ -358,8 +365,6 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
   return mechanismOf({ cpuQueue: d.cpu, lock: d.lock, dependency: d.db2, io: d.io, paging: d.swap, outsideRef: d.init }, {}, nightHour, hosts);
 }
 
-/** A played day's batch night starts at 18:00, twelve hours after the day's 06:00 start, and runs to the day end. */
-export const nightStartTick = (day: number): number => day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
 const nightWindow = (startTick: number) => ({ startTick, endTick: startTick + 12 * TICKS_PER_HOUR });
 
 /** A card blamed for a missed night: one whose footprint reaches BATCH (listed, or on a critical job's image), causes
