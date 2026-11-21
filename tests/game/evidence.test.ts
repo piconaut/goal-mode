@@ -395,7 +395,9 @@ describe("evidence against the incident's own subjects (RT-04, A10)", () => {
 
   it('records the classes, images and serving regions when an incident opens', () => {
     const inc = regressed.incidents[0]!;
-    expect(inc.subjects).toEqual(incidentSubjects(regressed, MIDWEST, inc.workloadId, inc.day));
+    const { cpu, ...footprint } = inc.subjects;
+    expect(footprint).toEqual(incidentSubjects(regressed, MIDWEST, inc.workloadId, inc.day));
+    expect(cpu).toBeDefined(); // RT-32 also freezes the opening hour's CPU exclusions, not today's grants.
     expect(inc.subjects.classes).toContain('ONLHI');
     expect(inc.subjects.lpars).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
     expect(inc.subjects.servers.map((s) => s.jobname)).toContain('CICSAOR1');
