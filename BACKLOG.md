@@ -236,6 +236,16 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-25 · The citation gate accepts a printed-only citation after a PDF one on the same line
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+Source: #439 fix-check, Missed M1 (non-blocking). In `tools/ci/citations.ts`, `labelledBefore` accepts `printed`
+whenever a `PDF` label appears anywhere earlier on the line. So in `WLM Planning PDF p.99 (printed 79); RMF printed
+p.5` the second citation, which gives only the printed page, passes. Change: accept `printed` only inside the
+parentheses that directly follow a PDF-labelled page run (`PDF p.N (printed M)`, `PDF p.N (printed p.M)`), and add a
+test for the two-citation line. Done when: that line fails the gate, every labelled form in
+`tests/tools/citations.test.ts` still passes, and `npx tsx tools/ci/citations.ts origin/dev` passes on the PR.
+
 ## realism-fixes
 
 ### RF-05 · MSU is counted from total dispatch time, LPAR management included
