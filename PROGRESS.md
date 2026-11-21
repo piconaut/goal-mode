@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-21: CL-61 `src/sim/hw/pools.ts` capping comment names `cappedFrac` as the sim's own measure; RMF PDF p.401 cited only for WLM% (#PRNUM).
 - 2026-11-21: CL-60 docs/research.md citations labelled `PDF p.N (printed M)` from each page's footer; labels match their `#page=` links (#441).
 - 2026-11-21: CL-59 PR gate `citations` (`tools/ci/citations.ts`): added lines may not carry a bare page citation, and a `PDF p.N` link label must match its `#page=` (#439).
 - 2026-11-21: BACKLOG CL-59…CL-62, a smaller scope for the page-citation rule than the closed #436: a CI check on new citations, the research.md ledger, one wrong pools.ts citation, a note on the archived audit (#437; moved to list `page-citations` in #438).
