@@ -11,7 +11,7 @@ export interface DifficultyDef {
   growthMult: number;
   /** Scales the expected number of event cards per day. */
   eventRateMult: number;
-  /** Scales how hard event cards hit: the excess of each multiplier over 1, lock boosts and extra I/O. */
+  /** Scales how hard event cards hit: multiplier excess over 1, region failure fractions, lock boosts and extra I/O. */
   eventSeverityMult: number;
   /** Constraint story beats (mandates, deadlines, freezes) arrive this many days later (+) or earlier (-). */
   constraintDayShift: number;

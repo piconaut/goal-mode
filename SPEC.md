@@ -1583,7 +1583,8 @@ workload and batch growth rates are scaled; Normal is the untouched balance base
 | Hard | ×1.3 | ×1.3 | ×0.92 | ×0.85 | 65 | yes | none |
 | Ironman | as Hard | | | | | no (alerts slow to ½× instead) | none |
 
-Event severity scales each card's magnitudes (the excess of a multiplier over 1, lock boosts, extra I/O):
+Event severity scales each card's magnitudes (the excess of a multiplier over 1, lock boosts, extra I/O;
+`regionFailFrac` is an absolute fraction, scaled from zero and capped at 1):
 Story 0.7×, Normal 1×, Hard/Ironman 1.25×. Constraint beats arrive 3 days later on Story
 (which also drops the CFO mandate) and 4 days earlier on Hard/Ironman. Story starts with the infrastructure flaws
 F7, F8 and F11 already fixed (announced in a handover message); the WLM and PR/SM flaws stay on every difficulty.
