@@ -404,3 +404,50 @@ which holds for a closed hour (its tick is the interval end) but not for `hour: 
 2190 (12:05) the pin reads "CICS 110 D1 11:05–12:05" for the open hour's row. Change: label the open hour from its
 start (the hour the clock is in), or as "this hour, so far", and keep the closed-hour label as it is. Done when: a
 test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at the open hour's `:00`.
+
+### CL-59 · CI check: no new bare page citations
+`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+
+Source: page-citation rule (CLAUDE.md "Realism policy", #435) and the #436 review. That PR proposed relabelling all
+~1,000 old citations (CL-50…CL-58, closed unmerged; those IDs are not used). The rule instead relabels old citations
+when they are touched, so the thing to stop is new bare ones. Change: add `tools/ci/citations.ts`, run from
+`.github/workflows/pr-gates.yml`. It reads the lines the PR adds (`git diff origin/<base>...HEAD`, added lines only) in
+`.ts`, `.tsx` and `.md` files and fails on a `p.N`, `pp.N–M` or `page N` citation that has no `PDF` label before it.
+The rule must not catch a `p.N` that isn't a page citation, and a `#page=N` link whose label says `PDF p.N` passes.
+The output names file, line and the rule's wording. Unit-test the matcher on its own (bare, labelled, range, link,
+non-citation). Done when: the gate fails on a PR that adds `RMF Report Analysis p.401`, passes one that adds
+`RMF Report Analysis PDF p.401 (printed 361)`, ignores untouched lines, and `docs/tools.md` lists the tool.
+
+### CL-60 · Page citations: label the docs/research.md ledger
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: page-citation rule (#435), the #436 review. The ledger is the one place worth a full sweep: it is the source
+of truth for facts, and its links already open the PDF index (`[SG24-7621 p.95 §3.6](…sg247621.pdf#page=95)`), so
+most rows only need a label. Change: each citation label becomes `Book PDF p.N (printed M)` with the edition where
+the book has several. Where the label number equals the link's `#page=`, add the printed number from that page's footer.
+Read each book's offset from a footer; don't assume it. Where they differ, or a bare `p.N` has no link, open the page
+with `pdf_find.py --page` and keep the reading that holds the fact. A row whose fact is on neither page gets its sim
+status reopened and a note, not a guessed number. No row's fact or sim status changes otherwise. Done when: no bare
+`p.N` remains in `docs/research.md`, every label's PDF index equals its link's `#page=`, and the PR lists any row found
+on neither page.
+
+### CL-61 · pools.ts cites RMF p.401 for a measure that page doesn't define
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+Source: the #436 review. `src/sim/hw/pools.ts:149` says the uncapped allocation makes "capping count only what a
+binding cap removed and PR/SM contention doesn't (RMF Report Analysis p.401)". erbb500 v3r1 PDF p.401 defines WLM% as
+"Percentage of time when WLM capped the partition" and the DEF capping flags. It says nothing about capacity a cap
+removed, which is the sim's own measure. Change: comment only. Reword it as the sim's own measure, and cite p.401
+(labelled `PDF p.401`, printed number from its footer) only for what the page says. If the measure feeds a report field
+that does have an IBM definition, cite that field's page instead. Comment only: `npm run compare -- --base origin/dev`
+shows no difference. Done when: the comment no longer attributes the measure to RMF, and the compare summary is in the
+PR.
+
+### CL-62 · Header note on the archived WLM audit's page citations
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: the #436 review. `docs/archive/wlm-audit-2026-11.md` has about 40 bare `p.N` citations, written before the
+page-citation rule (#435) and mixing printed and PDF numbers. It is a frozen record, so don't rewrite it. Change: add one
+line under its "Reference only" paragraph saying its page numbers predate the rule, may be printed or PDF pages, and
+that a reader should check both before reporting a citation as wrong. Done when: the note is there and nothing else in
+the file changed.
