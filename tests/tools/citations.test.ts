@@ -37,6 +37,20 @@ describe('citation gate: checkLine', () => {
     expect(checkLine('[WLM Planning PDF pp.121–122](https://x/ieaw100.pdf#page=122)')).toEqual([]);
   });
 
+  it('reads a PDF label wrapped onto the line above', () => {
+    // docs/rt-16-design.md in #446: "… SC34-2665-60 PDF" / "p.540 (printed 500); …" failed the gate.
+    expect(checkLine('  p.540 (printed 500); docs/research.md row', 'a.md', '  (RMF Report Analysis SC34-2665-60 PDF')).toEqual([]);
+    expect(checkLine('// p.540 (printed 500).', 'a.ts', '// CAP is not CPU delay: SC34-2665-60 PDF')).toEqual([]);
+    expect(checkLine(' * p.540 (printed 500).', 'a.ts', ' * RMF Report Analysis PDF')).toEqual([]);
+    expect(checkLine('(printed p.183)', 'a.md', 'SG24-6472-03 PDF p.201')).toEqual([]);
+  });
+
+  it('still flags a bare citation under a line that does not end in a label', () => {
+    expect(checkLine('  p.540 (printed 500)', 'a.md', '  RMF Report Analysis SC34-2665-60')).toHaveLength(1);
+    expect(checkLine('see also p.12', 'a.md', 'SG24-6472-03 PDF')).toHaveLength(1);
+    expect(checkLine('  p.540', 'a.md')).toHaveLength(1);
+  });
+
   it('ignores things that are not page citations', () => {
     expect(checkLine('const step = 0.5; app.1x')).toEqual([]);
     expect(checkLine('a p95 response time and pp2 output')).toEqual([]);
@@ -79,6 +93,14 @@ describe('citation gate: diff', () => {
   it('reads an added line that starts with "++" as content, not a file header', () => {
     const md = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -0,0 +1,2 @@\n+++ counter (p.3)\n+RMF p.4';
     expect(checkDiff(md).map((f) => `${f.file}:${f.line}`)).toEqual(['a.md:1', 'a.md:2']);
+  });
+
+  it('joins a wrapped label across consecutive added lines, or the head line above when given', () => {
+    const wrapped = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -4,0 +5,2 @@\n+RMF SC34-2665-60 PDF\n+p.540 (printed 500).';
+    expect(checkDiff(wrapped)).toEqual([]);
+    const underOld = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -5,0 +6 @@\n+p.540 (printed 500).';
+    expect(checkDiff(underOld).map((f) => `${f.file}:${f.line}`)).toEqual(['a.md:6']);
+    expect(checkDiff(underOld, (file, line) => (file === 'a.md' && line === 5 ? 'RMF SC34-2665-60 PDF' : undefined))).toEqual([]);
   });
 
   it('skips a deleted file', () => {
