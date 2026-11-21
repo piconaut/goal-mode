@@ -9,12 +9,13 @@ import { CAPPING, CPU_CAPACITY } from '../content/incidents';
 import { ALL_MECHANISMS } from '../content/footprint';
 import { regionKey } from './footprint';
 import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, Mechanism, Trigger, WorkloadHour } from './types';
+import { sumCapSamples, sumCpuGrants, sumCpuWaits, sumRecords } from './hourAccounting';
 
 export const BASELINE_DECAY = 0.8;
 
 /** Importance rank of a service class period for donor accounting: SYSTEM/SYSSTC 0, goal classes 1–5,
  * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors; since WT-07
- * it also takes from happy more important work, which this does not count (RT-16). */
+ * it also takes from happy more important work, which this does not count (RT-32). */
 export function importanceRank(def: ServiceDefinition, scKey: string): number {
   const [cls, n] = scKey.split('#');
   if (cls === SYSTEM || cls === SYSSTC) return 0;
@@ -275,6 +276,14 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
     cpcBusyById: sum(acc.cpcBusyById, h.cpcBusyById),
     lparBusyById: sum(acc.lparBusyById, h.lparBusyById),
     cpByImportance,
+    cpuWaitByWorkloadLpar: sumRecords(acc.cpuWaitByWorkloadLpar, h.cpuWaitByWorkloadLpar, sumCpuWaits),
+    cpByScpLpar: sumRecords(acc.cpByScpLpar, h.cpByScpLpar, sumCpuGrants),
+    cpByRoleLpar: sumRecords(acc.cpByRoleLpar, h.cpByRoleLpar, sumCpuGrants),
+    cpByWorkloadLpar: sumRecords(acc.cpByWorkloadLpar, h.cpByWorkloadLpar, sumCpuGrants),
+    capDelayByScpLpar: sumRecords(acc.capDelayByScpLpar, h.capDelayByScpLpar, sumCapSamples),
+    roleCappedTicks: sum(acc.roleCappedTicks, h.roleCappedTicks),
+    ziipBusyById: sum(acc.ziipBusyById, h.ziipBusyById),
+    ziipLparBusyById: sum(acc.ziipLparBusyById, h.ziipLparBusyById),
     lockIndexSum: acc.lockIndexSum + h.lockIndexSum,
     dbatQueuedByLpar,
   };

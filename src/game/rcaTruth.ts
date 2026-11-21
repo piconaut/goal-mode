@@ -109,7 +109,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   if (capCard) offerMechanism('CPU_CAPACITY', `${capCard.name} lowered the processor's capacity`);
 
   // The §4.3 bands: the evidence does not separate capacity from priority, so both are accepted. Measured against
-  // the hour-average basis the verdict used (APPROX: its donor share stands in for §4.3's displaceable CPU, RT-16).
+  // the hour-average basis the verdict used (APPROX: its donor share stands in for §4.3's displaceable CPU, RT-32).
   const b = ctx.basis;
   if (b && (ctx.mechanism === 'CPU_CAPACITY' || ctx.mechanism === 'CPU_PRIORITY')) {
     const hostPct = Math.max(b.cpcBusyPct, b.lparBusyPct);

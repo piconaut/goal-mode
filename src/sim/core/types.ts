@@ -172,6 +172,22 @@ export interface WorkloadRuntime {
   burst?: BurstState;
 }
 
+/** Reporting-only completion-weighted wait seconds and completed transaction count. */
+export interface CpuWait {
+  cp: number;
+  ziip: number;
+  backlog: number;
+  completions: number;
+}
+
+/** Granted engines; CP-pool use is cp + iipcp, native zIIP-pool use is ziip. */
+export interface CpuGrant {
+  cp: number;
+  ziip: number;
+  /** Missing in earlier RT-16 save rows; contributes zero when summed, without backfill. */
+  iipcp: number;
+}
+
 export interface WorkloadTick {
   id: string;
   arrivalRate: number;
@@ -181,6 +197,8 @@ export interface WorkloadTick {
   rtSumSec: number;
   /** Completion-weighted sums of response-time components (seconds × completions). */
   parts: Record<string, number>;
+  /** Reporting only, by image. Absent in old saves and when no transactions completed. */
+  cpuWaitByLpar?: Record<string, CpuWait>;
   /** Messages waiting on the workload's MQ queue, per queue manager (LPAR). */
   queueDepth?: Record<string, number>;
 }
@@ -195,6 +213,10 @@ export interface CicsStorageTick {
 export interface LparTick {
   lparId: string;
   scps: ScpTick[];
+  /** Reporting only: address-space grants by server role; absent without role slices or in old saves. */
+  cpByRole?: Record<string, CpuGrant>;
+  /** Reporting only: transaction grants by workload; absent without transaction slices or in old saves. */
+  cpByWorkload?: Record<string, CpuGrant>;
   rcs?: ReportClassTick[];
   /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
   cics?: CicsTargets;
