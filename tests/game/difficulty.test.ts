@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { DIFFICULTIES, type DifficultyId } from '../../src/content/difficulty';
+import { HARBOURLINE_EVENTS } from '../../src/content/events/harbourline-events';
 import { SCENARIOS } from '../../src/content/scenarios';
 import { scaleEventCommands, scenarioFor, storyBeatsFor } from '../../src/game/difficulty';
 import type { Command } from '../../src/sim/core/commands';
@@ -55,6 +57,31 @@ describe('difficulty presets', () => {
 });
 
 describe('scaleEventCommands', () => {
+  it.each<[DifficultyId, number, number, number]>([
+    ['STORY', 0.245, 2.4, 0.51],
+    ['NORMAL', 0.35, 3, 0.3],
+    ['HARD', 0.4375, 3.5, 0.125],
+    ['IRONMAN', 0.4375, 3.5, 0.125],
+  ])('scales the sick-AOR failure fraction proportionally on %s, not like a multiplier', (difficulty, failure, rate, ziip) => {
+    const mult = DIFFICULTIES[difficulty].eventSeverityMult;
+    const sick = HARBOURLINE_EVENTS.find((e) => e.id === 'SICK_AOR')!;
+    const values = scaleEventCommands(sick.begin, mult);
+    expect(values).toHaveLength(2);
+    for (const c of values) expect(c).toMatchObject({ mod: 'regionFailFrac', value: expect.closeTo(failure, 12) });
+    const multipliers = scaleEventCommands([
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 3 },
+      { kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 0.3 },
+    ], mult);
+    expect(multipliers[0]).toMatchObject({ value: expect.closeTo(rate, 12) });
+    expect(multipliers[1]).toMatchObject({ value: expect.closeTo(ziip, 12) });
+  });
+
+  it('caps a scaled failure fraction at one and keeps zero failures at zero', () => {
+    const cmd: Command = { kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: 'MKTORD@PRDC', value: 0.9 };
+    expect(scaleEventCommands([cmd], 1.25)[0]).toMatchObject({ value: 1 });
+    expect(scaleEventCommands([{ ...cmd, value: 0 }], 0.7)[0]).toMatchObject({ value: 0 });
+  });
+
   it('leaves Normal untouched and scales multipliers by their excess over 1', () => {
     const cmds: Command[] = [
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 3 },
