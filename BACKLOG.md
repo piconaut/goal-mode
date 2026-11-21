@@ -121,7 +121,7 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. An agent playtest of four 8-day runs (2026-11-21)
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), then RT-17; the playtest's
-  reply findings RT-28 … RT-30 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
+  findings RT-28 … RT-31 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
@@ -203,6 +203,19 @@ Source: agent playtest 2026-11-21, all four runs. Changes:
   the truth reads the clock hour.
 After RT-28 (same reply code). Done when: reply snapshots in the play CLI tests cover each case, and the browser RCA
 panel shows the same text.
+
+### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
+`list: rca-truth · status: blocked: design (after RT-16) · priority: low · size: M · area: game`
+
+Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
+(CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
+clock-hour average of every tick (87.1 %). Every CPU line and every RT-16 band is measured on that average
+(docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
+in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
+use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
+whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-16,
+so the choice applies to its bands. The reply wording half is RT-30's. Done when: the user decides, the INC6 shape
+(one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
