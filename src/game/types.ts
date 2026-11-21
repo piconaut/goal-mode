@@ -152,11 +152,11 @@ export interface HourAcc {
   // A loaded mid-hour remains partial until the next full hour; merged nights likewise include only observed data.
   /** Workload → image → completion-weighted wait seconds and completions. */
   cpuWaitByWorkloadLpar?: Record<string, Record<string, CpuWait>>;
-  /** Image → period → CP/zIIP engine-ticks (CP excludes IIPCP, as in ScpTick.cpEngines). */
+  /** Image → period → CP/zIIP/IIPCP engine-ticks (CP-pool use = cp + iipcp). */
   cpByScpLpar?: Record<string, Record<string, CpuGrant>>;
-  /** Image → server role → CP/zIIP engine-ticks. */
+  /** Image → server role → CP/zIIP/IIPCP engine-ticks. */
   cpByRoleLpar?: Record<string, Record<string, CpuGrant>>;
-  /** Image → workload → CP/zIIP engine-ticks. */
+  /** Image → workload → CP/zIIP/IIPCP engine-ticks. */
   cpByWorkloadLpar?: Record<string, Record<string, CpuGrant>>;
   /** Image → period → CAP and total using + delay samples; includes the synthetic server period. */
   capDelayByScpLpar?: Record<string, Record<string, { cap: number; samples: number }>>;

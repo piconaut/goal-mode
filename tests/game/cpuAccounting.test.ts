@@ -37,19 +37,45 @@ it('sums every new hour field over real ticks and merges split hours without mut
   let run = newRun(scenario, MIDWEST_GAME, 42);
   let expected: unknown = reports(newHour(0));
   let first: HourAcc | undefined;
+  let cappedRoleTicks = 0, ziipBusy = 0, roleIipcp = 0, workloadIipcp = 0;
+  const definition = run.sim.wlm.definition;
+  run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: {
+    ...definition,
+    resourceGroups: [...definition.resourceGroups, { id: 'CPU_TEST', type: 3, min: null, max: 1 }],
+    classes: definition.classes.map((c) => c.id === 'STCMED' ? { ...c, resourceGroup: 'CPU_TEST' } : c),
+  } } } };
   for (let i = 0; i < 6; i++) {
-    const sim = step(run.sim, [], scenario);
+    if (i === 3) run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition } } };
+    const offline = i === 3 ? run.sim.config.lpars.filter((l) => l.pools.some((p) => p.pool === 'ZIIP'))
+      .map((l) => ({ kind: 'SET_LOGICAL' as const, lparId: l.id, pool: 'ZIIP' as const, logical: 0 })) : [];
+    const sim = step(run.sim, offline, scenario);
     const one = accumulateHour({ ...run, sim, hour: newHour(0) }).hour!;
+    const roles = Object.fromEntries(sim.last.lpars.flatMap((lt) => Object.entries(lt.roleHealth)
+      .filter(([, health]) => health.capped).map(([role]) => [`${lt.lparId}:${role}`, 1])));
+    expect(one.roleCappedTicks).toEqual(roles);
+    cappedRoleTicks += Object.keys(roles).length;
+    if (i >= 3) expect(roles).toEqual({});
+    const images = Object.fromEntries(sim.lpars.flatMap((l) => {
+      const zi = l.pools.find((p) => p.pool === 'ZIIP');
+      return zi && zi.availableEngines > 0 ? [[l.id, Math.min(1, zi.deliveredEngines / zi.availableEngines)]] : [];
+    }));
+    const cpcs = Object.fromEntries(sim.config.cpcs.filter((c) => c.engines.ZIIP > 0).map((c) => [c.id,
+      sim.lpars.filter((l) => sim.config.lpars.find((cfg) => cfg.id === l.id)?.cpcId === c.id)
+        .reduce((n, l) => n + (l.pools.find((p) => p.pool === 'ZIIP')?.deliveredEngines ?? 0), 0) / c.engines.ZIIP,
+    ]));
+    expect(one.ziipLparBusyById).toEqual(images);
+    expect(one.ziipBusyById).toEqual(cpcs);
+    ziipBusy += Object.values(cpcs).reduce((n, x) => n + x, 0);
     for (const w of sim.last.workloads) expect(one.cpuWaitByWorkloadLpar?.[w.id]).toEqual(w.cpuWaitByLpar);
     for (const lt of sim.last.lpars) {
       expect(one.cpByRoleLpar?.[lt.lparId]).toEqual(lt.cpByRole);
       expect(one.cpByWorkloadLpar?.[lt.lparId]).toEqual(lt.cpByWorkload);
+      roleIipcp += Object.values(lt.cpByRole ?? {}).reduce((n, x) => n + x.iipcp, 0);
+      workloadIipcp += Object.values(lt.cpByWorkload ?? {}).reduce((n, x) => n + x.iipcp, 0);
       for (const x of lt.scps) {
-        expect(one.cpByScpLpar?.[lt.lparId]?.[x.scKey]).toEqual({ cp: x.cpEngines, ziip: x.ziipEngines });
-        expect(one.capDelayByScpLpar?.[lt.lparId]?.[x.scKey]).toEqual({
-          cap: x.delayCap,
-          samples: x.usingCpu + x.usingZiip + x.usingIo + x.delayCpu + x.delayZiip + x.delayIo + x.delayStorage + x.delayCap + (x.delayQueue ?? 0) + x.delayOther,
-        });
+        expect(one.cpByScpLpar?.[lt.lparId]?.[x.scKey]).toEqual({ cp: x.cpEngines, ziip: x.ziipEngines, iipcp: x.iipcpEngines });
+        // The independent sample-total oracle is the hand-counted synthetic tick below.
+        expect(one.capDelayByScpLpar?.[lt.lparId]?.[x.scKey]?.cap).toBe(x.delayCap);
       }
     }
     expected = sum(expected, reports(one));
@@ -60,6 +86,10 @@ it('sums every new hour field over real ticks and merges split hours without mut
     if (i === 2) { first = run.hour!; run = { ...run, hour: newHour(0) }; }
   }
   const before = JSON.stringify([first, run.hour]);
+  expect(cappedRoleTicks).toBeGreaterThan(0);
+  expect(ziipBusy).toBeGreaterThan(0);
+  expect(roleIipcp).toBeGreaterThan(0);
+  expect(workloadIipcp).toBeGreaterThan(0);
   near(reports(addHour(first, run.hour!)), expected);
   expect(JSON.stringify([first, run.hour])).toBe(before);
   expect(reports(addHour(undefined, run.hour!))).toEqual(reports(run.hour!));
@@ -84,7 +114,7 @@ it('counts CAP samples (including server CAP once), current capped-role ticks, a
   } };
   run = accumulateHour(run);
   expect(run.hour!.capDelayByScpLpar).toEqual({ IMG: { 'STC#1': { cap: 19, samples: 129 }, [SERVER_KEY]: { cap: 3, samples: 7 } } });
-  expect(run.hour!.cpByScpLpar).toEqual({ IMG: { 'STC#1': { cp: 1.5, ziip: 0.5 } } });
+  expect(run.hour!.cpByScpLpar).toEqual({ IMG: { 'STC#1': { cp: 1.5, ziip: 0.5, iipcp: 0.25 } } });
   expect(run.hour!.ziipBusyById).toEqual({ BOX: 0.75 });
   expect(run.hour!.ziipLparBusyById).toEqual({ IMG: 1 });
   expect(run.hour!.roleCappedTicks).toEqual({ 'IMG:DB2.MSTR': 1 });
@@ -125,4 +155,33 @@ it('uses each CPC zIIP capacity, even for an image without a CP pool, and skips 
   const hour = accumulateHour(run).hour!;
   expect(hour.ziipBusyById).toEqual({ BOX1: 0.25, BOX2: 0.25 });
   expect(hour.ziipLparBusyById).toEqual({ A: 0.5, B: 0.5 });
+});
+
+it('adds legacy grant rows lacking IIPCP without NaNs or backfilling earlier ticks', () => {
+  // Deserialized earlier RT-16 hours have cp/ziip rows but no iipcp member.
+  const old: HourAcc = JSON.parse(JSON.stringify({ ...legacy(), ticks: 10,
+    cpByScpLpar: { IMG: { 'STC#1': { cp: 2, ziip: 3 } } },
+    cpByRoleLpar: { IMG: { ROLE: { cp: 2, ziip: 3 } } },
+    cpByWorkloadLpar: { IMG: { WORK: { cp: 2, ziip: 3 } } },
+  }));
+  const fresh: HourAcc = { ...newHour(0), ticks: 1,
+    cpByScpLpar: { IMG: { 'STC#1': { cp: 5, ziip: 7, iipcp: 11 } } },
+    cpByRoleLpar: { IMG: { ROLE: { cp: 5, ziip: 7, iipcp: 11 } } },
+    cpByWorkloadLpar: { IMG: { WORK: { cp: 5, ziip: 7, iipcp: 11 } } },
+  };
+  for (const merged of [addHour(old, fresh), addHour(fresh, old)]) {
+    expect(merged.ticks).toBe(11);
+    expect(merged.cpByScpLpar).toEqual({ IMG: { 'STC#1': { cp: 7, ziip: 10, iipcp: 11 } } });
+    expect(merged.cpByRoleLpar).toEqual({ IMG: { ROLE: { cp: 7, ziip: 10, iipcp: 11 } } });
+    expect(merged.cpByWorkloadLpar).toEqual({ IMG: { WORK: { cp: 7, ziip: 10, iipcp: 11 } } });
+  }
+  const base = newRun(SCENARIOS.midwest!, MIDWEST_GAME, 42);
+  const sim = step(base.sim, [], SCENARIOS.midwest!);
+  const tick = { ...emptyScpTick('STC#1', 220), cpEngines: 5, ziipEngines: 7, iipcpEngines: 11 };
+  const one = accumulateHour({ ...base, hour: old, sim: { ...sim, last: { workloads: [], lpars: [{
+    lparId: 'IMG', scps: [tick], cpByRole: { ROLE: { cp: 5, ziip: 7, iipcp: 11 } },
+    cpByWorkload: { WORK: { cp: 5, ziip: 7, iipcp: 11 } }, roleHealth: {},
+  }] } } }).hour!;
+  const expected = addHour(old, fresh);
+  for (const key of ['cpByScpLpar', 'cpByRoleLpar', 'cpByWorkloadLpar'] as const) expect(one[key]).toEqual(expected[key]);
 });

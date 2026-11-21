@@ -217,13 +217,14 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     const r = res.slices[i]!;
     // Reporting only; use the same grants as ScpTick, leaving IIPCP separate.
     const consumer = s.kind === 'AS' && s.role
-      ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0 })
+      ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0, iipcp: 0 })
       : s.kind === 'TXN' && s.workloadId
-        ? ((cpByWorkload ??= {})[s.workloadId] ??= { cp: 0, ziip: 0 })
+        ? ((cpByWorkload ??= {})[s.workloadId] ??= { cp: 0, ziip: 0, iipcp: 0 })
         : undefined;
     if (consumer) {
       consumer.cp += r.cpGranted;
       consumer.ziip += r.ziipGranted;
+      consumer.iipcp += r.iipcpGranted;
     }
     if (r.newBacklog > 1e-9) {
       backlog[s.key] = r.newBacklog;

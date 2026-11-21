@@ -120,7 +120,7 @@ export function accumulateHour(run: RunState): RunState {
     const cap = { ...capDelayByScpLpar[lt.lparId] };
     for (const x of lt.scps) {
       const a = cp[x.scKey];
-      cp[x.scKey] = { cp: (a?.cp ?? 0) + x.cpEngines, ziip: (a?.ziip ?? 0) + x.ziipEngines };
+      cp[x.scKey] = { cp: (a?.cp ?? 0) + x.cpEngines, ziip: (a?.ziip ?? 0) + x.ziipEngines, iipcp: (a?.iipcp ?? 0) + x.iipcpEngines };
       const b = cap[x.scKey];
       // Same using + delay denominator as WLMGL (rmf.wlmRecord), including OTHER and queued samples.
       // CAP is separate from CPU delay: SC34-2665-60 PDF p.540 (printed 500).

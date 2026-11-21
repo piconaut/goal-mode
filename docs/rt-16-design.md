@@ -34,18 +34,22 @@ with `npm run compare -- --base origin/dev --drop <field>`.
 1. `WorkloadTick.cpuWaitByLpar?: Record<lparId, { cp: number; ziip: number; backlog: number; completions: number }>`:
    completion-weighted seconds of `cpuQueue`, `ziipQueue` and `backlogWait`, per image, accumulated in
    `core/tick/dispatch.ts` where `addParts` already sums `parts`. The workload's `parts` stay the sum of these.
-2. `LparTick.cpByRole?: Record<role, { cp: number; ziip: number }>`: engines granted to address-space slices that
-   have a `role` (DB2.MSTR, DB2.DIST, MQ, CICS.AOR …), from each slice result's `cpGranted` / `ziipGranted`. Needed
+2. `LparTick.cpByRole?: Record<role, { cp: number; ziip: number; iipcp: number }>`: engines granted to address-space slices that
+   have a `role` (DB2.MSTR, DB2.DIST, MQ, CICS.AOR …), from each slice result's `cpGranted` / `ziipGranted` / `iipcpGranted`. Needed
    because Db2 shares its STC class with monitors (STCMED in BASEPOL), so the class row cannot tell them apart.
    Omitted on images with no role slices.
-3. `LparTick.cpByWorkload?: Record<workloadId, { cp: number; ziip: number }>`: engines granted to transaction slices
+3. `LparTick.cpByWorkload?: Record<workloadId, { cp: number; ziip: number; iipcp: number }>`: engines granted to transaction slices
    per workload. Two workloads can share one period (Revenue's analytics queries and e-filing in WEBDDF), so the
    period row cannot separate the hurt work from a runaway beside it.
+
+   Review correction: retain IIPCP separately, so `cp` still reconciles with `ScpTick.cpEngines`, while CP-pool
+   consumption is `cp + iipcp`. Native zIIP consumption is `ziip`. Earlier RT-16 records lacking `iipcp` contribute
+   zero for that component when summed, without backfill; a loaded hour can therefore be partial.
 
 **Game hour accumulator (`HourAcc`, `game/run/hourly.ts`)**
 
 4. `cpuWaitByWorkloadLpar`: sum of (1) over the hour.
-5. `cpByScpLpar: Record<lparId, Record<scKey, { cp, ziip }>>`: engine-ticks per period per image, from `lt.scps`.
+5. `cpByScpLpar: Record<lparId, Record<scKey, { cp, ziip, iipcp }>>`: engine-ticks per period per image, from `lt.scps`.
    `cpByImportance` stays, so an hour accumulated before this change still judges by it.
 6. `cpByRoleLpar`, `cpByWorkloadLpar`: sums of (2) and (3).
 7. `capDelayByScpLpar: Record<lparId, Record<scKey, { cap, samples }>>`: `delayCap` (with `srvDelayCap` for the

@@ -8,7 +8,8 @@ export function sumRecords<T>(a: Record<string, T> | undefined, b: Record<string
 }
 
 export const sumCpuGrants = (a: Record<string, CpuGrant> | undefined, b: Record<string, CpuGrant> | undefined): Record<string, CpuGrant> =>
-  sumRecords(a, b, (a, b) => ({ cp: (a?.cp ?? 0) + b.cp, ziip: (a?.ziip ?? 0) + b.ziip }));
+  // Earlier RT-16 saves lack iipcp in existing rows: start from zero, without reconstructing past grants.
+  sumRecords(a, b, (a, b) => ({ cp: (a?.cp ?? 0) + b.cp, ziip: (a?.ziip ?? 0) + b.ziip, iipcp: (a?.iipcp ?? 0) + (b.iipcp ?? 0) }));
 
 export const sumCpuWaits = (a: Record<string, CpuWait> | undefined, b: Record<string, CpuWait> | undefined): Record<string, CpuWait> =>
   sumRecords(a, b, (a, b) => ({ cp: (a?.cp ?? 0) + b.cp, ziip: (a?.ziip ?? 0) + b.ziip, backlog: (a?.backlog ?? 0) + b.backlog, completions: (a?.completions ?? 0) + b.completions }));

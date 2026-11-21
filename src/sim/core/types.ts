@@ -180,10 +180,12 @@ export interface CpuWait {
   completions: number;
 }
 
-/** Granted engines; CP excludes the separately accounted zIIP-on-CP grant (IIPCP). */
+/** Granted engines; CP-pool use is cp + iipcp, native zIIP-pool use is ziip. */
 export interface CpuGrant {
   cp: number;
   ziip: number;
+  /** Missing in earlier RT-16 save rows; contributes zero when summed, without backfill. */
+  iipcp: number;
 }
 
 export interface WorkloadTick {
