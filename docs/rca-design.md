@@ -550,8 +550,8 @@ For a CPU-family primary, or a `serverCpu` dependency:
    may not overflow" (IIPHONORPRIORITY=NO, Init & Tuning p.430) as a policy cause.
 3. **Capping** when the host was capped for at least 5 % of the hour's ticks (time, not the worst tick), by defined
    capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add (RT-33): CAPPING
-   also when the hurt class or its server was held by a resource-group maximum (WLMGL CAP delay, RMF Report Analysis
-   p.540), with trigger POLICY. The form's help for CAPPING changes from "the image" to "the image or the class".
+   also when the hurt class or its server was held by a resource-group maximum (WLMGL CAP delay, RMF Report Analysis 3.1
+   PDF p.540 (printed 500)), with trigger POLICY. The form's help for CAPPING changes from "the image" to "the image or the class".
    **As built (RT-33):** `game/sla.ts` `cappingOf` tests, on the judged host only, (a) the image's own cap, (b) a
    period of the hurt work, or the `$SRMS001` server period holding its regions, at CAP delay ≥ `CAPPING.capDelayFrac`
    (5 %) of its WLMGL samples, and (c) a server role the work depends on (`w.servers`, `w.hostRole`) with
@@ -559,7 +559,7 @@ For a CPU-family primary, or a `serverCpu` dependency:
    the basis records `capBy` IMAGE/GROUP/SERVER with the capped class's `resourceGroup`; the cause is
    `none:CAPPING:<host>:rg:<group>`, so a group cap does not group with an image cap on the same image. Discretionary
    goal management caps only work that overachieves, so no special case. The CAPPING recipe's symptom predicate also
-   reads CAP delay ≥ 10 %: a resource-group cap's wait is CAP delay, not CPU delay (p.540), so a `DELAY_CAP` row is
+   reads CAP delay ≥ 10 %: a resource-group cap's wait is CAP delay, not CPU delay (PDF p.540 (printed 500)), so a `DELAY_CAP` row is
    both the symptom and the proof. Nights keep the old any-host, summed-hour rule pending RT-21.
 4. **Capacity or priority by displaceable CPU.** Replace "CP used by lower importance" with **displaceable CP**: CP
    on that image used by work that is not system work (SYSTEM, SYSSTC), not a server or region of the hurt workload,
