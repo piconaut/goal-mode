@@ -25,8 +25,8 @@ const RUN = new RegExp(String.raw`\b${PAGE}(?:\s*(?:,|and|&)\s*(?:${PAGE}|\d+(?:
 function labelledBefore(before: string): boolean {
   return /\bPDF\s*$/.test(before) || (/\bprinted\s*$/.test(before) && /\bPDF\b/.test(before));
 }
-// "page 12" in prose; `--page 12` (pdf_find.py) and `#page=12` (links) are not citations.
-const PAGE_WORD = /(?<![-#\w])\bpage\s\d+/g;
+// "page 12", "Pages 12–13" in prose; `--page 12` (pdf_find.py) and `#page=12` (links) are not citations.
+const PAGE_WORD = /(?<![-#\w])\b[Pp]ages?\s\d+(?:\s?[–-]\s?\d+)?/g;
 const LINK = /\[([^\]]*)\]\([^)\s]*#page=(\d+)[^)]*\)/g;
 
 // Inline code spans in Markdown quote text rather than cite it.
@@ -40,7 +40,9 @@ export function checkLine(text: string, file = 'x.ts'): string[] {
   for (const m of src.matchAll(RUN)) {
     if (!labelledBefore(src.slice(0, m.index))) problems.push(`bare "${m[0]}": write "PDF ${m[0]} (printed …)"`);
   }
-  for (const m of src.matchAll(PAGE_WORD)) problems.push(`bare "${m[0]}": write "PDF p.N (printed …)"`);
+  for (const m of src.matchAll(PAGE_WORD)) {
+    if (!labelledBefore(src.slice(0, m.index))) problems.push(`bare "${m[0]}": write "PDF p.N (printed …)"`);
+  }
   for (const m of src.matchAll(LINK)) {
     // A range label may open any page in its range.
     const label = /\bPDF\s+pp?\.\s?(\d+)(?:\s?[–-]\s?(\d+))?/.exec(m[1] ?? '');

@@ -22,6 +22,9 @@ describe('citation gate: checkLine', () => {
 
   it('flags "page N" prose but not pdf_find.py flags or link anchors', () => {
     expect(checkLine('described on page 83 of the book')).toHaveLength(1);
+    expect(checkLine('Page 83 of the book')).toHaveLength(1);
+    expect(checkLine('see pages 12–13')).toHaveLength(1);
+    expect(checkLine('the patent, PDF pages 18–20')).toEqual([]);
     expect(checkLine('pdf_find.py BOOK --page 3 shows it')).toEqual([]);
     expect(checkLine('[RMF PDF p.540](https://x/erbb500.pdf#page=540)')).toEqual([]);
   });
