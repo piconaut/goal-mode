@@ -410,19 +410,6 @@ test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at 
 
 Source: the #436 review and #437; moved here from `cleanup` (user request 2026-11-21).
 
-### CL-60 · Page citations: label the docs/research.md ledger
-`list: page-citations · status: ready · priority: high · size: M · area: tooling`
-
-Source: page-citation rule (#435), the #436 review. The ledger is the one place worth a full sweep: it is the source
-of truth for facts, and its links already open the PDF index (`[SG24-7621 p.95 §3.6](…sg247621.pdf#page=95)`), so
-most rows only need a label. Change: each citation label becomes `Book PDF p.N (printed M)` with the edition where
-the book has several. Where the label number equals the link's `#page=`, add the printed number from that page's footer.
-Read each book's offset from a footer; don't assume it. Where they differ, or a bare `p.N` has no link, open the page
-with `pdf_find.py --page` and keep the reading that holds the fact. A row whose fact is on neither page gets its sim
-status reopened and a note, not a guessed number. No row's fact or sim status changes otherwise. Done when: no bare
-`p.N` remains in `docs/research.md`, every label's PDF index equals its link's `#page=`, and the PR lists any row found
-on neither page.
-
 ### CL-61 · pools.ts cites RMF p.401 for a measure that page doesn't define
 `list: page-citations · status: ready · priority: low · size: S · area: sim`
 
