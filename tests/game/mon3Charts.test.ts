@@ -88,6 +88,16 @@ describe('Monitor III charting', () => {
     expect(r.mon3Charts!.markers).toHaveLength(1);
   });
 
+  it('rescans nothing when the anchor line has been trimmed out of the log', () => {
+    let r = recordMon3({ ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) }, MIDWEST);
+    for (let i = 0; i < 300; i++) r = logLine(r, `EVENT flood ${i}`);
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(0);
+    r = logLine(r, 'EVENT after the flood');
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toEqual(['EVENT after the flood']);
+  });
+
   it('scans a save made before the log anchor existed', () => {
     let r = recordMon3({ ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) }, MIDWEST);
     const old = { ...r.mon3Charts! };
