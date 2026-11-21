@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-21: BACKLOG CL-59…CL-62, a smaller scope for the page-citation rule than the closed #436: a CI check on new citations, the research.md ledger, one wrong pools.ts citation, a note on the archived audit (#437).
+- 2026-11-21: BACKLOG CL-59…CL-62, a smaller scope for the page-citation rule than the closed #436: a CI check on new citations, the research.md ledger, one wrong pools.ts citation, a note on the archived audit (#437; moved to list `page-citations` in #438).
 - 2026-11-20: CLAUDE.md citation convention: PDF page index, labelled, printed page in parentheses, edition named (#435).
 - 2026-11-20: RF-09 a server role whose own cap left it under 10 % of its demand carries only its granted share: its dependents complete that share of their arrivals and the rest time out, their CPU falling with completions (Db2 MSTR/DBM1 hold commits and getpages); the bounded delay stays above the threshold and for image-wide shortages (SPEC §5.6, §17, docs/research.md) (#433).
 - 2026-11-20: RF-07 every batch job that ends is one WLMGL/SMF 30 ended transaction with its queue-plus-elapsed response time in its ending period and report class, whatever the goal (velocity/discretionary classes no longer show ENDED 0); Monitor III ended rate and the `smf30-vs-wlmgl` identity cover every goal type; buckets stay for RT goals (docs/research.md, SPEC §17) (#432).
