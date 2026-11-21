@@ -435,14 +435,3 @@ workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE
 strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
-
-
-### CL-49 · A Db2/CICS/statistics pin on the open hour is labelled with the previous hour
-`list: cleanup · status: ready · priority: low · size: S · area: game`
-
-Source: bug hunt 2026-11-20. `hourEndTick` returns `run.sim.tick` for the open hour (`src/game/evidence.ts:420`), and
-`pinWhen` labels every Db2 101, CICS 110 and Db2 statistics pin as `tick − 1 h → tick` (`evidence.ts:453-455`),
-which holds for a closed hour (its tick is the interval end) but not for `hour: 'current'` mid-hour: measured at tick
-2190 (12:05) the pin reads "CICS 110 D1 11:05–12:05" for the open hour's row. Change: label the open hour from its
-start (the hour the clock is in), or as "this hour, so far", and keep the closed-hour label as it is. Done when: a
-test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at the open hour's `:00`.

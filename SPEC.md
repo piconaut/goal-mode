@@ -1453,7 +1453,10 @@ answer. Every truth carries its accepted set (`acceptedAnswers`), and the primar
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III — class rows, SYSWKM server rows and PROCU job rows — Db2 101, CICS 110 (transactions and the region
 storage view's SOS time), Partition Data, and the CF Activity and DASD Activity rows: a CF's sync service
-time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time). A pin is
+time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time).
+Hourly Db2/CICS pins label a closed hour's full range; a current-hour pin labels `:00` through the capture time.
+This is the game's hourly reporting window; the pin's end tick and evidence judging are unchanged.
+A pin is
 relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
 trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes, the serving region classes
