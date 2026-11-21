@@ -20,7 +20,11 @@ const CHECKED_EXT = /\.(ts|tsx|md)$/;
 const PAGE = String.raw`pp?\.\s?\d+(?:\s?[–-]\s?\d+)?`;
 // A run of page tokens joined by commas or "and": "p.147, p.255", "pp.62–63".
 const RUN = new RegExp(String.raw`\b${PAGE}(?:\s*(?:,|and|&)\s*(?:${PAGE}|\d+(?:\s?[–-]\s?\d+)?))*`, 'g');
-const LABEL_BEFORE = /(?:\bPDF|\bprinted)\s*$/;
+// `printed` counts only after a PDF label on the same line ("PDF p.201 (printed p.183)"): a printed page alone is
+// the number the rule replaces.
+function labelledBefore(before: string): boolean {
+  return /\bPDF\s*$/.test(before) || (/\bprinted\s*$/.test(before) && /\bPDF\b/.test(before));
+}
 // "page 12" in prose; `--page 12` (pdf_find.py) and `#page=12` (links) are not citations.
 const PAGE_WORD = /(?<![-#\w])\bpage\s\d+/g;
 const LINK = /\[([^\]]*)\]\([^)\s]*#page=(\d+)[^)]*\)/g;
@@ -34,7 +38,7 @@ export function checkLine(text: string, file = 'x.ts'): string[] {
   const src = stripCode(text, file);
   const problems: string[] = [];
   for (const m of src.matchAll(RUN)) {
-    if (!LABEL_BEFORE.test(src.slice(0, m.index))) problems.push(`bare "${m[0]}": write "PDF ${m[0]} (printed …)"`);
+    if (!labelledBefore(src.slice(0, m.index))) problems.push(`bare "${m[0]}": write "PDF ${m[0]} (printed …)"`);
   }
   for (const m of src.matchAll(PAGE_WORD)) problems.push(`bare "${m[0]}": write "PDF p.N (printed …)"`);
   for (const m of src.matchAll(LINK)) {

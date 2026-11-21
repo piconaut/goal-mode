@@ -5,6 +5,7 @@ describe('citation gate: checkLine', () => {
   it('flags a bare page citation', () => {
     expect(checkLine('// capped share (RMF Report Analysis p.401).')).toHaveLength(1);
     expect(checkLine('see SG24-6472-03 p. 183')).toHaveLength(1);
+    expect(checkLine('SG24-7621 printed p.81 §3.5')).toHaveLength(1);
   });
 
   it('passes a labelled citation with its printed page', () => {
