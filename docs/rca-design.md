@@ -899,9 +899,10 @@ cannot pick an entry before its prerequisites are merged.
    RT-09 and RT-14 move truth labels and need sweeps. RF-02 stays in `realism-fixes`.
 2. **Human playtest** on the result, when `dev-loop rca-truth` reports the list finished (only blocked entries left).
    Footprints come before it because most "one cause, several truths" complaints are collateral blame (§3 A2).
-3. **Parked until that playtest (RT-16 … RT-21):** the CPU split (RT-16, first in line: Revenue G1 is still judged
-   capacity and bots buy CPs on it), hour-of-day baselines (RT-17, deferred), fallback triggers (RT-18), server CPU
-   and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
+3. **Unblocked after the agent playtest (2026-11-21; §7 Q6, Q7):** the CPU split (RT-16, first in line: Revenue G1
+   is still judged capacity and bots buy CPs on it), then hour-of-day baselines (RT-17); the playtest's findings
+   RT-28 … RT-31 follow them. **Still parked until the human playtest (RT-18 … RT-21):** fallback triggers (RT-18),
+   server CPU and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
 4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and Q9, and PT-20's design call.
 
 D1 depends on RT-05, RT-07, RT-12, RT-13 and RT-14. It does not depend on RT-16 … RT-21, because unlocking is
