@@ -341,8 +341,8 @@ function speedSection(rows: Mon3Row[], systems: Mon3System[]): Mon3Speed[] {
         // the using and delay samples are counts of address spaces — and a transaction class owns none: its samples
         // are the serving regions' (same book PDF p.147 (printed 107): users are "found in all address spaces for
         // the specified class"). RMF shows the serving address spaces' using and velocity for such a class
-        // (SYSWKM; SG24-6645 PDF p.277–278). APPROX: WFEX itself is undocumented for this case; show the regions'
-        // workflow, since "No work" would read as idle while transactions run.
+        // (SYSWKM; SG24-6645-00 PDF p.277–278 (printed 263–264)). APPROX: WFEX itself is undocumented for this case;
+        // show the regions' workflow, since "No work" would read as idle while transactions run.
         const regions = mine.filter((x) => r.workManager!.regionKeys.includes(x.scKey));
         const add = (f: (x: Mon3Row) => number) => regions.reduce((a, x) => a + f(x), 0);
         const speed = wf(add((x) => x.avgUsers.proc + x.avgUsers.dev), add((x) => x.avgUsers.delayProc + x.avgUsers.delayDev + x.avgUsers.delayStor));
