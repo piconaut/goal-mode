@@ -199,10 +199,15 @@ describe('proof recipe vocabulary (RT-13)', () => {
     }
   });
 
-  it('lets one pin complete a recipe only where its row shows both facts: a cost per transaction beside its rate', () => {
+  it('lets one pin complete a recipe only where its row shows both facts: a cost per transaction beside its rate, or the cap\'s own delay', () => {
     const single = CLAIMS.filter((c) => minPins(recipeOf(c).predicates).pins < 2);
-    expect(single.sort()).toEqual(['CHANGE_REGRESSION', 'DEMAND_SURGE']);
-    for (const c of single) expect(minPins(recipeOf(c).predicates).options.some((o) => o.reading === 'rate'), c).toBe(true);
+    expect(single.sort()).toEqual(['CAPPING', 'CHANGE_REGRESSION', 'DEMAND_SURGE']);
+    for (const c of single) {
+      // A cost row carries its rate beside it; a CAP-delay row (RT-33) is the cap's symptom and its proof, since WLMGL
+      // CAP delay is capping delay and not CPU delay (RMF Report Analysis p.540).
+      const choices = minPins(recipeOf(c).predicates).options;
+      expect(choices.some((o) => o.reading === 'rate') || choices.every((o) => o.metric === 'DELAY_CAP'), c).toBe(true);
+    }
   });
 
   it('makes every option satisfiable by a pin of the row it reads, on some incident', () => {
@@ -250,8 +255,7 @@ describe('proof recipe vocabulary (RT-13)', () => {
  * holds the design question. The pairs a shipped card can produce are marked in the BACKLOG entry. */
 const FOUR_PIN_PAIRS = [
   'CPU_CAPACITY×RUNAWAY_WORK', 'CPU_CAPACITY×BATCH_OVERLAP', 'CPU_CAPACITY×APPLICATION_ERROR', 'CPU_PRIORITY×HARDWARE_FAULT',
-  'CPU_PRIORITY×APPLICATION_ERROR', 'CAPPING×RUNAWAY_WORK', 'CAPPING×BATCH_OVERLAP', 'CAPPING×HARDWARE_FAULT',
-  'CAPPING×APPLICATION_ERROR', 'DEPENDENCY×RUNAWAY_WORK', 'DEPENDENCY×BATCH_OVERLAP', 'DEPENDENCY×APPLICATION_ERROR',
+  'CPU_PRIORITY×APPLICATION_ERROR', 'DEPENDENCY×RUNAWAY_WORK', 'DEPENDENCY×BATCH_OVERLAP', 'DEPENDENCY×APPLICATION_ERROR',
   'LOCK_CONTENTION×RUNAWAY_WORK', 'LOCK_CONTENTION×APPLICATION_ERROR', 'CF_SERVICE×RUNAWAY_WORK', 'CF_SERVICE×BATCH_OVERLAP',
   'CF_SERVICE×APPLICATION_ERROR', 'QR_TCB×RUNAWAY_WORK', 'QR_TCB×BATCH_OVERLAP', 'QR_TCB×HARDWARE_FAULT',
   'QR_TCB×APPLICATION_ERROR', 'THREAD_LIMIT×BATCH_OVERLAP', 'ROUTING×BATCH_OVERLAP', 'IO×RUNAWAY_WORK',
@@ -269,7 +273,7 @@ describe('documented values (RT-13)', () => {
     expect(order).toEqual({
       CPU_CAPACITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'the processor full'],
       CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a consumer WLM could have taken CPU from'],
-      CAPPING: ['CPU delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
+      CAPPING: ['CPU delay ≥ 10 % or CAP delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
       DEPENDENCY: ['the server slow', 'the hurt class\'s own CPU delay < 10 %'],
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],

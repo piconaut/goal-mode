@@ -8,7 +8,7 @@ import { classify } from '../../sim/wlm/classify';
 import { SERVER_KEY } from '../../sim/wlm/holders';
 import { sumCpuGrants, sumCpuWaits } from '../hourAccounting';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { activeIn, addHour, capacityBasis, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { activeIn, addHour, capacityBasis, cappingVerdict, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
 import { hostImages } from '../footprint';
 import {
   type CapacityDay,
@@ -280,7 +280,21 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
       const subjects = snapshotCpuConsumers(r, scenario, h, w, workloads, incidentSubjects(r, scenario, w.id, r.day));
-      const cpu = { workloadId: w.id, baseline: baselines[w.id] ?? {}, subjects,
+      // The policy's class and role definitions, for the CAPPING cause's identity (RT-33): a resource group's name
+      // comes from the class definition, and a server role's from the region class holding it on that image.
+      const def = r.sim.wlm.definition;
+      const classGroup = (classId: string) => def.classes.find((c) => c.id === classId)?.resourceGroup ?? null;
+      const roleGroup = (lparId: string, role: string) => {
+        const space = [...scenario.addressSpaces, ...r.sim.extraAddressSpaces]
+          .filter((a) => a.lparId === lparId && a.role === role)
+          .sort((a, b) => (a.jobname < b.jobname ? -1 : a.jobname > b.jobname ? 1 : 0))[0];
+        if (!space) return null;
+        const cls = classify(def, { subsystem: space.subsystem, TN: space.jobname, SY: lparId }).serviceClass;
+        return cls ? classGroup(cls) : null;
+      };
+      const serverRoles = [...new Set([...(w.servers ?? []).map((s) => s.role), ...(w.hostRole ? [w.hostRole] : [])])].sort();
+      const cpu = { workloadId: w.id, baseline: baselines[w.id] ?? {}, subjects, serverRoles,
+        groupOf: classGroup, roleGroupOf: roleGroup,
         // IIPHONORPRIORITY=NO means CPs never examine eligible work:
         // SA23-1380-60 PDF p.430 (printed 394). Per-class opt-out is modelled the same way.
         overflowBlockedHosts: hosts.filter((host) => {
@@ -292,6 +306,14 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts, cpu);
       const cpuSide = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'].includes(mechanism);
       const basis = cpuSide ? capacityBasis(h, hosts, cpu) : null;
+      // The cap that decided a CAPPING hour is the incident's cause, whatever host the basis picked on a legacy hour.
+      if (basis && mechanism === 'CAPPING') {
+        const cap = cappingVerdict(h, hosts, cpu);
+        if (cap) {
+          basis.capBy = cap.by;
+          if (cap.group !== null) basis.capGroup = cap.group;
+        }
+      }
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
       const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });

@@ -2,6 +2,7 @@
 
 import { NEW_WORKLOAD_DAYS } from '../content/sla';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
+import { SERVER_KEY } from '../sim/wlm/holders';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
@@ -85,6 +86,65 @@ export function cappedForHour(hour: HourAcc, lparId: string): boolean {
   return (hour.cappedTicksByLpar[lparId] ?? 0) >= CAPPING.minHourShare * hour.ticks;
 }
 
+/** A WLMGL CAP-delay row held the work for `CAPPING.capDelayFrac` of its samples. CAP delay is resource-group or
+ * discretionary capping and is not part of CPU delay: z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540
+ * (printed 500). Old hours have no row and never meet it. */
+export function capDelayForHour(row: { cap: number; samples: number } | undefined): boolean {
+  return row !== undefined && row.samples > 0 && row.cap >= CAPPING.capDelayFrac * row.samples;
+}
+
+/** Was this server role's CPU withheld by a resource-group cap (RF-09's `roleHealth.capped`) for enough of the
+ * hour's ticks? */
+export function roleCappedForHour(hour: HourAcc, lparId: string, role: string): boolean {
+  if (hour.ticks <= 0) return false;
+  return (hour.roleCappedTicks?.[`${lparId}:${role}`] ?? 0) >= CAPPING.minHourShare * hour.ticks;
+}
+
+/** What held a capped hour back (docs/rt-16-design.md §3.3). */
+export interface CapVerdict {
+  by: 'IMAGE' | 'GROUP' | 'SERVER';
+  /** The resource group's name for a GROUP or SERVER cap, from the capped class's definition; absent for IMAGE. */
+  group: string | null;
+}
+
+/** Which cap held the work on this image, if any: its own image cap, a resource-group maximum on the hurt work's
+ * periods or on the server period holding its regions (WLMGL CAP delay), or a resource-group cap on a server role
+ * the work depends on. Pure. */
+export function cappingOf(hour: HourAcc, host: IncidentHost, ctx?: CpuJudgement): CapVerdict | null {
+  if (cappedForHour(hour, host.lparId)) return { by: 'IMAGE', group: null };
+  if (!ctx) return null;
+  const rows = hour.capDelayByScpLpar?.[host.lparId];
+  if (rows) {
+    // A period of the hurt work on that host. Sorted, so the row (and its group) does not depend on object order.
+    const classes = new Set(ctx.subjects.classes);
+    for (const scKey of Object.keys(rows).sort()) {
+      if (!classes.has(scKey.split('#')[0]!)) continue;
+      if (capDelayForHour(rows[scKey])) return { by: 'GROUP', group: ctx.groupOf?.(scKey.split('#')[0]!) ?? scKey.split('#')[0]! };
+    }
+    // The synthetic server period holding the work's regions ($SRMS001): its CAP delay is the regions' capping.
+    const server = rows[SERVER_KEY];
+    if (server && ctx.subjects.servers.some((s) => s.lparId === host.lparId) && capDelayForHour(server)) {
+      const cls = [...ctx.subjects.serverClasses].sort()[0];
+      return { by: 'GROUP', group: (cls ? ctx.groupOf?.(cls) : null) ?? cls ?? null };
+    }
+  }
+  // A role the work depends on (w.servers, w.hostRole) whose CPU a resource-group maximum withheld on that host.
+  for (const role of [...(ctx.serverRoles ?? [])].sort()) {
+    if (roleCappedForHour(hour, host.lparId, role)) return { by: 'SERVER', group: ctx.roleGroupOf?.(host.lparId, role) ?? role };
+  }
+  return null;
+}
+
+/** Which host's cap decided the hour, resolved like `mechanismOf`: the judged host, else the legacy any-host rule. */
+export function cappingVerdict(hour: HourAcc, hosts: readonly IncidentHost[], ctx?: CpuJudgement): (CapVerdict & { lparId: string; cpcId: string }) | null {
+  const judged = judgedCpuHosts(hour, hosts, ctx);
+  for (const h of judged.length ? judged.slice(0, 1) : hosts) {
+    const v = cappingOf(hour, h, ctx);
+    if (v) return { lparId: h.lparId, cpcId: h.cpcId, ...v };
+  }
+  return null;
+}
+
 /** Which mechanism grew most relative to the workload's healthy baseline. */
 export function mechanismOf(
   parts: Record<string, number>,
@@ -102,9 +162,8 @@ export function mechanismOf(
     }
   }
   if (best !== 'CPU') return best as Mechanism;
-  // Only capping of the images this workload runs on counts.
-  const judged = judgedCpuHosts(hour, hosts, ctx);
-  if ((judged.length ? judged.slice(0, 1) : hosts).some((h) => cappedForHour(hour, h.lparId))) return 'CAPPING';
+  // Only capping of the images this workload runs on counts, and only the judged host's (U-9).
+  if (cappingVerdict(hour, hosts, ctx)) return 'CAPPING';
   // Game rule: a full judged pool with little displaceable use is capacity, otherwise priority.
   return capacityBasis(hour, hosts, ctx)?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
 }
@@ -114,6 +173,12 @@ export interface CpuJudgement {
   baseline: Record<string, number>;
   subjects: IncidentSubjects;
   overflowBlockedHosts?: readonly string[];
+  /** Roles the work depends on (`w.servers` plus `w.hostRole`): a resource-group cap on one of them is CAPPING. */
+  serverRoles?: readonly string[];
+  /** A class's resource group from the policy's class definition, for the CAPPING cause's identity. */
+  groupOf?: (classId: string) => string | null;
+  /** A server role on an image → its region class's resource group, for the CAPPING cause's identity. */
+  roleGroupOf?: (lparId: string, role: string) => string | null;
 }
 
 /** APPROX: one workload-wide CPU baseline, apportioned by observed host completions. Negative excess is zero. */
@@ -136,6 +201,7 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[], ctx
   let best: CapacityBasis | null = null;
   const judged = judgedCpuHosts(hour, hosts, ctx);
   for (const h of judged.length ? judged.slice(0, 1) : hosts) {
+    const cap = cappingOf(hour, h, ctx);
     const wait = ctx && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId]?.[h.lparId];
     const pool = judged.length && wait && wait.ziip > wait.cp + wait.backlog ? 'ZIIP' : 'CP';
     const cpc = avg(pool === 'CP' ? hour.cpcBusyById[h.cpcId] : hour.ziipBusyById?.[h.cpcId]);
@@ -155,6 +221,7 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[], ctx
       lparBusyPct: 100 * lpar,
       donorPct: 100 * donorFrac,
       full: !overflowBlocked && busy && share < CPU_CAPACITY.displaceableFrac,
+      ...(cap ? { capBy: cap.by, ...(cap.group !== null ? { capGroup: cap.group } : {}) } : {}),
       // A judged hour records its share only when the snapshot exists: a partial hour without consumer grants keeps
       // the legacy donor reading (readers prefer displaceablePct when it is present).
       ...(judged.length ? {
@@ -171,8 +238,12 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[], ctx
         } : {}),
       } : {}),
     };
-    // A host that made the verdict capacity wins; otherwise the busiest CPC explains the policy verdict best.
-    if (!best || (b.full && !best.full) || (b.full === best.full && b.cpcBusyPct > best.cpcBusyPct)) best = b;
+    // A host that made the verdict capacity wins; otherwise the busiest CPC explains the policy verdict best. A cap
+    // is decisive for its host's verdict (CAPPING), so a capped host explains the incident better still.
+    const better = !best
+      || (cap !== null && best.capBy === undefined)
+      || (cap === null && best.capBy === undefined && ((b.full && !best.full) || (b.full === best.full && b.cpcBusyPct > best.cpcBusyPct)));
+    if (better) best = b;
   }
   return best;
 }
@@ -186,7 +257,7 @@ export function cpuAlternates(hour: HourAcc, hosts: readonly IncidentHost[], ctx
   for (const h of judged.slice(1).filter((h) => h.excessSharePct >= 100 * CPU_SPLIT.coHostFrac)) {
     const basis = capacityBasis(hour, [h], ctx);
     overflowBlocked ||= basis?.overflowBlocked ?? false;
-    mechanisms.push(cappedForHour(hour, h.lparId) ? 'CAPPING' : basis?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY');
+    mechanisms.push(cappingOf(hour, h, ctx) ? 'CAPPING' : basis?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY');
   }
   const lead = judged[0];
   const wait = lead && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId]?.[lead.lparId];

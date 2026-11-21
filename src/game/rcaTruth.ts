@@ -188,5 +188,9 @@ export function truthCause(ctx: {
   if (ctx.isNew || ctx.trigger === 'NEW_WORKLOAD') return `${CAUSE_PREFIX.new}${ctx.workloadId}`;
   const family = CPU_FAMILY.includes(ctx.mechanism) ? 'CPU' : ctx.mechanism;
   const host = ctx.basis?.lparId ?? ctx.hosts[0]?.lparId ?? '';
+  // A resource-group or server cap is a different cause from an image cap on the same image: the group names it, so
+  // two groups' hours do not group and neither joins the image's (RT-33, design §3.3).
+  if (ctx.mechanism === 'CAPPING' && ctx.basis?.capBy !== undefined && ctx.basis.capBy !== 'IMAGE')
+    return `${CAUSE_PREFIX.none}CAPPING:${host}:rg:${ctx.basis.capGroup ?? ''}`;
   return `${CAUSE_PREFIX.none}${family}:${host}`;
 }

@@ -195,6 +195,12 @@ export interface CapacityBasis {
   overflowBlocked?: boolean;
   /** A capacity line was reached with little displaceable use: the verdict is CPU_CAPACITY. */
   full: boolean;
+  /** A CAPPING verdict (RT-33): what held the work back. IMAGE is the image's own cap, GROUP a resource-group
+   * maximum on the hurt work's periods or on the server period holding its regions, and SERVER a resource-group cap
+   * on a server role the work depends on. Absent on saved incidents that predate RT-33. */
+  capBy?: 'IMAGE' | 'GROUP' | 'SERVER';
+  /** The resource group behind a GROUP or SERVER cap: the capped class's `resourceGroup`. */
+  capGroup?: string;
 }
 
 /** What the evidence judge derived when the incident opened (RT-04): the hurt work's service classes (including the
