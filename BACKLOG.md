@@ -240,11 +240,12 @@ on `dev` at 7fbeffa; later entries name their source.
 `list: pr-followups · status: ready · priority: low · size: S · area: tooling`
 
 Source: #439 fix-check, Missed M1 (non-blocking). In `tools/ci/citations.ts`, `labelledBefore` accepts `printed`
-whenever a `PDF` label appears anywhere earlier on the line. So in `WLM Planning PDF p.99 (printed 79); RMF printed
-p.5` the second citation, which gives only the printed page, passes. Change: accept `printed` only inside the
-parentheses that directly follow a PDF-labelled page run (`PDF p.N (printed M)`, `PDF p.N (printed p.M)`), and add a
-test for the two-citation line. Done when: that line fails the gate, every labelled form in
-`tests/tools/citations.test.ts` still passes, and `npx tsx tools/ci/citations.ts origin/dev` passes on the PR.
+whenever a `PDF` label appears anywhere earlier on the line. So in
+`WLM Planning PDF p.99 (printed 79); RMF printed p.5` the second citation, which gives only the printed page,
+passes. Change: accept `printed` only inside the parentheses that directly follow a PDF-labelled page run
+(`PDF p.N (printed M)`, `PDF p.N (printed p.M)`), and add a test for the two-citation line. Done when: that line
+fails the gate, every labelled form in `tests/tools/citations.test.ts` still passes, and
+`npx tsx tools/ci/citations.ts origin/dev` passes on the PR.
 
 ## realism-fixes
 
