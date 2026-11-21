@@ -12,7 +12,7 @@ import type { EvidencePin, PinVerdict } from './evidence';
 import type { ProofResult } from './proof';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
-import type { SimState } from '../sim/core/types';
+import type { CpuGrant, CpuWait, SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
 import type { Facet, DraftOption, Mechanism, Trigger } from '../content/types';
 
@@ -148,6 +148,24 @@ export interface HourAcc {
   lparBusyById: Record<string, number>;
   /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
   cpByImportance: Record<string, number[]>;
+  // RT-16 reporting only. Old hours lack these; accumulation starts at the first new tick (no backfill).
+  // A loaded mid-hour remains partial until the next full hour; merged nights likewise include only observed data.
+  /** Workload → image → completion-weighted wait seconds and completions. */
+  cpuWaitByWorkloadLpar?: Record<string, Record<string, CpuWait>>;
+  /** Image → period → CP/zIIP engine-ticks (CP excludes IIPCP, as in ScpTick.cpEngines). */
+  cpByScpLpar?: Record<string, Record<string, CpuGrant>>;
+  /** Image → server role → CP/zIIP engine-ticks. */
+  cpByRoleLpar?: Record<string, Record<string, CpuGrant>>;
+  /** Image → workload → CP/zIIP engine-ticks. */
+  cpByWorkloadLpar?: Record<string, Record<string, CpuGrant>>;
+  /** Image → period → CAP and total using + delay samples; includes the synthetic server period. */
+  capDelayByScpLpar?: Record<string, Record<string, { cap: number; samples: number }>>;
+  /** Ticks with capped server-role CPU, keyed by "lparId:role". */
+  roleCappedTicks?: Record<string, number>;
+  /** Per CPC: sum of zIIP delivered / installed engines, fraction-ticks. */
+  ziipBusyById?: Record<string, number>;
+  /** Per image: sum of min(1, zIIP delivered / available engines), fraction-ticks. */
+  ziipLparBusyById?: Record<string, number>;
   lockIndexSum: number;
   cicsStorage?: Record<string, CicsStorageHour>;
   /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member. */

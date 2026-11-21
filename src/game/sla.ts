@@ -9,6 +9,7 @@ import { CAPPING, CPU_CAPACITY } from '../content/incidents';
 import { ALL_MECHANISMS } from '../content/footprint';
 import { regionKey } from './footprint';
 import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, Mechanism, Trigger, WorkloadHour } from './types';
+import { sumCapSamples, sumCpuGrants, sumCpuWaits, sumRecords } from './hourAccounting';
 
 export const BASELINE_DECAY = 0.8;
 
@@ -275,6 +276,14 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
     cpcBusyById: sum(acc.cpcBusyById, h.cpcBusyById),
     lparBusyById: sum(acc.lparBusyById, h.lparBusyById),
     cpByImportance,
+    cpuWaitByWorkloadLpar: sumRecords(acc.cpuWaitByWorkloadLpar, h.cpuWaitByWorkloadLpar, sumCpuWaits),
+    cpByScpLpar: sumRecords(acc.cpByScpLpar, h.cpByScpLpar, sumCpuGrants),
+    cpByRoleLpar: sumRecords(acc.cpByRoleLpar, h.cpByRoleLpar, sumCpuGrants),
+    cpByWorkloadLpar: sumRecords(acc.cpByWorkloadLpar, h.cpByWorkloadLpar, sumCpuGrants),
+    capDelayByScpLpar: sumRecords(acc.capDelayByScpLpar, h.capDelayByScpLpar, sumCapSamples),
+    roleCappedTicks: sum(acc.roleCappedTicks, h.roleCappedTicks),
+    ziipBusyById: sum(acc.ziipBusyById, h.ziipBusyById),
+    ziipLparBusyById: sum(acc.ziipLparBusyById, h.ziipLparBusyById),
     lockIndexSum: acc.lockIndexSum + h.lockIndexSum,
     dbatQueuedByLpar,
   };

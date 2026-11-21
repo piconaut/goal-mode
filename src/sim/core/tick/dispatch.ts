@@ -5,7 +5,7 @@ import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../
 import { decayInto, emptyAcc, goalInfo, initialDp, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
 import { holderTopology, servedKeys } from '../../wlm/holders';
 import { addToBuckets } from '../../wlm/goals';
-import type { LparConfig, LparRuntime } from '../types';
+import type { CpuGrant, LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { DP } from '../../zos/dispatcher';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
@@ -211,8 +211,20 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
 
   const compBy: Record<string, number> = {};
   const tries: Record<string, number> = {};
+  let cpByRole: Record<string, CpuGrant> | undefined;
+  let cpByWorkload: Record<string, CpuGrant> | undefined;
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
+    // Reporting only; use the same grants as ScpTick, leaving IIPCP separate.
+    const consumer = s.kind === 'AS' && s.role
+      ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0 })
+      : s.kind === 'TXN' && s.workloadId
+        ? ((cpByWorkload ??= {})[s.workloadId] ??= { cp: 0, ziip: 0 })
+        : undefined;
+    if (consumer) {
+      consumer.cp += r.cpGranted;
+      consumer.ziip += r.ziipGranted;
+    }
     if (r.newBacklog > 1e-9) {
       backlog[s.key] = r.newBacklog;
       if (r.newZiipBacklog > 1e-9) ziipBacklog[s.key] = r.newZiipBacklog;
@@ -223,7 +235,16 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       wt.withinSla += r.withinSla;
       wt.failed += r.failed;
       wt.rtSumSec += r.completions * r.userRtSec;
-      if (r.parts) addParts(wt.parts, r.parts, r.completions);
+      if (r.parts) {
+        addParts(wt.parts, r.parts, r.completions);
+        if (r.completions > 0) {
+          const wait = ((wt.cpuWaitByLpar ??= {})[l.id] ??= { cp: 0, ziip: 0, backlog: 0, completions: 0 });
+          wait.cp += r.parts.cpuQueue * r.completions;
+          wait.ziip += r.parts.ziip * r.completions;
+          wait.backlog += r.parts.backlogWait * r.completions;
+          wait.completions += r.completions;
+        }
+      }
       failedBy[s.workloadId] = (failedBy[s.workloadId] ?? 0) + r.failed;
       if (s.maxQueueMsgs !== undefined) {
         const per = s.cpuSecPerTxn + s.ziipSecPerTxn;
@@ -360,6 +381,8 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     lparId: l.id,
     scps: res.scps,
     roleHealth: res.roleHealth,
+    ...(cpByRole ? { cpByRole } : {}),
+    ...(cpByWorkload ? { cpByWorkload } : {}),
     // RMF projects IIPCP only where a zIIP is defined to the image (online or reserved): Init & Tuning p.434
     // (PROJECTCPU default NO reports nothing on an LPAR with no zIIP at all) and p.431 (defined but offline is
     // still reported for planning). With none, the overflow is plain CP work.
@@ -370,4 +393,3 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     ...(dbatWaited !== undefined && dbatWaited > 1e-9 ? { dbatWaited } : {}),
   });
 }
-

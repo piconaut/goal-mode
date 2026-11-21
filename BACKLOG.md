@@ -129,20 +129,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-16 · CPU split, part 1: reporting fields for CPU wait by host and CPU by consumer
-`list: rca-truth · status: ready · priority: high · size: M · area: sim`
-
-Design: [docs/rt-16-design.md](docs/rt-16-design.md) §2 (user decisions 2026-11-21: Q7 yes, and Q7a … Q7e as
-recommended there, including this three-way split with RT-32 and RT-33). Reporting-only sim fields, read by nothing in
-`src/sim`: `WorkloadTick.cpuWaitByLpar` (CP queue, zIIP queue and backlog wait per image, completion-weighted),
-`LparTick.cpByRole` and `LparTick.cpByWorkload` (granted CP and zIIP engines of server address spaces by role and of
-transactions by workload); and the game hour accumulators of §2 items 4–9 (CPU wait per workload per image, CP per
-period, role and workload per image, CAP delay per period, capped server-role ticks, zIIP busy per CPC and image).
-`cpByImportance` stays for hours accumulated before the change. No reader yet (RT-32, RT-33 read them).
-Done when: `npm run compare -- --base origin/dev --drop cpuWaitByLpar,cpByRole,cpByWorkload` reports no difference,
-unit tests check each accumulator over a few ticks (sums match `parts` and `scps` totals), and the bench shows no
-slowdown beyond noise.
-
 ### RT-17 · Healthy baseline per hour of day
 `list: rca-truth · status: blocked: after RT-32 · priority: high · size: M · area: game`
 
@@ -216,7 +202,7 @@ so the choice applies to its bands. The reply wording half is RT-30's. Done when
 (one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
 
 ### RT-32 · CPU split, part 2: the judged host and pool, by displaceable CPU
-`list: rca-truth · status: blocked: after RT-16 · priority: high · size: L · area: game`
+`list: rca-truth · status: ready · priority: high · size: L · area: game`
 
 Design: [docs/rt-16-design.md](docs/rt-16-design.md) §3.1, §3.2, §3.4, §3.5, §4, §6 (user decisions 2026-11-21).
 Judge a CPU verdict on the host image with the largest CPU-wait excess (a second host with ≥ ⅓ adds its verdict to the

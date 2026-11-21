@@ -5,6 +5,8 @@ import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
+import { SERVER_KEY } from '../../sim/wlm/holders';
+import { sumCpuGrants, sumCpuWaits } from '../hourAccounting';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
 import { activeIn, addHour, capacityBasis, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
 import { hostImages } from '../footprint';
@@ -34,6 +36,14 @@ export const newHour = (tick: number): HourAcc => ({
   cpcBusyById: {},
   lparBusyById: {},
   cpByImportance: {},
+  cpuWaitByWorkloadLpar: {},
+  cpByScpLpar: {},
+  cpByRoleLpar: {},
+  cpByWorkloadLpar: {},
+  capDelayByScpLpar: {},
+  roleCappedTicks: {},
+  ziipBusyById: {},
+  ziipLparBusyById: {},
   lockIndexSum: 0,
   dbatQueuedByLpar: {},
 });
@@ -41,7 +51,9 @@ export const newHour = (tick: number): HourAcc => ({
 export function accumulateHour(run: RunState): RunState {
   const h = run.hour ?? newHour(run.sim.tick - 1);
   const workloads = { ...h.workloads };
+  const cpuWaitByWorkloadLpar = { ...h.cpuWaitByWorkloadLpar };
   for (const w of run.sim.last.workloads) {
+    if (w.cpuWaitByLpar) cpuWaitByWorkloadLpar[w.id] = sumCpuWaits(cpuWaitByWorkloadLpar[w.id], w.cpuWaitByLpar);
     const a = workloads[w.id] ?? { completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
     const parts = { ...a.parts };
     for (const [k, v] of Object.entries(w.parts)) parts[k] = (parts[k] ?? 0) + v;
@@ -66,7 +78,15 @@ export function accumulateHour(run: RunState): RunState {
   const cappedTicksByLpar = { ...h.cappedTicksByLpar };
   const deliveredByCpc: Record<string, number> = {};
   const lparBusyById = { ...h.lparBusyById };
+  const ziipDeliveredByCpc: Record<string, number> = {};
+  const ziipLparBusyById = { ...h.ziipLparBusyById };
   for (const l of run.sim.lpars) {
+    const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
+    const ziip = l.pools.find((p) => p.pool === 'ZIIP');
+    if (ziip) {
+      if (ziip.availableEngines > 0) ziipLparBusyById[l.id] = (ziipLparBusyById[l.id] ?? 0) + Math.min(1, ziip.deliveredEngines / ziip.availableEngines);
+      if (cpcId) ziipDeliveredByCpc[cpcId] = (ziipDeliveredByCpc[cpcId] ?? 0) + ziip.deliveredEngines;
+    }
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (!cp) continue;
     capped = Math.max(capped, cp.cappedFrac);
@@ -74,20 +94,51 @@ export function accumulateHour(run: RunState): RunState {
     if (cp.cappedFrac > 0) cappedTicksByLpar[l.id] = (cappedTicksByLpar[l.id] ?? 0) + 1;
     delivered += cp.deliveredEngines;
     if (cp.availableEngines > 0) lparBusyById[l.id] = (lparBusyById[l.id] ?? 0) + Math.min(1, cp.deliveredEngines / cp.availableEngines);
-    const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
     if (cpcId) deliveredByCpc[cpcId] = (deliveredByCpc[cpcId] ?? 0) + cp.deliveredEngines;
   }
   const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   const cpcBusyById = { ...h.cpcBusyById };
+  const ziipBusyById = { ...h.ziipBusyById };
   for (const c of run.sim.config.cpcs) {
     if (c.engines.CP > 0) cpcBusyById[c.id] = (cpcBusyById[c.id] ?? 0) + (deliveredByCpc[c.id] ?? 0) / c.engines.CP;
+    if (c.engines.ZIIP > 0) ziipBusyById[c.id] = (ziipBusyById[c.id] ?? 0) + (ziipDeliveredByCpc[c.id] ?? 0) / c.engines.ZIIP;
   }
   const cpByImportance = { ...h.cpByImportance };
+  const cpByScpLpar = { ...h.cpByScpLpar };
+  const cpByRoleLpar = { ...h.cpByRoleLpar };
+  const cpByWorkloadLpar = { ...h.cpByWorkloadLpar };
+  const capDelayByScpLpar = { ...h.capDelayByScpLpar };
+  const roleCappedTicks = { ...h.roleCappedTicks };
   const def = run.sim.wlm.definition;
   for (const lt of run.sim.last.lpars) {
     const acc = [...(cpByImportance[lt.lparId] ?? [0, 0, 0, 0, 0, 0, 0])];
     for (const x of lt.scps) acc[importanceRank(def, x.scKey)]! += x.cpEngines;
     cpByImportance[lt.lparId] = acc;
+    if (lt.cpByRole) cpByRoleLpar[lt.lparId] = sumCpuGrants(cpByRoleLpar[lt.lparId], lt.cpByRole);
+    if (lt.cpByWorkload) cpByWorkloadLpar[lt.lparId] = sumCpuGrants(cpByWorkloadLpar[lt.lparId], lt.cpByWorkload);
+    const cp = { ...cpByScpLpar[lt.lparId] };
+    const cap = { ...capDelayByScpLpar[lt.lparId] };
+    for (const x of lt.scps) {
+      const a = cp[x.scKey];
+      cp[x.scKey] = { cp: (a?.cp ?? 0) + x.cpEngines, ziip: (a?.ziip ?? 0) + x.ziipEngines };
+      const b = cap[x.scKey];
+      // Same using + delay denominator as WLMGL (rmf.wlmRecord), including OTHER and queued samples.
+      // CAP is separate from CPU delay: SC34-2665-60 PDF p.540 (printed 500).
+      const samples = x.usingCpu + x.usingZiip + x.usingIo + x.delayCpu + x.delayZiip + x.delayIo + x.delayStorage + x.delayCap + (x.delayQueue ?? 0) + x.delayOther;
+      cap[x.scKey] = { cap: (b?.cap ?? 0) + x.delayCap, samples: (b?.samples ?? 0) + samples };
+      // Server samples already belong to the region class above. Also retain their internal holder's row,
+      // not a second addition to the class's CAP (srvDelayCap is a subset of delayCap).
+      if (x.srvUsing !== undefined) {
+        const srv = cap[SERVER_KEY];
+        cap[SERVER_KEY] = { cap: (srv?.cap ?? 0) + (x.srvDelayCap ?? 0), samples: (srv?.samples ?? 0) + x.srvUsing + (x.srvDelay ?? 0) };
+      }
+    }
+    cpByScpLpar[lt.lparId] = cp;
+    capDelayByScpLpar[lt.lparId] = cap;
+    for (const role in lt.roleHealth) if (lt.roleHealth[role]!.capped) {
+      const key = `${lt.lparId}:${role}`;
+      roleCappedTicks[key] = (roleCappedTicks[key] ?? 0) + 1;
+    }
   }
   let cicsStorage = h.cicsStorage;
   for (const lt of run.sim.last.lpars) {
@@ -110,6 +161,14 @@ export function accumulateHour(run: RunState): RunState {
       cpcBusyById,
       lparBusyById,
       cpByImportance,
+      cpuWaitByWorkloadLpar,
+      cpByScpLpar,
+      cpByRoleLpar,
+      cpByWorkloadLpar,
+      capDelayByScpLpar,
+      roleCappedTicks,
+      ziipBusyById,
+      ziipLparBusyById,
       lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
       dbatQueuedByLpar,
       ...(cicsStorage ? { cicsStorage } : {}),
