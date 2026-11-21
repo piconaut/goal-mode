@@ -91,14 +91,37 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
+### PT-48 · Play CLI pins: CF and DASD interval ids, PROCU history, pin labels
+`list: playtest-fixes · status: ready · priority: high · size: S · area: tooling`
+
+Source: agent playtest 2026-11-21 (runs not committed). `tools/playCore.ts` `pin` turns the interval id the CLI
+shows into an interval index for WLMGL and CPC only, so `pin CF CF02 CF_SYNC 678` passes 678 as an index and fails
+"No such CF Activity row" although `report CF 678` shows CF02; `pin DASD … <id>` has the same bug. Without an id a CF
+or DASD pin reads the latest interval, not the incident's: say so in the pin's reply. Also: a pin's label shows the
+interval end ("D1 12:30" for 12:00–12:30); label it with the interval's range as `report` does. Reported, not yet
+confirmed: `pin PROCU --at` refused a past range (Revenue seed 23 D8). Done when: CF and DASD pins by interval id are
+tested in the play CLI tests, labels match `report`, and the PROCU report is confirmed or fixed.
+
+### PT-49 · Business-calendar facts and application owners are Midwest's in every scenario
+`list: playtest-fixes · status: ready · priority: low · size: S · area: content`
+
+Source: agent playtest 2026-11-21, Revenue seed 23. `src/content/inquiries.ts` `CALENDAR_FACTS` ("Payday is the 15th:
+… mostly from their phones") and `APP_OWNERS` (Midwest workloads only) are not per scenario, so the revenue agency's
+CALENDAR reply talks about bank paydays, and `ask APP_ENTRY ANALYTICS` falls back to "the ANALYTICS owner" (it gave no
+reply within 17 h; check whether that is the 20 % don't-know or a bug). Move both into the scenario content for
+Midwest, Revenue and Harbourline. Done when: each scenario's CALENDAR and APP_ENTRY replies use its own facts and
+owners, with a test per scenario.
+
 ## rca-truth
 
 RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating, ending in design
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. RT-16 … RT-21 wait for a human playtest: the list
-  "finishing" in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed
+- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. An agent playtest of four 8-day runs (2026-11-21)
+  confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
+  RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), then RT-17; the playtest's
+  findings RT-28 … RT-31 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
@@ -106,27 +129,93 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   image test.
 
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
-`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
+`list: rca-truth · status: ready · priority: high · size: L · area: sim`
 
-After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
+Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q7: yes). Agent playtest 2026-11-21 evidence: Revenue seed 23
+D8, a runaway DDF query in the hurt work's own class with PROD2's only zIIP 100 % busy (WLMGL zIIP delay 99.6 %) was
+judged CPU_PRIORITY only on "CPC 72.7 % busy"; Harbourline seed 37 D2–D4, CPU_PRIORITY at 60–68 % CPC busy with CPU
+delay 2–8 % on every system. After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
 (prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
 displaceable CP instead of lower-importance CP; bands from `content/incidents.ts`; CAPPING also for a resource-group
 maximum on the class or its server, with `DELAY_CAP` as its evidence (RMF Report Analysis p.540); the basis and
 `mechanismExplanation` name the judged host (A4–A6). Moves truth mechanisms and `buyCapacityForIncidents`: sweep.
 Done when: R-13 is CPU_PRIORITY/POLICY, R-2's basis names PROD2, U-9 … U-11 are tests, SPEC §10 and §17 are updated.
-Cross-note (WLM audit 2026-11-10): WT-09 makes CICS regions' CPU belong to a server period; do this entry after
-WT-09 and take "CP use by address-space role" and the hurt work's own servers from it (docs/archive/wlm-audit-2026-11.md §7, §8 Q1).
+Cross-note (WLM audit 2026-11-10): WT-09 (landed) makes CICS regions' CPU belong to a server period; take "CP use by address-space role" and the hurt work's own servers from it (docs/archive/wlm-audit-2026-11.md §7, §8 Q1).
 Cross-note (#307 review, 2026-11-12): since WT-07 WLM also takes CPU from a happy more important period, down to its
 goal, while `capacityBasis` counts only less important CP; displaceable CP should count that headroom
 (`docs/rca-design.md` A4, SPEC §17 "Incident ground truth").
 
 ### RT-17 · Healthy baseline per hour of day
-`list: rca-truth · status: blocked: playtest (deferred by the user; docs/rca-design.md §4.2, Q6) · priority: high · size: M · area: game`
+`list: rca-truth · status: blocked: after RT-16 · priority: high · size: M · area: game`
+
+Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q6: yes for this entry; RT-19 and RT-20 stay parked). Agent
+playtest 2026-11-21 evidence: Harbourline seed 37 MKTORD at 318/s and 345/s against 133–204/s in other hours was
+judged not ≥ 1.25 × "recent normal" (the daily peaks feed the rolling baseline); RT-18's surge test reads this slot.
 
 One baseline per workload per clock hour (EWMA over days), with the rolling EWMA as fallback until a slot has data;
 co-dominant groups (≥ ⅓ of the excess) are accepted; a floor of 10 % of the SLA budget below which no delay group
 wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done when: R-6's and R-15's 20:00
 `LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
+
+### RT-28 · A grouped RCA reply says which victim each line is about
+`list: rca-truth · status: blocked: after RT-16 · priority: high · size: S · area: game`
+
+Source: agent playtest 2026-11-21, Midwest seed 11 D8 INC11 (run not committed). The reply's header names the lead's
+primary (`CPU_PRIORITY/Change regression`, RBANK), while the explanation comes from the member whose truth matches the
+filed mechanism (`src/game/run/rca.ts` `explainInc`: MOBILE, `CPU_CAPACITY`) and reads "MOBILE: … the machine, not the
+policy, was short", so the reply seems to contradict itself. The accepted reasons are the union of the members'
+(`groupAcceptedOf`) without naming whose they are, so RBANK, the REBIND's direct victim, reads as accepted "as a
+neighbour". Harbourline seed 37 D8 INC63 shows the same header/explanation clash. Change: when members' primaries
+differ, the header names each distinct primary with its workloads, and every accepted reason names the member it came
+from. After RT-16 because RT-16 rewrites `mechanismExplanation`. Done when: a test with a two-member group whose
+members have different primaries shows both primaries and per-member reasons, and a single incident's reply is
+unchanged (`npm run compare` reporting-only).
+
+### RT-29 · A complete proof for a mechanism the truth does not accept
+`list: rca-truth · status: blocked: design (after RT-17) · priority: high · size: M · area: game`
+
+Source: agent playtest 2026-11-21 (runs not committed). Harbourline seed 37 D4 INC35: both THREAD_LIMIT predicates
+green (CICS 110 MXT wait 6762 ms/txn, CPU per transaction ×1.01), primary `QR_TCB/POLICY`, reply "THREAD_LIMIT proven,
+but it was not the cause, so it earns nothing"; the same MXT-queue symptom was QR_TCB on D3/D4 and CPU_PRIORITY on
+D2/D3, and on D1 one hour gave INC1 QR_TCB and INC2 CPU_PRIORITY. Midwest Hard seed 54 D3 INC22: CF02 sync service
+1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗", apparently because CF02 has always
+been slow (a standing misconfiguration is its own baseline). Part of this is RT-17's (co-dominant groups) and RT-19's
+(THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the two repros after RT-17;
+what remains needs a design call: accept a mechanism whose complete recipe (including its ruling-out half) holds on the
+incident's own rows and window, or keep it at zero with a reply that says which number made the primary win; and
+whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.
+Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
+
+### RT-30 · RCA reply wording: what was accepted, what was proven, and every pin
+`list: rca-truth · status: blocked: after RT-28 · priority: high · size: M · area: game`
+
+Source: agent playtest 2026-11-21, all four runs. Changes:
+- "Mechanism right" beside "✗ not proven" (Midwest seed 11 INC11; Midwest Hard seed 54 INC27, INC31; Harbourline
+  seed 37 INC11, INC63): say "accepted" for
+  the answer and "your pins did not prove it" for the recipe.
+- An accepted alternate never says it was not the primary: say "accepted (primary: X)".
+- Ruling-out predicates read backwards when they fail, e.g. "✗ they failed rather than ran late: CPU or I/O wait
+  < 25 %" beside a 61 % pin (Revenue seed 23 INC14, Midwest Hard seed 54 INC31): word each predicate as the fact the pin must show,
+  and quote the pin's value when it fails.
+- Pins that meet no predicate are left out of the verdict (Midwest seed 11 INC1 PIN2/PIN4, INC11 PIN16; Revenue seed 23
+  PIN9, PIN16): list every filed pin with why it did not count (wrong window, wrong subject, value inside normal).
+- When a pin meets a line the verdict's hour average does not (Midwest seed 11 INC6: pin CPC 90.1 % for 13:00–13:30, hour average 87.1 %), say that
+  the truth reads the clock hour.
+After RT-28 (same reply code). Done when: reply snapshots in the play CLI tests cover each case, and the browser RCA
+panel shows the same text.
+
+### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
+`list: rca-truth · status: blocked: design (after RT-16) · priority: low · size: M · area: game`
+
+Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
+(CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
+clock-hour average of every tick (87.1 %). Every CPU line and every RT-16 band is measured on that average
+(docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
+in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
+use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
+whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-16,
+so the choice applies to its bands. The reply wording half is RT-30's. Done when: the user decides, the INC6 shape
+(one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
