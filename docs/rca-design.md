@@ -524,7 +524,8 @@ Sources of accepted answers:
 **Built in RT-32:** host excess is `max(0, cp + ziip + backlog − workload CPU baseline × completions)`;
 largest wins (image-id ties). Co-host share ≥ ⅓ adds its verdict; ≥ ⅔ imbalance with another host's CP busy < 85 %
 adds ROUTING. zIIP wait > CP + backlog selects zIIP busy/use. Blocked overflow (system or class setting) with image
-CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394)). Image capping is only
+CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394); class Honor Priority
+SC34-2662-60 PDF p.121 (printed 101)). Image capping is only
 tested on the judged host; resource-group/server CAPPING below remains **RT-33, not built**.
 
 Displaceable pool use includes CP + IIPCP on CP, native zIIP on zIIP, and excludes system work, own transactions by

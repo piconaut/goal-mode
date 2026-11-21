@@ -1377,7 +1377,8 @@ understated when healthy work already queues a little). A CPU win uses RT-32's h
   contribute their verdict; ≥ ⅔ on the leading host with another image's CP busy < 85 % also accepts ROUTING.
 - Pool: zIIP when its wait exceeds CP plus backlog wait on that host; otherwise CP. CP consumption includes IIPCP.
   With IIPHONORPRIORITY=NO or class `honorPriority` off and image CP busy < 85 %, zIIP queueing is CPU_PRIORITY and
-  also accepts POLICY (SA23-1380-60 PDF p.430 (printed 394): NO prevents CP help).
+  also accepts POLICY (SA23-1380-60 PDF p.430 (printed 394): NO prevents CP help; a class's Honor Priority=NO likewise, SC34-2662-60
+  PDF p.121 (printed 101); APPROX: the hurt class alone decides, not a CICS region's transaction-class mix).
 - CAPPING: only the judged image, capped in ≥ `CAPPING.minHourShare` (5 %) of the hour's ticks. Resource-group/server
   capping is not built here (RT-33). A night retains its existing summed-hour, any-host rule pending RT-21.
 - Otherwise CPU_CAPACITY iff CPC busy ≥ 90 % or image busy ≥ 95 % on the judged pool, and displaceable consumption
