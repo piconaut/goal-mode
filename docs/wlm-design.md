@@ -203,7 +203,10 @@ given with its tier.
   transactions in the same regions get a free ride ([SG24-6472 p.62–63][r62]).
 - "The external service class of a server is ignored" unless the region is managed to its own goal by its
   classification rule, or is serving no transactions ([SG24-6472 p.89][r89]; [WLM Planning p.122][wp122]).
-- Enclaves are managed as work of their own class; no topology ([SG24-6472 p.86][r86]).
+- Enclaves are managed as work of their own class, and their server address spaces (DDF, CB, IWEB, NETV) also get a
+  dynamic internal service class period (`$SRMSnnn`) — the enclave server topology ([SG24-6472 PDF p.82–83
+  (printed 64–65)][r82]). APPROX: the sim manages a DDF enclave to its own class but models no enclave server
+  period.
 
 ### 3.12 CPU protection
 
@@ -622,7 +625,8 @@ The terms:
 How it behaves:
 - **Velocities.** Both leave out server and queue-delay samples, and the 0.1 % floor applies. The queue time is
   already in Q̄, and queued WLM-initiator jobs add `delayQueue` to measured ticks only.
-- **Only Ē changes.** A DP move can't shorten the JES initiator wait (SG24-6472 p.222).
+- **Only Ē changes.** A DP move can't shorten the JES initiator wait: it is part of batch response time, not of
+  execution (SG24-6472 PDF p.222 (printed 204)).
 - **RECOVERING keeps its meaning.** The base uses `v'` at the current DPs, so a period is recovering when
   sustained-demand speed already meets the goal.
 - **Null means no move.** The PI is null with no unexpired completion or no running job of the period: no DP
@@ -833,6 +837,7 @@ Open questions:
 [r66]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66
 [r67]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=67
 [r68]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=68
+[r82]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=82
 [r86]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=86
 [r89]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=89
 [r190]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=190
