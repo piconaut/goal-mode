@@ -184,7 +184,7 @@ export function startDay(run: RunState, content: GameContent): RunState {
     };
   }
   // Today's chart history starts at 06:00 and shows the planned changes just applied.
-  if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length } };
+  if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length, lastLogLine: run.log.at(-1) ?? null } };
   return r;
 }
 

@@ -59,6 +59,12 @@ describe('Monitor III charting', () => {
     }
   });
 
+  it('marks the planned changes applied at 06:00', () => {
+    let r = requestChange(withCharts(), content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
+    r = advance(startDay(r, content), MIDWEST, content, 12);
+    expect(r.mon3Charts!.markers.some((m) => m.kind === 'CHANGE' && m.text.includes('Planned change applied: RMF 15'))).toBe(true);
+  });
+
   it('marks emergency changes and resets at the next day', () => {
     let r = advance(startDay(withCharts(), content), MIDWEST, content, 60);
     r = requestChange(r, content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
