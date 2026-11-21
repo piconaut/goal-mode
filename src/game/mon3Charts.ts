@@ -55,15 +55,19 @@ export interface Mon3ChartState {
   markers: ChartMarker[];
   /** Last WLM log line already turned into a marker (the sim log is a capped ring). */
   lastWlmLine: string | null;
-  /** run.log length already scanned. */
+  /** `run.log` length already scanned. Only a fallback for saves made before `lastLogLine` existed. */
   logSeen: number;
+  /** Last `run.log` line already scanned: the log keeps only its last 300 lines, so an index stops advancing once
+   * it is full, while the anchor follows the front trim. A new line whose text repeats the anchor reads as no
+   * change and its marker is missed; accepted, since that needs two identical consecutive lines. */
+  lastLogLine?: string | null;
   /** Per-workload completions and response time since the last sample (for report classes). */
   acc: Record<string, { completions: number; rtSumSec: number; arrivals?: number }>;
   /** Ticks accumulated into `acc` since the last sample. */
   accTicks?: number;
 }
 
-export const emptyCharts = (run: RunState): Mon3ChartState => ({ samples: [], markers: [], lastWlmLine: run.sim.wlm.log.at(-1) ?? null, logSeen: run.log.length, acc: {} });
+export const emptyCharts = (run: RunState): Mon3ChartState => ({ samples: [], markers: [], lastWlmLine: run.sim.wlm.log.at(-1) ?? null, logSeen: run.log.length, lastLogLine: run.log.at(-1) ?? null, acc: {} });
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -131,18 +135,29 @@ function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'
   return { tick: run.sim.tick, cpcBusyPct: r1(cpcEngines > 0 ? (100 * delivered) / cpcEngines : 0), sys, pi, rt, rcRt, arr, rcArr, delay, ddf, cpu };
 }
 
-function newMarkers(run: RunState, st: Mon3ChartState): { markers: ChartMarker[]; lastWlmLine: string | null; logSeen: number } {
+function newMarkers(run: RunState, st: Mon3ChartState): { markers: ChartMarker[]; lastWlmLine: string | null; logSeen: number; lastLogLine: string | null } {
   const tick = run.sim.tick;
   const out: ChartMarker[] = [];
   const wlm = run.sim.wlm.log;
   const from = st.lastWlmLine === null ? 0 : wlm.lastIndexOf(st.lastWlmLine) + 1;
   for (const l of wlm.slice(from)) if (l.includes('RCVR=') || l.includes('CPU PROTECTION')) out.push({ tick, kind: 'WLM', text: l });
-  for (const l of run.log.slice(st.logSeen)) {
+  for (const l of run.log.slice(logScanFrom(run.log, st))) {
     // EVENT first: an announcement's wording may itself contain "change" (e.g. a Change board notice).
     if (l.startsWith('EVENT') || l.startsWith('INCIDENT')) out.push({ tick, kind: 'EVENT', text: l });
     else if (l.includes('change') || l.includes('Change') || l.includes('WLM policy')) out.push({ tick, kind: 'CHANGE', text: l });
   }
-  return { markers: out, lastWlmLine: wlm.at(-1) ?? st.lastWlmLine, logSeen: run.log.length };
+  return { markers: out, lastWlmLine: wlm.at(-1) ?? st.lastWlmLine, logSeen: run.log.length, lastLogLine: run.log.at(-1) ?? null };
+}
+
+/** First `run.log` line not scanned yet. The log keeps only its last 300 lines, so an index from the front stops
+ * advancing once it is full; the last scanned line is the anchor instead. A save from before the anchor falls back
+ * to its index. If the anchor itself has been trimmed away, more lines arrived than the log holds and nothing is
+ * rescanned: repeating old markers would be worse than missing the newest. */
+function logScanFrom(log: readonly string[], st: Mon3ChartState): number {
+  if (st.lastLogLine === undefined) return Math.min(st.logSeen, log.length);
+  if (st.lastLogLine === null) return 0;
+  const at = log.lastIndexOf(st.lastLogLine);
+  return at < 0 ? log.length : at + 1;
 }
 
 /** Called once per sample period while the tool is active. */
@@ -160,6 +175,7 @@ export function recordMon3(run: RunState, scenario: Scenario): RunState {
       markers: markers.length > MON3_CHARTS.maxMarkers ? trimMarkers(markers) : markers,
       lastWlmLine: nm.lastWlmLine,
       logSeen: nm.logSeen,
+      lastLogLine: nm.lastLogLine,
     },
   };
 }

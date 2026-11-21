@@ -2,7 +2,8 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { MON3_CHARTS } from '../../src/content/tools';
 import { buildMon3 } from '../../src/game/mon3';
-import { firstSeen } from '../../src/game/mon3Charts';
+import { firstSeen, recordMon3 } from '../../src/game/mon3Charts';
+import { logLine } from '../../src/game/run/shared';
 import { applyWlmEdit } from '../../src/game/wlmEdit';
 import { advance, chooseDraft, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
@@ -58,6 +59,12 @@ describe('Monitor III charting', () => {
     }
   });
 
+  it('marks the planned changes applied at 06:00', () => {
+    let r = requestChange(withCharts(), content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
+    r = advance(startDay(r, content), MIDWEST, content, 12);
+    expect(r.mon3Charts!.markers.some((m) => m.kind === 'CHANGE' && m.text.includes('Planned change applied: RMF 15'))).toBe(true);
+  });
+
   it('marks emergency changes and resets at the next day', () => {
     let r = advance(startDay(withCharts(), content), MIDWEST, content, 60);
     r = requestChange(r, content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
@@ -67,6 +74,36 @@ describe('Monitor III charting', () => {
     expect(r.mon3Charts!.samples.length).toBeLessThanOrEqual(TICKS_PER_DAY / MON3_CHARTS.sampleTicks);
     r = startDay(chooseDraft(r, content, null), content);
     expect(r.mon3Charts!.samples).toHaveLength(0);
+  });
+
+  it('keeps marking events once the 300-line run log is full', () => {
+    let r: RunState = { ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) };
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(0);
+    r = logLine(r, 'EVENT Downturn announced');
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toEqual(['EVENT Downturn announced']);
+    // A second scan with no new line marks nothing twice.
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(1);
+  });
+
+  it('rescans nothing when the anchor line has been trimmed out of the log', () => {
+    let r = recordMon3({ ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) }, MIDWEST);
+    for (let i = 0; i < 300; i++) r = logLine(r, `EVENT flood ${i}`);
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(0);
+    r = logLine(r, 'EVENT after the flood');
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toEqual(['EVENT after the flood']);
+  });
+
+  it('scans a save made before the log anchor existed', () => {
+    let r = recordMon3({ ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) }, MIDWEST);
+    const old = { ...r.mon3Charts! };
+    delete old.lastLogLine;
+    r = recordMon3({ ...r, mon3Charts: old, log: [...r.log, 'EVENT after load'] }, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toContain('EVENT after load');
   });
 });
 
