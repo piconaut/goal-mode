@@ -34,14 +34,28 @@ function stripCode(text: string, file: string): string {
   return file.endsWith('.md') ? text.replace(/`[^`]*`/g, (m) => ' '.repeat(m.length)) : text;
 }
 
-export function checkLine(text: string, file = 'x.ts'): string[] {
+// A comment or quote marker opening a wrapped line: "PDF" at the end of the line above still labels "p.N" after it.
+const LEAD = /^\s*(?:\/\/+|\*+|>+)?\s*/;
+// Across a line break, `printed` counts only after a PDF-labelled page ("… PDF p.201" / "(printed p.183)"): any "PDF"
+// word on the line above would otherwise pass a bare printed page below it.
+function labelledAcross(joined: string): boolean {
+  return /\bPDF\s*$/.test(joined) || /\bPDF\s*pp?\.\s?\d+.*\bprinted\s*$/.test(joined);
+}
+
+/** `prev` is the line above in the file: a label wrapped onto it ("… PDF" / "p.540 (printed 500)") still counts. */
+export function checkLine(text: string, file = 'x.ts', prev?: string): string[] {
   const src = stripCode(text, file);
+  const above = prev === undefined ? '' : `${stripCode(prev, file).trimEnd()} `;
+  const labelled = (index: number | undefined) => {
+    const before = src.slice(0, index);
+    return labelledBefore(before) || (above !== '' && labelledAcross(above + before.replace(LEAD, '')));
+  };
   const problems: string[] = [];
   for (const m of src.matchAll(RUN)) {
-    if (!labelledBefore(src.slice(0, m.index))) problems.push(`bare "${m[0]}": write "PDF ${m[0]} (printed …)"`);
+    if (!labelled(m.index)) problems.push(`bare "${m[0]}": write "PDF ${m[0]} (printed …)"`);
   }
   for (const m of src.matchAll(PAGE_WORD)) {
-    if (!labelledBefore(src.slice(0, m.index))) problems.push(`bare "${m[0]}": write "PDF p.N (printed …)"`);
+    if (!labelled(m.index)) problems.push(`bare "${m[0]}": write "PDF p.N (printed …)"`);
   }
   for (const m of src.matchAll(LINK)) {
     // A range label may open any page in its range.
@@ -82,11 +96,17 @@ export function addedLines(diff: string): { file: string; line: number; text: st
   return out;
 }
 
-export function checkDiff(diff: string): CitationFinding[] {
+/** `lineAt(file, n)` reads line n (1-based) of the file as it is at the head; without it, only a directly preceding
+ * added line counts as the line above (the diff has no context lines). */
+export function checkDiff(diff: string, lineAt?: (file: string, line: number) => string | undefined): CitationFinding[] {
   const findings: CitationFinding[] = [];
-  for (const { file, line, text } of addedLines(diff)) {
+  let last: { file: string; line: number; text: string } | undefined;
+  for (const added of addedLines(diff)) {
+    const { file, line, text } = added;
+    const prev = line > 1 ? (lineAt ? lineAt(file, line - 1) : last && last.file === file && last.line === line - 1 ? last.text : undefined) : undefined;
+    last = added;
     if (!CHECKED_EXT.test(file) || EXEMPT_FILES.has(file)) continue;
-    for (const problem of checkLine(text, file)) findings.push({ file, line, text: text.trim(), problem });
+    for (const problem of checkLine(text, file, prev)) findings.push({ file, line, text: text.trim(), problem });
   }
   return findings;
 }
@@ -98,7 +118,20 @@ if (isMain(import.meta.url)) {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
-  const findings = checkDiff(diff);
+  const files = new Map<string, string[]>();
+  const lineAt = (file: string, line: number): string | undefined => {
+    let lines = files.get(file);
+    if (!lines) {
+      try {
+        lines = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n');
+      } catch {
+        lines = [];
+      }
+      files.set(file, lines);
+    }
+    return lines[line - 1];
+  };
+  const findings = checkDiff(diff, lineAt);
   if (findings.length === 0) {
     console.log('No bare page citations in added lines.');
   } else {

@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-21: CI `citations` reads a PDF label wrapped onto the line above (the #446 false positive) (#448).
 - 2026-11-21: RT-16 build design (docs/rt-16-design.md; Q7a … Q7e accepted, split into RT-16, RT-32, RT-33) and RT-16 reporting-only CPU accounting: CPU wait by workload per image, CP/zIIP/IIPCP by period, server role and workload, CAP-delay samples, capped server-role ticks, zIIP busy; goldens regenerated, `npm run compare --drop` identical (#446).
 - 2026-11-21: agent RCA playtest (four bots, 8 days each, one per scenario plus Midwest Hard); RT-16 and RT-17 unblocked by the user (Q6, Q7), RT-16 first; findings filed as RT-28 … RT-31, PT-48, PT-49 (#445).
 - 2026-11-21: CL-62 note on the archived WLM audit that its page citations predate the PDF-index rule; list `page-citations` finished and removed (#443).
