@@ -55,7 +55,8 @@ export function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null
   );
 }
 
-/** PROCU lists jobs (RMF Report Analysis p.188); the class summary keeps the EAppl% pins. */
+/** PROCU lists jobs (RMF Report Analysis 3.1, SC34-2665, PDF pp.188–189 (printed 148–149));
+ * the game's class summary keeps EAppl% and its IIPCP subset, not a second address-space CPU total. */
 export function Procu({ rows, jobs, game }: { rows: Mon3Row[]; jobs: Mon3ProcJob[] | null; game: GameHandle | null }) {
   const [by, setBy] = useState<'jobs' | 'classes'>('jobs');
   const [cls, setCls] = useState<string | null>(null);
@@ -123,14 +124,14 @@ export function Procu({ rows, jobs, game }: { rows: Mon3Row[]; jobs: Mon3ProcJob
   return (
     <>
     {toggle}
+    <div className="muted">Service-class summary (game view): EAppl CPU, with IIPCP as a subset of CP.</div>
     <table>
       <thead>
         <tr>
           <th>Service Class</th>
-          <th className="num">Time on CP % Total</th>
-          <th className="num">IIP</th>
           <th className="num">EAppl % CP</th>
-          <th className="num">IIP</th>
+          <th className="num" title="zIIP-eligible CPU time run on CPs; included in EAppl % CP">IIPCP %</th>
+          <th className="num">EAppl % IIP</th>
           <th>imp</th>
         </tr>
       </thead>
@@ -140,15 +141,12 @@ export function Procu({ rows, jobs, game }: { rows: Mon3Row[]; jobs: Mon3ProcJob
             <td>{r.scKey}</td>
             <td className="num">
               {p2(r.cpuEngines)}
-              <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL_CP' }} label={`${r.scKey} time on CP`} />
+              <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL_CP' }} label={`${r.scKey} EAppl% CP`} />
+              <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL' }} label={`${r.scKey} EAppl%`} />
             </td>
             <td className="num">
               {p2(r.iipcpEngines)}
               {r.iipcpEngines > 0 && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'IIPCP' }} label={`${r.scKey} IIPCP`} />}
-            </td>
-            <td className="num">
-              {p2(r.cpuEngines)}
-              <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL' }} label={`${r.scKey} EAppl%`} />
             </td>
             <td className="num">
               {p2(r.ziipEngines)}
