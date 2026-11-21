@@ -40,7 +40,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
 | `balance` | BL | Balance tuning: bot bands, scenario difficulty, sweep regressions. Main agent only (CLAUDE.md) |
 | `cleanup` | CL | Refactors and tooling tidy-ups with no behaviour change (prove it with `npm run compare`) |
-| `page-citations` | CL | The page-citation rule's follow-ups (CLAUDE.md "Realism policy", #435). A batch carved out of `cleanup` (user request 2026-11-21) so `dev-loop` can run it alone; its entries keep their CL IDs, and the list goes when they're done |
 
 ## playtest-fixes
 
@@ -416,16 +415,3 @@ which holds for a closed hour (its tick is the interval end) but not for `hour: 
 2190 (12:05) the pin reads "CICS 110 D1 11:05–12:05" for the open hour's row. Change: label the open hour from its
 start (the hour the clock is in), or as "this hour, so far", and keep the closed-hour label as it is. Done when: a
 test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at the open hour's `:00`.
-
-## page-citations
-
-Source: the #436 review and #437; moved here from `cleanup` (user request 2026-11-21).
-
-### CL-62 · Header note on the archived WLM audit's page citations
-`list: page-citations · status: ready · priority: low · size: S · area: tooling`
-
-Source: the #436 review. `docs/archive/wlm-audit-2026-11.md` has about 40 bare `p.N` citations, written before the
-page-citation rule (#435) and mixing printed and PDF numbers. It is a frozen record, so don't rewrite it. Change: add one
-line under its "Reference only" paragraph saying its page numbers predate the rule, may be printed or PDF pages, and
-that a reader should check both before reporting a citation as wrong. Done when: the note is there and nothing else in
-the file changed.
