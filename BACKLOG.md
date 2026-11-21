@@ -437,19 +437,6 @@ word for word where the loops read them. Done when: each rule is stated once, a 
 only the new doc and links to it, and the review header strings are unchanged.
 
 
-### CL-46 · Monitor III chart markers stop once the run log reaches its 300-line cap
-`list: cleanup · status: ready · priority: high · size: S · area: game`
-
-Source: bug hunt 2026-11-20. `newMarkers` scans new lines with `run.log.slice(st.logSeen)`
-(`src/game/mon3Charts.ts:140`), but `logLine` keeps only the last 300 lines (`[...run.log, text].slice(-300)`,
-`src/game/run/shared.ts:33`) while `recordMon3` stores `logSeen = run.log.length` (`mon3Charts.ts:145`) and the day
-start resets it to `run.log.length` too (`src/game/run.ts:186`). At the cap the length never grows past 300, so
-`slice(300)` is always empty: no EVENT or CHANGE marker is recorded again, silently, for the rest of the run.
-Measured: a 300-line log, then one appended `EVENT …` line, gives 0 → 0 markers across two `recordMon3` calls.
-Change: scan by a count of lines seen from the front that the trim can maintain (or dedupe new marker lines against
-the markers already kept) so a front-trim cannot hide a new line. Done when: a unit test appends an `EVENT` line to a
-300-line log and `recordMon3` records the marker, and the tests that read `markers` pass.
-
 ### CL-47 · The sick-AOR failure fraction gets harsher on Story and milder on Hard
 `list: cleanup · status: ready · priority: high · size: S · area: game`
 
