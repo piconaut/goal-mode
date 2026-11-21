@@ -1185,6 +1185,9 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
   Columns and formulas follow RMF Report Analysis ch. 2 (§18): DELAY splits active samples into USG/DLY/UKN
   (server and subsystem waits are UKN, not delay); SYSINFO shows the LPAR and MVS views of CPU (MVS above LPAR
   is the short-engine clue); PROCU's Time on CP % IIP is zIIP-eligible work run on CPs.
+  PROCU's optional service-class summary is a game view: EAppl % CP once, its IIPCP % subset and EAppl % IIP;
+  the job view retains the distinct Time on CP % Total and EAppl % CP columns
+  (RMF Report Analysis 3.1, SC34-2665, PDF pp.188–189 (printed 148–149)).
   Enables the WLM Activity log.
 - **Partition Data report** (PR/SM view, polarity, overhead).
 - **Report class design tool**: suggests report classes for granularity.
