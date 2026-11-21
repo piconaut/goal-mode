@@ -19,7 +19,18 @@ export function mechanismExplanation(inc: Incident, label?: string): string | nu
 function verdictLine(inc: Incident): string | null {
   const b = inc.basis;
   const mech = inc.truth.mechanism;
-  if (!b || (mech !== 'CPU_CAPACITY' && mech !== 'CPU_PRIORITY')) return null;
+  if (!b) return null;
+  // A capped hour (RT-33): name what held the work, from the basis the truth recorded.
+  if (mech === 'CAPPING') {
+    if (b.capBy === undefined) return null;
+    const what = b.capBy === 'IMAGE'
+      ? 'the image cap'
+      : b.capBy === 'SERVER'
+        ? `a resource-group maximum on a server role${b.capGroup ? ` (${b.capGroup})` : ''}`
+        : `a resource-group maximum${b.capGroup ? ` (${b.capGroup})` : ''}`;
+    return `${b.lparId}: ${what} held this work back. CAP delay is capping delay, not CPU delay.`;
+  }
+  if (mech !== 'CPU_CAPACITY' && mech !== 'CPU_PRIORITY') return null;
   const mechanisms = inc.truth.accepted.mechanisms;
   const both = mechanisms.includes('CPU_CAPACITY') && mechanisms.includes('CPU_PRIORITY');
   const cpcLine = Math.round(CPU_CAPACITY.cpcBusyFrac * 100);

@@ -526,7 +526,7 @@ largest wins (image-id ties). Co-host share ≥ ⅓ adds its verdict; ≥ ⅔ im
 the judged pool (CP, or zIIP when zIIP wait dominates) adds ROUTING. zIIP wait > CP + backlog selects zIIP busy/use. Blocked overflow (system or class setting) with image
 CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394); class Honor Priority
 SC34-2662-60 PDF p.121 (printed 101)). Image capping is only
-tested on the judged host; resource-group/server CAPPING below remains **RT-33, not built**.
+tested on the judged host; resource-group and server CAPPING are RT-33's (below, built).
 
 Displaceable pool use includes CP + IIPCP on CP, native zIIP on zIIP, and excludes system work, own transactions by
 workload, completion-proportioned shared region base CPU, dependency roles and other SLA work at risk. The PCT
@@ -550,10 +550,19 @@ For a CPU-family primary, or a `serverCpu` dependency:
 2. **Pool.** If the excess is zIIP queueing, measure busy and displaceable use on the zIIP pool, and treat "zIIP work
    may not overflow" (IIPHONORPRIORITY=NO, Init & Tuning p.430) as a policy cause.
 3. **Capping** when the host was capped for at least 5 % of the hour's ticks (time, not the worst tick), by defined
-   capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add: CAPPING also
-   when the hurt class or its server was held by a resource-group
-   maximum (WLMGL CAP delay, RMF Report Analysis p.540), with trigger POLICY. The form's help for CAPPING changes
-   from "the image" to "the image or the class".
+   capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add (RT-33): CAPPING
+   also when the hurt class or its server was held by a resource-group maximum (WLMGL CAP delay, z/OS 3.1 RMF Report Analysis
+   SC34-2665-60 PDF p.540 (printed 500)), with trigger POLICY. The form's help for CAPPING changes from "the image" to "the image or the class".
+   **As built (RT-33):** `game/sla.ts` `cappingOf` tests, on the judged host only, (a) the image's own cap, (b) a
+   period of the hurt work, or the `$SRMS001` server period holding its regions, at CAP delay ≥ `CAPPING.capDelayFrac`
+   (5 %) of its WLMGL samples, and (c) a server role the work depends on (`w.servers`, `w.hostRole`) with
+   `roleCappedTicks` ≥ `minHourShare` of the ticks. Both new triggers are fallback POLICY unless a card is blamed, and
+   the basis records `capBy` IMAGE/GROUP/SERVER with the capped class's `resourceGroup`; the cause is
+   `none:CAPPING:<host>:rg:<group>`, so a group cap does not group with an image cap on the same image. Discretionary
+   goal management caps only work that overachieves, so no special case. The CAPPING recipe's symptom predicate also
+   reads CAP delay ≥ 10 %: a resource-group cap's wait is CAP delay, not CPU delay (SC34-2665-60 PDF p.540 (printed 500)), so a `DELAY_CAP` row is
+   both the symptom and the proof. An hour with no judged host (a night, a loaded partial hour) keeps the old any-host
+  image rule; RT-21 owns the night.
 4. **Capacity or priority by displaceable CPU.** Replace "CP used by lower importance" with **displaceable CP**: CP
    on that image used by work that is not system work (SYSTEM, SYSSTC), not a server or region of the hurt workload,
    and not work whose own SLA was at risk that hour. The WLM importance of the consumer does not enter. A looping
@@ -663,7 +672,7 @@ out) the discriminator. Recipes live in `content/evidence.ts` beside the metrics
 |---|---|---|
 | CPU_PRIORITY | CPU delay ≥ 10 % on the hurt class, its regions or its server, on the judged host | a displaceable consumer on that host: APPL of another class ≥ 10 % of the image |
 | CPU_CAPACITY | as above | CPC or image busy ≥ 90 %, or a capacity adjustment below 100 |
-| CAPPING | as above | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
+| CAPPING | as above, or CAP delay ≥ 10 % (a group cap's delay is CAP, not CPU) | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
 | DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or velocity under goal) | the hurt class's own CPU delay low (< 10 %), or its work-manager state "waiting" |
 | THREAD_LIMIT | MXT wait or queued-DBAT count up | CPU per transaction and QR wait normal (a ruling-out pin) |
 | DEMAND_SURGE | ended rate ≥ 1.25 × baseline on the surging workload | its CPU per transaction within ±15 % of baseline |

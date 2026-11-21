@@ -321,10 +321,12 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     ],
   }] },
   // APPROX: defined capacity and group capacity limit general-CP MSU, so the cap's symptom is CP delay, not zIIP (an
-  // absolute cap on a zIIP pool exists but no card here sets one).
+  // absolute cap on a zIIP pool exists but no card here sets one). A resource-group maximum is its own delay state:
+  // WLMGL CAP delay is "not part of the CPU delay" (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500)), so a CAP-delay row (≥ 10 %) is the
+  // symptom too and a DELAY_CAP pin alone can prove a group-capping hour (RT-33).
   CAPPING: { predicates: [{
-    label: 'CPU delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
-    options: CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'),
+    label: 'CPU delay ≥ 10 % or CAP delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
+    options: [...CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'), at('DELAY_CAP', PROOF.delayPct, OWN)],
   }, {
     label: 'a cap held it: the cap removed ≥ 5 % of the image\'s demand (Partition Data CAPPED), or CAP delay ≥ 5 % on the class or its regions (WLMGL)',
     options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, OWN)],

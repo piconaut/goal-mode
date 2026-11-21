@@ -5,8 +5,13 @@
 // When a CPU incident is capping rather than capacity or priority (SPEC §10, docs/rca-design.md §4.3): the host
 // image must have been capped for this share of the hour's ticks (time, not the worst tick).
 export const CAPPING = {
-  /** Share of an hour's ticks in which the image's CP demand was capped (`cappedFrac > 0`). */
+  /** Share of an hour's ticks in which the image's CP demand was capped (`cappedFrac > 0`), or in which a server
+   * role the work depends on had CPU withheld by a resource-group cap. */
   minHourShare: 0.05,
+  /** FICTIONAL: share of a period's WLMGL samples that must be CAP delay for a resource-group maximum to be the
+   * cause. A resource group that binds markedly shows far more (a test group on DDFPRD measured 45 %), while a
+   * group that only grazes demand stays near zero. */
+  capDelayFrac: 0.05,
 } as const;
 
 export const CPU_CAPACITY = {

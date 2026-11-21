@@ -201,18 +201,6 @@ whether the evidence predicates move to the same time base, so a pin and the tru
 so the choice applies to its bands. The reply wording half is RT-30's. Done when: the user decides, the INC6 shape
 (one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
 
-### RT-33 · CPU split, part 3: a resource-group cap on the class or its server is CAPPING
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-Design: [docs/rt-16-design.md](docs/rt-16-design.md) §3.3. On the judged host, CAPPING also when the hurt work's
-periods or the server period holding its regions show WLMGL CAP delay ≥ `CAPPING.capDelayFrac` of their samples, or a
-server role it depends on was resource-group capped (RF-09's `roleHealth.capped`) for ≥ `CAPPING.minHourShare` of the
-ticks (CAP delay is resource-group or discretionary capping and not part of CPU delay: z/OS 3.1 RMF Report Analysis
-SC34-2665-60 PDF p.540 (printed 500)). Fallback trigger POLICY; cause `none:CAPPING:<host>:rg:<group>`; the RCA
-form's CAPPING help reads "the image or the class"; the CAPPING recipe's `DELAY_CAP` adds the `server` relation.
-Sweep. Done when: a realism test shows a resource-group maximum on the hurt class is CAPPING, not CPU_PRIORITY, a
-DELAY_CAP pin proves it, and the docs/research.md "WLMGL CAP delay" row's sim status is updated.
-
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
 
