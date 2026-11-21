@@ -126,7 +126,8 @@ function optionHolds(ctx: ProofContext, p: EvidencePin, relation: PinRelation | 
     case 'riseBy':
       return baseline !== undefined && value - baseline >= t.points;
     case 'shareOfImage': {
-      const cps = imageCps(run, p.system, ctx.pool);
+      // The pin's own pool: a batch class's CP APPL row stays a share of the CPs on a zIIP-judged incident.
+      const cps = imageCps(run, p.system, p.metric === 'APPL_IIP' ? 'ZIIP' : 'CP');
       return cps > 0 && value >= t.frac * 100 * cps;
     }
     case 'noHistory':

@@ -1374,10 +1374,12 @@ understated when healthy work already queues a little). A CPU win uses RT-32's h
 
 - Host: largest positive `cp + ziip + backlog − CPU baseline × completions` from the workload's host wait ledger;
   ties by image id. APPROX: one workload-wide baseline. Co-hosts with ≥ `CPU_SPLIT.coHostFrac` (⅓) of total excess
-  contribute their verdict; ≥ ⅔ on the leading host with another image's CP busy < 85 % also accepts ROUTING.
+  contribute their verdict; ≥ ⅔ on the leading host with another image busy < 85 % on the judged pool also accepts
+  ROUTING.
 - Pool: zIIP when its wait exceeds CP plus backlog wait on that host; otherwise CP. CP consumption includes IIPCP.
   With IIPHONORPRIORITY=NO or class `honorPriority` off and image CP busy < 85 %, zIIP queueing is CPU_PRIORITY and
-  also accepts POLICY (SA23-1380-60 PDF p.430 (printed 394): NO prevents CP help).
+  also accepts POLICY (SA23-1380-60 PDF p.430 (printed 394): NO prevents CP help; a class's Honor Priority=NO likewise, SC34-2662-60
+  PDF p.121 (printed 101); APPROX: the hurt class alone decides, not a CICS region's transaction-class mix).
 - CAPPING: only the judged image, and any of: the image was capped in ≥ `CAPPING.minHourShare` (5 %) of the hour's
   ticks; a period of the hurt work on it, or the server period holding its regions (`$SRMS001`), shows CAP delay ≥
   `CAPPING.capDelayFrac` (5 %) of its samples; or a server role it depends on (`servers`/`hostRole`) was

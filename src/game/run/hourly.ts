@@ -296,7 +296,9 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       const cpu = { workloadId: w.id, baseline: baselines[w.id] ?? {}, subjects, serverRoles,
         groupOf: classGroup, roleGroupOf: roleGroup,
         // IIPHONORPRIORITY=NO means CPs never examine eligible work:
-        // SA23-1380-60 PDF p.430 (printed 394). Per-class opt-out is modelled the same way.
+        // SA23-1380-60 PDF p.430 (printed 394). A service class with Honor Priority=NO gets no CP help
+        // (SC34-2662-60 PDF p.121 (printed 101)). APPROX: the hurt class alone decides; a CICS region overflows
+        // unless all its transaction classes say NO (PDF p.122 (printed 102)), which this judge does not check.
         overflowBlockedHosts: hosts.filter((host) => {
           const cls = classify(r.sim.wlm.definition, { ...w.work, SY: host.lparId }).serviceClass;
           return r.sim.config.systems.find((s) => s.lparId === host.lparId)?.iipHonorPriority === false ||

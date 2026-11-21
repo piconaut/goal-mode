@@ -522,9 +522,10 @@ Sources of accepted answers:
 ### 4.3 The CPU split
 
 **Built in RT-32:** host excess is `max(0, cp + ziip + backlog − workload CPU baseline × completions)`;
-largest wins (image-id ties). Co-host share ≥ ⅓ adds its verdict; ≥ ⅔ imbalance with another host's CP busy < 85 %
-adds ROUTING. zIIP wait > CP + backlog selects zIIP busy/use. Blocked overflow (system or class setting) with image
-CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394)). Image capping is only
+largest wins (image-id ties). Co-host share ≥ ⅓ adds its verdict; ≥ ⅔ imbalance with another host busy < 85 % on
+the judged pool (CP, or zIIP when zIIP wait dominates) adds ROUTING. zIIP wait > CP + backlog selects zIIP busy/use. Blocked overflow (system or class setting) with image
+CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394); class Honor Priority
+SC34-2662-60 PDF p.121 (printed 101)). Image capping is only
 tested on the judged host; resource-group and server CAPPING are RT-33's (below, built).
 
 Displaceable pool use includes CP + IIPCP on CP, native zIIP on zIIP, and excludes system work, own transactions by
