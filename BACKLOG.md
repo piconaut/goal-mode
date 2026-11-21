@@ -40,6 +40,7 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
 | `balance` | BL | Balance tuning: bot bands, scenario difficulty, sweep regressions. Main agent only (CLAUDE.md) |
 | `cleanup` | CL | Refactors and tooling tidy-ups with no behaviour change (prove it with `npm run compare`) |
+| `page-citations` | CL | The page-citation rule's follow-ups (CLAUDE.md "Realism policy", #435). A batch carved out of `cleanup` (user request 2026-11-21) so `dev-loop` can run it alone; its entries keep their CL IDs, and the list goes when they're done |
 
 ## playtest-fixes
 
@@ -405,8 +406,12 @@ which holds for a closed hour (its tick is the interval end) but not for `hour: 
 start (the hour the clock is in), or as "this hour, so far", and keep the closed-hour label as it is. Done when: a
 test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at the open hour's `:00`.
 
+## page-citations
+
+Source: the #436 review and #437; moved here from `cleanup` (user request 2026-11-21).
+
 ### CL-59 · CI check: no new bare page citations
-`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+`list: page-citations · status: ready · priority: high · size: S · area: tooling`
 
 Source: page-citation rule (CLAUDE.md "Realism policy", #435) and the #436 review. That PR proposed relabelling all
 ~1,000 old citations (CL-50…CL-58, closed unmerged; those IDs are not used). The rule instead relabels old citations
@@ -419,7 +424,7 @@ non-citation). Done when: the gate fails on a PR that adds `RMF Report Analysis 
 `RMF Report Analysis PDF p.401 (printed 361)`, ignores untouched lines, and `docs/tools.md` lists the tool.
 
 ### CL-60 · Page citations: label the docs/research.md ledger
-`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+`list: page-citations · status: ready · priority: high · size: M · area: tooling`
 
 Source: page-citation rule (#435), the #436 review. The ledger is the one place worth a full sweep: it is the source
 of truth for facts, and its links already open the PDF index (`[SG24-7621 p.95 §3.6](…sg247621.pdf#page=95)`), so
@@ -432,7 +437,7 @@ status reopened and a note, not a guessed number. No row's fact or sim status ch
 on neither page.
 
 ### CL-61 · pools.ts cites RMF p.401 for a measure that page doesn't define
-`list: cleanup · status: ready · priority: low · size: S · area: sim`
+`list: page-citations · status: ready · priority: low · size: S · area: sim`
 
 Source: the #436 review. `src/sim/hw/pools.ts:149` says the uncapped allocation makes "capping count only what a
 binding cap removed and PR/SM contention doesn't (RMF Report Analysis p.401)". erbb500 v3r1 PDF p.401 defines WLM% as
@@ -444,7 +449,7 @@ shows no difference. Done when: the comment no longer attributes the measure to 
 PR.
 
 ### CL-62 · Header note on the archived WLM audit's page citations
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+`list: page-citations · status: ready · priority: low · size: S · area: tooling`
 
 Source: the #436 review. `docs/archive/wlm-audit-2026-11.md` has about 40 bare `p.N` citations, written before the
 page-citation rule (#435) and mixing printed and PDF numbers. It is a frozen record, so don't rewrite it. Change: add one
