@@ -421,18 +421,6 @@ test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at 
 
 Source: the #436 review and #437; moved here from `cleanup` (user request 2026-11-21).
 
-### CL-61 · pools.ts cites RMF p.401 for a measure that page doesn't define
-`list: page-citations · status: ready · priority: low · size: S · area: sim`
-
-Source: the #436 review. `src/sim/hw/pools.ts:149` says the uncapped allocation makes "capping count only what a
-binding cap removed and PR/SM contention doesn't (RMF Report Analysis p.401)". erbb500 v3r1 PDF p.401 defines WLM% as
-"Percentage of time when WLM capped the partition" and the DEF capping flags. It says nothing about capacity a cap
-removed, which is the sim's own measure. Change: comment only. Reword it as the sim's own measure, and cite p.401
-(labelled `PDF p.401`, printed number from its footer) only for what the page says. If the measure feeds a report field
-that does have an IBM definition, cite that field's page instead. Comment only: `npm run compare -- --base origin/dev`
-shows no difference. Done when: the comment no longer attributes the measure to RMF, and the compare summary is in the
-PR.
-
 ### CL-62 · Header note on the archived WLM audit's page citations
 `list: page-citations · status: ready · priority: low · size: S · area: tooling`
 
