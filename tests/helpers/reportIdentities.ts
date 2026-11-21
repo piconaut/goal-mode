@@ -118,6 +118,32 @@ function plexSum(c: Check, o: IntervalObs, rows: readonly WlmRecord[], what: str
 }
 
 export const IDENTITIES: Identity[] = [
+  {
+    id: 'incident-cpu-basis',
+    title: 'CPU basis: host excess shares total 100; top class shares agree with that hour’s WLMGL pool APPL',
+    basis: 'game',
+    source: 'SPEC §10, RT-32: shares use captured pool CPU (CP includes IIPCP), not installed capacity; float rounding only',
+    check: (run, c) => {
+      for (const h of run.hours) for (const inc of h.end.incidents.filter((i) => i.startTick === h.end.sim.tick - TICKS_PER_HOUR)) {
+        const b = inc.basis;
+        if (!b?.pool || !b.excessSharesPct) continue;
+        c.close(sum(Object.values(b.excessSharesPct)), 100, ROUNDING, () => `${inc.id} host excess shares`);
+        c.close(b.excessSharePct ?? NaN, b.excessSharesPct[b.lparId] ?? NaN, ROUNDING, () => `${inc.id} judged host share`);
+        const intervals = run.intervals.filter((o) => o.iv.startTick >= inc.startTick && o.iv.endTick <= inc.startTick + TICKS_PER_HOUR);
+        const uses: Record<string, number> = {};
+        for (const o of intervals) for (const r of o.iv.wlm.filter((r) => r.lparId === b.lparId)) {
+          uses[r.scKey] = (uses[r.scKey] ?? 0) + o.iv.intervalSec * (b.pool === 'CP' ? r.applCpPct : r.applIipPct);
+        }
+        const total = sum(Object.values(uses));
+        for (const consumer of b.topConsumers ?? []) {
+          c.ok(consumer.kind === 'class' && consumer.scKey !== undefined, () => `${inc.id} consumer has a WLMGL identity`);
+          c.close(consumer.pct, 100 * (uses[consumer.scKey!] ?? 0) / total, ROUNDING, () => `${inc.id} ${b.lparId} ${consumer.name} share vs WLMGL APPL`);
+        }
+        const data = inc.subjects.cpu?.[b.lparId]?.[b.pool];
+        if (data) c.close(b.displaceablePct ?? NaN, 100 * sum(Object.values(data.classes).map((r) => r.displaceable)) / (data.engines || 1), ROUNDING, () => `${inc.id} displaceable share vs snapshot`);
+      }
+    },
+  },
   // ---------------------------------------------------------------- Workload Activity (WLMGL, SMF 72.3)
   {
     id: 'wlmgl-sysplex-sum',

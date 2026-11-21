@@ -27,6 +27,9 @@ import { minPins } from '../helpers/proofPins';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { Command } from '../../src/sim/core/commands';
 import { truthOf } from '../helpers/truth';
+import { snapshotCpuConsumers } from '../../src/game/displaceable';
+import { allWorkloads } from '../../src/game/workloads';
+import type { HourAcc } from '../../src/game/types';
 
 const content = midwestContent;
 const HOUR = 360;
@@ -66,6 +69,16 @@ const fixtureIncident = (r: RunState, kind: Kind, truth: Incident['truth']): Inc
   const subjects: IncidentSubjects = kind === 'BATCH'
     ? { classes: ['BATCHPRD'], lpars: ['PROD1'], hosts: ['PROD1'], servers: [], serverClasses: [] }
     : incidentSubjects(r, MIDWEST, workloadId, 0);
+  // This fixture stands for an hour with a separate same-class query and an unthreatened batch consumer.
+  // Importance is deliberately absent: RT-32 proof reads the frozen eligible share, not today's policy.
+  const jobs = { MONAGENT: { used: 1, displaceable: 1 }, MQ1AMSTR: { used: 1, displaceable: 1 }, STL007: { used: 1, displaceable: 1 } };
+  const classes = Object.fromEntries(['STCLO#1', 'DDFPRD#2'].map((k) => [k, { used: 1, displaceable: 1, workloads: [] }]));
+  // Native zIIP use is a token share of each class, so a WLMGL APPL (CP + zIIP) row scaled to its CP part
+  // still clears the 10 % line, while APPL_IIP has a row to read on the zIIP pool.
+  const ziipClasses = Object.fromEntries(Object.keys(classes).map((k) => [k, { used: 0.01, displaceable: 0.01, workloads: [] as string[] }]));
+  subjects.cpu = Object.fromEntries(subjects.hosts.map((h) => [h, {
+    CP: { engines: 6, classes, jobs }, ZIIP: { engines: 6, classes: ziipClasses, jobs: {} },
+  }]));
   return { id: 999, workloadId, day: 0, startTick: r.sim.tick - HOUR, endTick: null, hours: 1, worstAttainmentPct: 80, truth, rca: null, trustLost: 0, subjects };
 };
 
@@ -202,6 +215,7 @@ describe('proof recipe vocabulary (RT-13)', () => {
         const anchor = o.sameWork ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999) : undefined;
         if (o.sameWork && !anchor) return false;
         const inc = fixtureIncident(fixtureRun, kind, truthOf('CPU_PRIORITY', 'POLICY'));
+        if (o.displaceable && o.metric === 'APPL_IIP') inc.basis = { lparId: 'PROD1', cpcId: 'CPCA', cpcBusyPct: 100, lparBusyPct: 100, donorPct: 0, full: false, pool: 'ZIIP' };
         const proof = judgeProof(fixtureRun, MIDWEST, [inc], MECHANISMS.includes(claim as Mechanism) ? claim as Mechanism : 'CPU_PRIORITY',
           TRIGGERS.includes(claim as Trigger) ? claim as Trigger : 'POLICY', anchor ? [anchor, pin] : [pin]);
         const check = MECHANISMS.includes(claim as Mechanism) ? proof.mechanism : proof.trigger;
@@ -254,7 +268,7 @@ describe('documented values (RT-13)', () => {
     const order = Object.fromEntries(CLAIMS.map((c) => [c, recipeOf(c).predicates.map((p) => p.label.split(/[:(]/)[0]!.trim())]));
     expect(order).toEqual({
       CPU_CAPACITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'the processor full'],
-      CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a displaceable consumer on that host'],
+      CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a consumer WLM could have taken CPU from'],
       CAPPING: ['CPU delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
       DEPENDENCY: ['the server slow', 'the hurt class\'s own CPU delay < 10 %'],
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
@@ -331,10 +345,21 @@ describe('tier-0/1 paths (RT-13)', () => {
 // Replays: real report rows from a midwest day, a change pushed at noon and an hour run on.
 
 describe('proofs from replayed incidents (RT-13)', () => {
-  const after = (mod: 'cpu' | 'rate', key: string, value: number, hours = 1): RunState =>
-    advance({ ...day2, pendingCommands: [{ kind: 'SET_MODIFIER', mod, key, value }] }, MIDWEST, content, hours * HOUR);
-  const mobileIncident = (r: RunState, truth: Incident['truth']): Incident =>
-    ({ ...fixtureIncident(r, 'DDF', truth), subjects: incidentSubjects(day2, MIDWEST, 'MOBILE', day2.day) });
+  const observedHours = new WeakMap<RunState['sim'], HourAcc>();
+  const after = (mod: 'cpu' | 'rate', key: string, value: number, hours = 1): RunState => {
+    const beforeClose = advance({ ...day2, pendingCommands: [{ kind: 'SET_MODIFIER', mod, key, value }] }, MIDWEST, content, hours * HOUR - 1);
+    const result = advance(beforeClose, MIDWEST, content, 1);
+    observedHours.set(result.sim, beforeClose.hour!);
+    return result;
+  };
+  const mobileIncident = (r: RunState, truth: Incident['truth']): Incident => {
+    const inc = fixtureIncident(r, 'DDF', truth);
+    const h = observedHours.get(r.sim);
+    if (!h) return inc;
+    const workloads = allWorkloads(MIDWEST, r);
+    return { ...inc, subjects: snapshotCpuConsumers(r, MIDWEST, h, workloads.find((w) => w.id === 'MOBILE')!, workloads,
+      incidentSubjects(r, MIDWEST, 'MOBILE', r.day)) };
+  };
 
   it('reads an ended rate against the same interval on earlier days, so the morning ramp is not a surge', () => {
     const i = last(day2);
@@ -438,7 +463,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     expect(out.run.pins.at(-1)).toMatchObject({ metric: 'JOB_APPL', subject: 'MONAGENT', serviceClass: 'STCMED' });
   });
 
-  it('judges a PROCU job by the service class its row shows: a batch job is displaceable, a started task above the work is not', () => {
+  it('judges a PROCU job by its snapshot: happy batch and same-importance non-server work are displaceable', () => {
     const inc = fixtureIncident(fixtureRun, 'CICS', truthOf('CPU_PRIORITY', 'POLICY'));
     const job = (subject: string, serviceClass?: string): EvidencePin => ({
       id: 5000, source: 'PROCU', metric: 'JOB_APPL', subject, system: 'PROD1', tick: fixtureRun.sim.rmf.intervals.at(-1)!.endTick,
@@ -447,10 +472,24 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const consumer = (p: EvidencePin) => judgeProof(fixtureRun, MIDWEST, [inc], 'CPU_PRIORITY', 'POLICY', [p]).mechanism.predicates[1]!.met;
     // STL007, a critical batch job (BATCHPRD, importance 4), against RBANK's ONLHI (importance 1).
     expect(consumer(job('STL007', 'BATCHPRD'))).toBe(true);
-    // A started task in STCHI (importance 1) is not below the work; without a class the job's address space decides.
-    expect(consumer(job('MQ1AMSTR', 'STCHI'))).toBe(false);
+    // MQ does not serve RBANK. Its equal importance is not a reason to exclude it.
+    expect(consumer(job('MQ1AMSTR', 'STCHI'))).toBe(true);
     expect(consumer(job('MONAGENT'))).toBe(true);
-    expect(consumer(job('STL007'))).toBe(false);
+    expect(consumer(job('STL007'))).toBe(true);
+    expect(consumer(job('UNKNOWN'))).toBe(false);
+  });
+
+  it('reads a batch class CP row against the image CPs on a zIIP-judged incident', () => {
+    // PROD1 has 6 CPs and 2 zIIPs: 30 % of one engine is 15 % of the zIIPs but only 5 % of the CPs.
+    const inc = { ...fixtureIncident(fixtureRun, 'CICS', truthOf('CPU_PRIORITY', 'BATCH_OVERLAP')),
+      basis: { lparId: 'PROD1', cpcId: 'CPCA', cpcBusyPct: 100, lparBusyPct: 100, donorPct: 0, full: false, pool: 'ZIIP' as const } };
+    const batchRow = (value: number): EvidencePin => ({
+      id: 5001, source: 'WLMGL', metric: 'APPL', subject: 'BATCHPRD#1', system: 'PROD1', tick: fixtureRun.sim.rmf.intervals.at(-1)!.endTick,
+      value, text: 'batch',
+    });
+    const batchRunning = (p: EvidencePin) => judgeProof(fixtureRun, MIDWEST, [inc], 'CPU_PRIORITY', 'BATCH_OVERLAP', [p]).trigger.predicates[1]!.met;
+    expect(batchRunning(batchRow(30))).toBe(false);
+    expect(batchRunning(batchRow(61))).toBe(true);
   });
 
   it('gives an open-hour Db2 101 cost pin the same hour yesterday as its rate baseline', () => {
@@ -538,7 +577,7 @@ describe('RCA scoring by proof (RT-13)', () => {
     expect(rca.strong).toBe(true);
     expect(rca.points).toBe(5 + PROOF.recipePoints);
     expect(after.insight - before.insight).toBe(5 + PROOF.recipePoints + EVIDENCE.strongInsight);
-    expect(proofLines(rca.proof!)[0]).toMatch(/^Mechanism CPU_PRIORITY proven: ✓ CPU or zIIP delay .*; ✓ a displaceable consumer/);
+    expect(proofLines(rca.proof!)[0]).toMatch(/^Mechanism CPU_PRIORITY proven: ✓ CPU or zIIP delay .*; ✓ a consumer WLM could have taken CPU from/);
   });
 
   it('pays the mechanism recipe without the strong bonus when the trigger recipe is incomplete', () => {

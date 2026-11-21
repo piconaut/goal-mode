@@ -35,7 +35,7 @@ describe('the CPU verdict explains itself from the hour that decided it (PT-03)'
   it('names the capacity line and the donor share when the verdict is capacity', () => {
     const text = mechanismExplanation(incumbent('CPU_CAPACITY', basis({ cpcBusyPct: 96, donorPct: 3, full: true })))!;
     expect(text).toMatch(/CPC CPCA averaged 96\.0 % busy \(capacity line 90 %\)/);
-    expect(text).toMatch(/3\.0 % of the CP against the 10 % donor line/);
+    expect(text).toMatch(/3\.0 % of the CP against the 10 % displaceable line/);
     expect(text).toMatch(/machine, not the policy, was short/);
   });
 
@@ -47,7 +47,7 @@ describe('the CPU verdict explains itself from the hour that decided it (PT-03)'
   it('explains a full machine that still had donors as the policy', () => {
     // A truth with no accepted set (an old save) keeps the categorical line: only the primary is accepted.
     const text = mechanismExplanation(incumbent('CPU_PRIORITY', basis({ cpcBusyPct: 94, donorPct: 18 })))!;
-    expect(text).toMatch(/18\.0 % of the CP went to less important work/);
+    expect(text).toMatch(/18\.0 % of the CP was displaceable/);
     expect(text).toMatch(/policy held this work back/);
   });
 
@@ -70,6 +70,24 @@ describe('the CPU verdict explains itself from the hour that decided it (PT-03)'
   it('prints the figure to one decimal, so it cannot straddle its own line', () => {
     const text = mechanismExplanation(incumbent('CPU_PRIORITY', basis({ cpcBusyPct: 89.6 })))!;
     expect(text).toContain('89.6 % busy, below the 90 % capacity line');
+  });
+
+  it('names the judged host, pool and largest displaceable consumers of a new basis', () => {
+    const text = mechanismExplanation(incumbent('CPU_PRIORITY', basis({
+      lparId: 'PROD2', cpcBusyPct: 94, displaceablePct: 83.1, excessSharePct: 91, pool: 'CP',
+      topConsumers: [{ name: 'BATCHHI#1 (BATCH)', kind: 'class', scKey: 'BATCHHI#1', pct: 68.8 }],
+    })))!;
+    expect(text).toMatch(/^PROD2 carried 91\.0 % of the CPU wait excess: CP pool; consumers BATCHHI#1 \(BATCH\) 68\.8 %\./);
+    expect(text).toMatch(/83\.1 % of the CP was displaceable/);
+  });
+
+  it('explains blocked zIIP overflow as a policy cause on the judged pool', () => {
+    const text = mechanismExplanation(incumbent('CPU_PRIORITY', basis({
+      lparId: 'PROD2', cpcBusyPct: 100, lparBusyPct: 73, displaceablePct: 90, excessSharePct: 100, pool: 'ZIIP',
+      overflowBlocked: true, topConsumers: [{ name: 'WEBDDF#1 (ANALYTICS)', kind: 'class', scKey: 'WEBDDF#1', pct: 90 }],
+    })))!;
+    expect(text).toMatch(/ZIIP pool; consumers WEBDDF#1 \(ANALYTICS\) 90\.0 %/);
+    expect(text).toMatch(/zIIP work could not overflow despite CP room/);
   });
 
   it('explains only CPU mechanisms with a recorded basis', () => {
@@ -112,6 +130,6 @@ describe('a capacity reduction shows as CHANGE REASON and SMF70CAI/SMF70CCR (MVS
   });
 
   it('keeps the lines the mechanism rules use in content, not in the game code', () => {
-    expect(CPU_CAPACITY).toEqual({ cpcBusyFrac: 0.9, lparBusyFrac: 0.95, donorFrac: 0.1 });
+    expect(CPU_CAPACITY).toEqual({ cpcBusyFrac: 0.9, lparBusyFrac: 0.95, displaceableFrac: 0.1 });
   });
 });

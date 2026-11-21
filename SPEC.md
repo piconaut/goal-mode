@@ -1370,15 +1370,38 @@ baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, 
 records the queue the same arrivals would build at their unqueued service time (base latency, CPU, zIIP and I/O
 connect/disconnect, no waits), and THREAD_LIMIT is credited only with that queue's growth; the rest is a symptom of
 whatever slowed the tasks (APPROX: unqueued service time is the reference, so the limit's own share is slightly
-understated when healthy work already queues a little). A CPU win is split three ways: CAPPING when a host LPAR was
-capped for at least 5 % of the hour — the share of the hour's 10-second ticks in which its CP demand was cut, not the worst
-tick (`CAPPING.minHourShare`; a night sums its hours' ticks) — CPU_CAPACITY when an
-image hosting the workload was full over the hour — its CPC averaged at least 90 % general-CP busy (judged per CPC,
-since PR/SM shares engines only within a machine), or the image itself used at least 95 % of the CP available to it
-(online logical CPs, entitlement plus white space), as when all its logical CPs are busy on a CPC with engines it
-can't reach — *and* less than 10 % of that image's CP went to work less important than the hurt
-workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the policy could have served it.
-Both thresholds are FICTIONAL.
+understated when healthy work already queues a little). A CPU win uses RT-32's host/pool split (game rules):
+
+- Host: largest positive `cp + ziip + backlog − CPU baseline × completions` from the workload's host wait ledger;
+  ties by image id. APPROX: one workload-wide baseline. Co-hosts with ≥ `CPU_SPLIT.coHostFrac` (⅓) of total excess
+  contribute their verdict; ≥ ⅔ on the leading host with another image busy < 85 % on the judged pool also accepts
+  ROUTING.
+- Pool: zIIP when its wait exceeds CP plus backlog wait on that host; otherwise CP. CP consumption includes IIPCP.
+  With IIPHONORPRIORITY=NO or class `honorPriority` off and image CP busy < 85 %, zIIP queueing is CPU_PRIORITY and
+  also accepts POLICY (SA23-1380-60 PDF p.430 (printed 394): NO prevents CP help; a class's Honor Priority=NO likewise, SC34-2662-60
+  PDF p.121 (printed 101); APPROX: the hurt class alone decides, not a CICS region's transaction-class mix).
+- CAPPING: only the judged image, capped in ≥ `CAPPING.minHourShare` (5 %) of the hour's ticks. Resource-group/server
+  capping is not built here (RT-33). A night retains its existing summed-hour, any-host rule pending RT-21.
+- Otherwise CPU_CAPACITY iff CPC busy ≥ 90 % or image busy ≥ 95 % on the judged pool, and displaceable consumption
+  < `CPU_CAPACITY.displaceableFrac` (10 %); else CPU_PRIORITY. Existing RT-07 bands read displaceable consumption:
+  host room < 85 % rules capacity out; host busy ≥ 95 % and displaceable < 5 % leave capacity alone; otherwise both.
+- Displaceable: captured pool engines excluding SYSTEM/SYSSTC, the hurt workload's own transactions (by workload,
+  not shared class), its regions' completion-proportioned base CPU and its dependency roles (not their entire mixed
+  STC class). Also exclude other SLA periods/server roles at risk: PCT attainment < target + ¼ of remaining percentage,
+  AVG RT > 0.8 × budget (or failures); critical running batch during the game's night (18:00 to the day end) when
+  the batch view's projected critical end is within `CPU_SPLIT.atRiskMargin` (¼) of the night window before the
+  deadline (03:00 for the default 06:00 deadline). Importance does not enter.
+  APPROX: whole happy classes count, workload CPU is apportioned across its class periods by observed use, and shared
+  region base CPU by completions; these are not predictions of WLM's next adjustment.
+
+All thresholds are FICTIONAL and live in `content/incidents.ts`. The basis records host, pool, normalized excess
+shares, displaceable share and up to three largest eligible class consumers. Consumer percentages are the full
+class's share of captured pool APPL (not its eligible subset); names include contributing workload ids, so a runaway
+sharing the hurt class is visible. Snapshot exclusions in `subjects.cpu` are read by both truth and the CPU_PRIORITY
+proof predicate; proof scales a mixed row to its eligible part. Hours without a host wait ledger keep the old
+first-full-host/busiest-CPC and importance-donor split. Old bases retain `donorPct`; readers prefer `displaceablePct`.
+Old proofs without a consumer snapshot conservatively exclude own/server/system classes. A loaded partial RT-16
+hour uses only observed grants until the next full hour (no backfill).
 
 The healthy baseline is an EWMA (×0.8 per hour) folded only from closed hours in which the workload met its SLA
 *and* no card's footprint reached it (direct or collateral): a card's own effect must not become the new normal, or a
@@ -2013,7 +2036,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Bottlenecks (WT-10): plans are built for CPU and then zIIP delay, largest first, each when it is at least 15 % of the managed delay (CPU, zIIP, I/O in velocity, storage, queue; WLM Services p.148 works delays largest first; SG24-6472 p.63–64), so waits and capping never outvote CPU delay; a period mostly waiting logs `mostly waiting, CPU delay n %: not WLM-fixable` (APPROX: only CPU and zIIP are fixed by policy adjustment). Only periods missing their goals are receivers: IBM's last case, a period meeting its goal chosen by largest PI (SG24-6472 p.63), is not modelled, so the order is not tuned while every period meets its goal (APPROX). A receiver whose every move was rejected is skipped for 3 policy adjustment cycles while more than five goal periods on the image miss their goals (WLM Services p.145 gives the clock but not its length; Sinram, SHARE 2010 session 7777 p.11 gives 3 cycles and the z/OS 1.11 exception; APPROX: the count is per image), and is not skipped at five or fewer (RF-03); a period with under 2 % managed delay is not assessed (p.144), and proposal projections are bounded at 12 per image per interval. Atomic plans (WT-08) retain safe intermediate UP/CARRY/DONOR moves and commit only with whole-plan receiver value; one carry and a bounded join-and-split repair, at most six retained moves (APPROX; SG24-6472-03 p.67–68). Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL). The ladder, CPU protection and the donor pool are of holders (WT-09): a CICS transaction class served by TRANSACTION regions is a goal receiver or donor, and its server period moves (row "CICS region management"). No trial puts a holder below work missing its goal with a backlog the projection bounded (APPROX, the same guard of the sim's bound) |
-| Incident ground truth (mechanism, trigger) | **Game rule** | Trigger by card footprint (RT-14: resource, reach, direct set; direct before collateral, fresh before background, then overlap). Mechanism: largest response-time component growth against baseline; CPU split by host-LPAR capping (capped in ≥ 5 % of the hour's ticks), then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work, though since WT-07 a happy more important period can donate too; RT-16's displaceable CP replaces this) |
+| Incident ground truth (mechanism, trigger) | **Game rule** | Trigger by RT-14 card footprint. Largest delay-group growth chooses the mechanism; RT-32 judges CPU on the largest positive host excess, on zIIP when its wait dominates. Only that image's ≥ 5 %-of-ticks cap is CAPPING (resource-group refinement is RT-33); otherwise capacity at CPC ≥ 90 % or image ≥ 95 %, with displaceable pool use < 10 %. SYSTEM/SYSSTC, own workload/region/server CPU and SLA/batch-at-risk work are excluded, regardless of importance. Co-host ≥ ⅓ contributes a verdict; ≥ ⅔ imbalance with a roomy peer accepts ROUTING; blocked zIIP overflow with CP room is priority/policy. Hour averages, margins and lines are FICTIONAL; proportional shared-region/period accounting and whole happy consumers are APPROX. Basis and proof share frozen consumer exclusions (§10); old hours retain legacy donors |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |

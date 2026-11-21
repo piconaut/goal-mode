@@ -20,6 +20,8 @@ import {
 import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
 import { allWorkloads, isNewWorkload } from '../workloads';
 import { incidentSubjects } from '../evidence';
+import { snapshotCpuConsumers } from '../displaceable';
+import { cpuAlternates } from '../sla';
 import type { GameContent } from './shared';
 import { addGroupedIncident } from './grouping';
 import { toolOn } from './shared';
@@ -277,15 +279,28 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
-      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
-      const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(h, hosts) : null;
+      const subjects = snapshotCpuConsumers(r, scenario, h, w, workloads, incidentSubjects(r, scenario, w.id, r.day));
+      const cpu = { workloadId: w.id, baseline: baselines[w.id] ?? {}, subjects,
+        // IIPHONORPRIORITY=NO means CPs never examine eligible work:
+        // SA23-1380-60 PDF p.430 (printed 394). A service class with Honor Priority=NO gets no CP help
+        // (SC34-2662-60 PDF p.121 (printed 101)). APPROX: the hurt class alone decides; a CICS region overflows
+        // unless all its transaction classes say NO (PDF p.122 (printed 102)), which this judge does not check.
+        overflowBlockedHosts: hosts.filter((host) => {
+          const cls = classify(r.sim.wlm.definition, { ...w.work, SY: host.lparId }).serviceClass;
+          return r.sim.config.systems.find((s) => s.lparId === host.lparId)?.iipHonorPriority === false ||
+            r.sim.wlm.definition.classes.find((c) => c.id === cls)?.honorPriority === false;
+        }).map((h) => h.lparId),
+      };
+      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts, cpu);
+      const cpuSide = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'].includes(mechanism);
+      const basis = cpuSide ? capacityBasis(h, hosts, cpu) : null;
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
-      const subjects = incidentSubjects(r, scenario, w.id, r.day);
       const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });
       const ctx: TruthContext = {
         workloadId: w.id, mechanism, trigger, hour: h, events: r.events, basis, hosts,
         servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew,
+        ...(cpuSide ? { cpu: cpuAlternates(h, hosts, cpu) } : {}),
       };
       const { accepted, notes } = acceptedAnswers(ctx);
       const truth: IncidentTruth = {

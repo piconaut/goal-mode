@@ -27,6 +27,7 @@ export interface TruthContext {
   card?: ActiveEvent;
   /** The capacity figures behind a CPU verdict, as recorded on the incident. */
   basis?: CapacityBasis | null;
+  cpu?: { mechanisms: Mechanism[]; overflowBlocked: boolean };
   /** The window the cards must overlap: the incident's hour, or a batch night (18:00 to the day end). */
   window?: { startTick: number; endTick: number };
   /** The images the work runs on, for the cause's host. */
@@ -108,20 +109,23 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     : undefined;
   if (capCard) offerMechanism('CPU_CAPACITY', `${capCard.name} lowered the processor's capacity`);
 
-  // The §4.3 bands: the evidence does not separate capacity from priority, so both are accepted. Measured against
-  // the hour-average basis the verdict used (APPROX: its donor share stands in for §4.3's displaceable CPU, RT-32).
+  // APPROX: hour-average displaceable CPU, not a prediction of a WLM move. Old incidents retain donorPct.
   const b = ctx.basis;
   if (b && (ctx.mechanism === 'CPU_CAPACITY' || ctx.mechanism === 'CPU_PRIORITY')) {
     const hostPct = Math.max(b.cpcBusyPct, b.lparBusyPct);
     const hostFull = hostPct >= 100 * CPU_BANDS.hostFullFrac;
     const hostRoom = hostPct < 100 * CPU_BANDS.hostRoomFrac;
-    const donorRoom = b.donorPct < 100 * CPU_BANDS.donorRoomFrac;
-    const where = `${pct(hostPct)} busy with ${pct(b.donorPct)} of the CP displaceable`;
+    const share = b.displaceablePct ?? b.donorPct;
+    const donorRoom = share < 100 * CPU_BANDS.displaceableRoomFrac;
+    const where = `${pct(hostPct)} busy with ${pct(share)} of the ${b.pool ?? 'CP'} displaceable`;
     // A row that clearly says one side keeps the other answer out: a host with room rules out capacity, and capacity
     // is the only answer when the host was full with almost nothing displaceable. Everywhere between, both hold.
     if (ctx.mechanism === 'CPU_PRIORITY' && !hostRoom) offerMechanism('CPU_CAPACITY', `${where}: the machine may have been the constraint`);
     if (ctx.mechanism === 'CPU_CAPACITY' && !(hostFull && donorRoom)) offerMechanism('CPU_PRIORITY', `${where}: the policy may have been able to serve it`);
   }
+
+  for (const m of ctx.cpu?.mechanisms ?? []) offerMechanism(m, m === 'ROUTING' ? 'one host carried at least two thirds of the CPU excess while another had room' : 'a substantial co-host contributed this CPU verdict');
+  if (ctx.cpu?.overflowBlocked || b?.overflowBlocked) offerTrigger('POLICY', 'zIIP work could not overflow while the host CPs had room');
 
   // Server waits: when a transaction class misses its goal, WLM finds the regions serving it through the topology and
   // helps the ones that measured delays (SG24-7621 printed p.81 §3.5, p.126 §3.31; docs/research.md), so a server held
