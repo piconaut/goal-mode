@@ -479,6 +479,19 @@ describe('proofs from replayed incidents (RT-13)', () => {
     expect(consumer(job('UNKNOWN'))).toBe(false);
   });
 
+  it('reads a batch class CP row against the image CPs on a zIIP-judged incident', () => {
+    // PROD1 has 6 CPs and 2 zIIPs: 30 % of one engine is 15 % of the zIIPs but only 5 % of the CPs.
+    const inc = { ...fixtureIncident(fixtureRun, 'CICS', truthOf('CPU_PRIORITY', 'BATCH_OVERLAP')),
+      basis: { lparId: 'PROD1', cpcId: 'CPCA', cpcBusyPct: 100, lparBusyPct: 100, donorPct: 0, full: false, pool: 'ZIIP' as const } };
+    const batchRow = (value: number): EvidencePin => ({
+      id: 5001, source: 'WLMGL', metric: 'APPL', subject: 'BATCHPRD#1', system: 'PROD1', tick: fixtureRun.sim.rmf.intervals.at(-1)!.endTick,
+      value, text: 'batch',
+    });
+    const batchRunning = (p: EvidencePin) => judgeProof(fixtureRun, MIDWEST, [inc], 'CPU_PRIORITY', 'BATCH_OVERLAP', [p]).trigger.predicates[1]!.met;
+    expect(batchRunning(batchRow(30))).toBe(false);
+    expect(batchRunning(batchRow(61))).toBe(true);
+  });
+
   it('gives an open-hour Db2 101 cost pin the same hour yesterday as its rate baseline', () => {
     const { pins } = pinAll(advance(day2, MIDWEST, content, 120), [{ source: 'DB2', hour: 'current', workloadId: 'MOBILE', metric: 'CPU_VS_BASE' }]);
     expect(pins[0]!.rate!.baseline).toBeGreaterThan(0);
