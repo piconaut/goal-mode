@@ -521,6 +521,25 @@ Sources of accepted answers:
 
 ### 4.3 The CPU split
 
+**Built in RT-32:** host excess is `max(0, cp + ziip + backlog − workload CPU baseline × completions)`;
+largest wins (image-id ties). Co-host share ≥ ⅓ adds its verdict; ≥ ⅔ imbalance with another host's CP busy < 85 %
+adds ROUTING. zIIP wait > CP + backlog selects zIIP busy/use. Blocked overflow (system or class setting) with image
+CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394)). Image capping is only
+tested on the judged host; resource-group/server CAPPING below remains **RT-33, not built**.
+
+Displaceable pool use includes CP + IIPCP on CP, native zIIP on zIIP, and excludes system work, own transactions by
+workload, completion-proportioned shared region base CPU, dependency roles and other SLA work at risk. The PCT
+threshold is target + ¼ of the remaining headroom (points); the AVG limit is 0.8 × RT target; during the batch
+window, running critical jobs are protected
+when `sim.batch.projectedCriticalEndSec` (the batch view forecast) reaches ¾ of `batchDeadlineSec`.
+`CPU_SPLIT.coHostFrac = ⅓`, `atRiskMargin = ¼`; primary lines remain 90/95 % busy and < 10 % displaceable, RT-07
+bands remain 85/95 % and < 5 %. These are FICTIONAL game rules; period/region apportionment and counting whole happy
+consumers are APPROX. Truth and proof read the same frozen `subjects.cpu` exclusions. Top consumers are eligible
+classes named with workload ids, with their full WLMGL APPL pool shares; mixed rows are scaled to the eligible
+subset for proof. Old hours without wait ledgers retain the legacy host/donor rule, old bases read `donorPct`, and
+old proofs conservatively exclude own/server/system classes when no consumer snapshot exists. Partial loaded
+hours use only RT-16 observations without backfill. Batch-night judging remains the old rule pending RT-21.
+
 For a CPU-family primary, or a `serverCpu` dependency:
 
 1. **Host.** Record CPU wait per workload per LPAR (reporting-only; `failByWorkloadLpar` is the precedent). Judge on
@@ -557,10 +576,12 @@ For a CPU-family primary, or a `serverCpu` dependency:
    learned, always adds CPU_CAPACITY to the accepted set. The numbers are FICTIONAL and belong in
    `content/incidents.ts`.
 
-Expected on the repros (the model is not implemented, so these are not runs): R-7 MOBILE → primary CPU_PRIORITY or
-CPU_CAPACITY by the displaceable share once Db2 is excluded, with both accepted (band, and the card reduces capacity); CARDAUTH → DEPENDENCY with CPU_CAPACITY and
-CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores 5 on both. R-13 → CPU_PRIORITY/POLICY
-(batch is displaceable). R-2 → CPU_CAPACITY primary at CPC 99 % with Db2 excluded, priority accepted in the band.
+Built on the repros (RT-32): R-13 is `CPU_PRIORITY/POLICY` on days 0, 5 and 8, with 83.1, 79.5 and 80.4 % of the
+judged pool displaceable (overnight batch and happy CICS work). R-2 judges PROD2 (PROD1 carries none of the excess);
+priority is primary and capacity is accepted in the band, because excluding Db2 still leaves the same-class ad-hoc
+query and the happy CICS regions displaceable (32.6 %). R-7 was not replayed: its 12 % donor reading included Db2, so
+the displaceable share depends on what else was happy that hour. CARDAUTH → DEPENDENCY with CPU_CAPACITY and
+CPU_PRIORITY accepted, both in one group (§4.5); the player's D12 answer scores 5 on both.
 
 ### 4.4 Triggers
 
