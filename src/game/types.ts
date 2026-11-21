@@ -148,7 +148,8 @@ export interface HourAcc {
   lparBusyById: Record<string, number>;
   /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
   cpByImportance: Record<string, number[]>;
-  // RT-16 reporting only. Old hours lack these; accumulation starts at the first new tick (no backfill).
+  // RT-16 report ledgers (read by RT-32's game judge, never by the sim). Old hours lack these;
+  // accumulation starts at the first new tick (no backfill).
   // A loaded mid-hour remains partial until the next full hour; merged nights likewise include only observed data.
   /** Workload → image → completion-weighted wait seconds and completions. */
   cpuWaitByWorkloadLpar?: Record<string, Record<string, CpuWait>>;
@@ -175,16 +176,24 @@ export interface HourAcc {
 /** The figures the capacity decision used, for the verdict the player is shown. Kept on the incident when the
  * truth is set: the RMF intervals don't carry the image measure, and the routing can change before the RCA. */
 export interface CapacityBasis {
-  /** The image whose numbers decided: one that cleared a line, else the busiest CPC. */
+  /** Largest CPU-wait excess; legacy hours choose a full host, else the busiest CPC. */
   lparId: string;
   cpcId: string;
-  /** Hour-average CPC general-CP busy, %. */
+  /** Hour-average CPC busy on `pool` (CP for old incidents), %. */
   cpcBusyPct: number;
-  /** Hour-average delivered ÷ available CP of the image, %, the measure the rule uses. */
+  /** Hour-average delivered ÷ available engines of the image's judged pool, %. */
   lparBusyPct: number;
-  /** Share of the image's CP that went to less important work, %. */
+  /** Legacy donor reading: share of the image's CP that went to less important work, %. Kept for saved incidents. */
   donorPct: number;
-  /** A capacity line was reached and the donor test passed: the verdict is CPU_CAPACITY. */
+  /** Absent on saved incidents predating RT-32; those retain their CP/donor reading. */
+  pool?: 'CP' | 'ZIIP';
+  excessSharePct?: number;
+  excessSharesPct?: Record<string, number>;
+  displaceablePct?: number;
+  topConsumers?: { name: string; kind: 'class' | 'job' | 'space'; pct: number; scKey?: string }[];
+  /** zIIP could not overflow despite CP room. */
+  overflowBlocked?: boolean;
+  /** A capacity line was reached with little displaceable use: the verdict is CPU_CAPACITY. */
   full: boolean;
 }
 
@@ -204,6 +213,15 @@ export interface IncidentSubjects {
   servers: { jobname: string; lparId: string }[];
   /** The region classes among `classes` (RT-12): a row on one of them is the server's, not the hurt work's. */
   serverClasses: string[];
+  /** Frozen RT-32 consumer accounting: proof and truth read the same exclusions after policy edits. */
+  cpu?: Record<string, Record<'CP' | 'ZIIP', CpuConsumers>>;
+}
+
+export interface CpuConsumers {
+  /** Pool engines averaged across the observed hour ticks. */
+  engines: number;
+  classes: Record<string, { used: number; displaceable: number; workloads: string[] }>;
+  jobs: Record<string, { used: number; displaceable: number }>;
 }
 
 /** The answers a fair expert could defend from visible data, always including the primary (RT-07): one incident's, or

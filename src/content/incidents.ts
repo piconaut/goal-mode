@@ -15,8 +15,8 @@ export const CPU_CAPACITY = {
   /** Hour-average share of its available CP (online logical CPs, entitlement plus white space) an image
    * used from which it was full on its own, whatever its CPC shows: PR/SM can't give it more. */
   lparBusyFrac: 0.95,
-  /** Below this share of the image's CP going to less important work, WLM had nothing left to donate. */
-  donorFrac: 0.1,
+  /** Below this displaceable share of the image's pool, a full host is judged capacity. */
+  displaceableFrac: 0.1,
 } as const;
 
 // FICTIONAL (docs/rca-design.md §4.3, RT-07): where the evidence does not separate capacity from priority, both are
@@ -26,6 +26,12 @@ export const CPU_BANDS = {
   hostFullFrac: 0.95,
   /** Below this, priority is clearly the answer: there was room on the machine. */
   hostRoomFrac: 0.85,
-  /** Below this share of the image's CP going to displaceable work, capacity is clearly the answer. */
-  donorRoomFrac: 0.05,
+  /** Below this share of the judged image's pool going to displaceable work, capacity is clearly the answer. */
+  displaceableRoomFrac: 0.05,
+} as const;
+
+// FICTIONAL: a substantial second host contributes a verdict; protect SLA work near its target.
+export const CPU_SPLIT = {
+  coHostFrac: 1 / 3,
+  atRiskMargin: 0.25,
 } as const;
