@@ -20,10 +20,10 @@ const CHECKED_EXT = /\.(ts|tsx|md)$/;
 const PAGE = String.raw`pp?\.\s?\d+(?:\s?[–-]\s?\d+)?`;
 // A run of page tokens joined by commas or "and": "p.147, p.255", "pp.62–63".
 const RUN = new RegExp(String.raw`\b${PAGE}(?:\s*(?:,|and|&)\s*(?:${PAGE}|\d+(?:\s?[–-]\s?\d+)?))*`, 'g');
-// `printed` counts only after a PDF label on the same line ("PDF p.201 (printed p.183)"): a printed page alone is
-// the number the rule replaces.
+// `printed` labels only the parenthesis directly after a PDF page run, never another citation later in the prose.
+const PRINTED_AFTER_PDF = new RegExp(String.raw`\bPDF\s+${RUN.source}\s*\(\s*printed\s*$`);
 function labelledBefore(before: string): boolean {
-  return /\bPDF\s*$/.test(before) || (/\bprinted\s*$/.test(before) && /\bPDF\b/.test(before));
+  return /\bPDF\s*$/.test(before) || PRINTED_AFTER_PDF.test(before);
 }
 // "page 12", "Pages 12–13" in prose; `--page 12` (pdf_find.py) and `#page=12` (links) are not citations.
 const PAGE_WORD = /(?<![-#\w])\b[Pp]ages?\s\d+(?:\s?[–-]\s?\d+)?/g;
@@ -36,11 +36,6 @@ function stripCode(text: string, file: string): string {
 
 // A comment or quote marker opening a wrapped line: "PDF" at the end of the line above still labels "p.N" after it.
 const LEAD = /^\s*(?:\/\/+|\*+|>+)?\s*/;
-// Across a line break, `printed` counts only after a PDF-labelled page ("… PDF p.201" / "(printed p.183)"): any "PDF"
-// word on the line above would otherwise pass a bare printed page below it.
-function labelledAcross(joined: string): boolean {
-  return /\bPDF\s*$/.test(joined) || /\bPDF\s*pp?\.\s?\d+.*\bprinted\s*$/.test(joined);
-}
 
 /** `prev` is the line above in the file: a label wrapped onto it ("… PDF" / "p.540 (printed 500)") still counts. */
 export function checkLine(text: string, file = 'x.ts', prev?: string): string[] {
@@ -48,7 +43,7 @@ export function checkLine(text: string, file = 'x.ts', prev?: string): string[] 
   const above = prev === undefined ? '' : `${stripCode(prev, file).trimEnd()} `;
   const labelled = (index: number | undefined) => {
     const before = src.slice(0, index);
-    return labelledBefore(before) || (above !== '' && labelledAcross(above + before.replace(LEAD, '')));
+    return labelledBefore(before) || (above !== '' && labelledBefore(above + before.replace(LEAD, '')));
   };
   const problems: string[] = [];
   for (const m of src.matchAll(RUN)) {

@@ -13,6 +13,22 @@ describe('citation gate: checkLine', () => {
     expect(checkLine('SG24-6472-03 PDF p.201 (printed p.183)')).toEqual([]);
   });
 
+  it.each([
+    'WLM Planning PDF p.99 (printed 79); RMF printed p.5',
+    'WLM Planning PDF p.99 printed p.5',
+    'WLM Planning PDF p.99 (printed 79) (printed p.5)',
+    'WLM Planning PDF p.99 (see printed p.5)',
+  ])('does not lend a PDF label to an unrelated printed citation: %s', (text) => {
+    expect(checkLine(text)).toEqual(['bare "p.5": write "PDF p.5 (printed …)"']);
+  });
+
+  it('scopes a wrapped printed citation to the directly preceding PDF page run', () => {
+    expect(checkLine('RMF printed p.5', 'a.md', 'WLM Planning PDF p.99 (printed 79);')).toHaveLength(1);
+    expect(checkLine('(printed p.5)', 'a.md', 'WLM Planning PDF p.99; RMF')).toHaveLength(1);
+    expect(checkLine('(printed p.79)', 'a.md', 'WLM Planning PDF p.99')).toEqual([]);
+    expect(checkLine('// (printed pp.125, 128–129)', 'a.ts', '// WLM Services PDF p.145, p.148–149')).toEqual([]);
+  });
+
   it('treats a range or list after one PDF label as labelled', () => {
     expect(checkLine('WLM Services PDF p.145, p.148–149 (printed 125, 128–129)')).toEqual([]);
     expect(checkLine('PDF pp.62–63')).toEqual([]);
