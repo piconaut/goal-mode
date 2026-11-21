@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-21: CL-59 PR gate `citations` (`tools/ci/citations.ts`): added lines may not carry a bare page citation, and a `PDF p.N` link label must match its `#page=` (#PRNUM).
+- 2026-11-21: CL-59 PR gate `citations` (`tools/ci/citations.ts`): added lines may not carry a bare page citation, and a `PDF p.N` link label must match its `#page=` (#439).
 - 2026-11-21: BACKLOG CL-59…CL-62, a smaller scope for the page-citation rule than the closed #436: a CI check on new citations, the research.md ledger, one wrong pools.ts citation, a note on the archived audit (#437; moved to list `page-citations` in #438).
 - 2026-11-20: CLAUDE.md citation convention: PDF page index, labelled, printed page in parentheses, edition named (#435).
 - 2026-11-20: RF-09 a server role whose own cap left it under 10 % of its demand carries only its granted share: its dependents complete that share of their arrivals and the rest time out, their CPU falling with completions (Db2 MSTR/DBM1 hold commits and getpages); the bounded delay stays above the threshold and for image-wide shortages (SPEC §5.6, §17, docs/research.md) (#433).
