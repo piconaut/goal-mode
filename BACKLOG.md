@@ -193,7 +193,7 @@ panel shows the same text.
 
 Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
 (CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
-clock-hour average of every tick (87.1 %). Every CPU line and every RT-16 band is measured on that average
+clock-hour average of every tick (87.1 %). Every CPU line and every RT-32 band is measured on that average
 (docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
 in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
 use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
