@@ -5,17 +5,17 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
-import { CAPPING, CPU_CAPACITY } from '../content/incidents';
+import { CAPPING, CPU_CAPACITY, CPU_BANDS, CPU_SPLIT } from '../content/incidents';
+import { displaceable } from './displaceable';
 import { ALL_MECHANISMS } from '../content/footprint';
 import { regionKey } from './footprint';
-import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, Mechanism, Trigger, WorkloadHour } from './types';
+import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, IncidentSubjects, Mechanism, Trigger, WorkloadHour } from './types';
 import { sumCapSamples, sumCpuGrants, sumCpuWaits, sumRecords } from './hourAccounting';
 
 export const BASELINE_DECAY = 0.8;
 
-/** Importance rank of a service class period for donor accounting: SYSTEM/SYSSTC 0, goal classes 1–5,
- * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors; since WT-07
- * it also takes from happy more important work, which this does not count (RT-32). */
+/** Importance rank for legacy hour accounting: SYSTEM/SYSSTC 0, goal classes 1–5, discretionary/SYSOTHER 6.
+ * APPROX: old hours without RT-16 grants retain the importance-only split; RT-32 does not use it for new hours. */
 export function importanceRank(def: ServiceDefinition, scKey: string): number {
   const [cls, n] = scKey.split('#');
   if (cls === SYSTEM || cls === SYSSTC) return 0;
@@ -91,6 +91,7 @@ export function mechanismOf(
   baseline: Record<string, number>,
   hour: HourAcc,
   hosts: readonly IncidentHost[],
+  ctx?: CpuJudgement,
 ): Mechanism {
   let best = 'CPU';
   let bestExcess = -Infinity;
@@ -102,23 +103,50 @@ export function mechanismOf(
   }
   if (best !== 'CPU') return best as Mechanism;
   // Only capping of the images this workload runs on counts.
-  if (hosts.some((h) => cappedForHour(hour, h.lparId))) return 'CAPPING';
-  // Capacity only when an image was full (its CPC was, as PR/SM shares engines only within one machine, or
-  // the image used all the CP it could get, e.g. every online logical CP) and WLM had little less-important
-  // work there to take CPU from; otherwise the policy (importance, goals, weights) could have served this work.
-  return capacityBasis(hour, hosts)?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
+  const judged = judgedCpuHosts(hour, hosts, ctx);
+  if ((judged.length ? judged.slice(0, 1) : hosts).some((h) => cappedForHour(hour, h.lparId))) return 'CAPPING';
+  // Game rule: a full judged pool with little displaceable use is capacity, otherwise priority.
+  return capacityBasis(hour, hosts, ctx)?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
 }
 
-export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): CapacityBasis | null {
+export interface CpuJudgement {
+  workloadId: string;
+  baseline: Record<string, number>;
+  subjects: IncidentSubjects;
+  overflowBlockedHosts?: readonly string[];
+}
+
+/** APPROX: one workload-wide CPU baseline, apportioned by observed host completions. Negative excess is zero. */
+export function judgedCpuHosts(hour: HourAcc, hosts: readonly IncidentHost[], ctx?: CpuJudgement): (IncidentHost & { excessSharePct: number })[] {
+  const waits = ctx && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId];
+  if (!waits || !Object.keys(waits).length) return [];
+  const base = ['cpuQueue', 'ziipQueue', 'backlogWait'].reduce((s, k) => s + (ctx.baseline[k] ?? 0), 0);
+  const rows = hosts.map((h) => {
+    const w = waits[h.lparId];
+    return { ...h, excess: w ? Math.max(0, w.cp + w.ziip + w.backlog - base * w.completions) : 0 };
+  });
+  const total = rows.reduce((s, h) => s + h.excess, 0);
+  if (total <= 0) return [];
+  return rows.sort((a, b) => b.excess - a.excess || (a.lparId < b.lparId ? -1 : a.lparId > b.lparId ? 1 : 0))
+    .map((h) => ({ ...h, excessSharePct: 100 * h.excess / total }));
+}
+
+export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[], ctx?: CpuJudgement): CapacityBasis | null {
   const avg = (sum: number | undefined) => (hour.ticks > 0 ? (sum ?? 0) / hour.ticks : 0);
   let best: CapacityBasis | null = null;
-  for (const h of hosts) {
-    const cpc = avg(hour.cpcBusyById[h.cpcId]);
-    const lpar = avg(hour.lparBusyById[h.lparId]);
+  const judged = judgedCpuHosts(hour, hosts, ctx);
+  for (const h of judged.length ? judged.slice(0, 1) : hosts) {
+    const wait = ctx && hour.cpuWaitByWorkloadLpar?.[ctx.workloadId]?.[h.lparId];
+    const pool = judged.length && wait && wait.ziip > wait.cp + wait.backlog ? 'ZIIP' : 'CP';
+    const cpc = avg(pool === 'CP' ? hour.cpcBusyById[h.cpcId] : hour.ziipBusyById?.[h.cpcId]);
+    const lpar = avg(pool === 'CP' ? hour.lparBusyById[h.lparId] : hour.ziipLparBusyById?.[h.lparId]);
     const byImp = hour.cpByImportance[h.lparId] ?? [];
     const total = byImp.reduce((a, x) => a + x, 0);
     const donor = byImp.slice(h.importance + 1).reduce((a, x) => a + x, 0);
     const donorFrac = total > 0 ? donor / total : 0;
+    const movable = ctx && judged.length ? displaceable(ctx.subjects, h.lparId, pool) : null;
+    const share = movable ?? donorFrac;
+    const overflowBlocked = pool === 'ZIIP' && !!ctx?.overflowBlockedHosts?.includes(h.lparId) && avg(hour.lparBusyById[h.lparId]) < CPU_BANDS.hostRoomFrac;
     const busy = cpc >= CPU_CAPACITY.cpcBusyFrac || lpar >= CPU_CAPACITY.lparBusyFrac;
     const b: CapacityBasis = {
       lparId: h.lparId,
@@ -126,12 +154,42 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): Ca
       cpcBusyPct: 100 * cpc,
       lparBusyPct: 100 * lpar,
       donorPct: 100 * donorFrac,
-      full: busy && (total <= 0 || donorFrac < CPU_CAPACITY.donorFrac),
+      full: !overflowBlocked && busy && share < CPU_CAPACITY.displaceableFrac,
+      // A judged hour records its share only when the snapshot exists: a partial hour without consumer grants keeps
+      // the legacy donor reading (readers prefer displaceablePct when it is present).
+      ...(judged.length ? {
+        pool, excessSharePct: judged[0]!.excessSharePct,
+        excessSharesPct: Object.fromEntries(judged.map((h) => [h.lparId, h.excessSharePct])),
+        overflowBlocked,
+        ...(movable !== null ? {
+          displaceablePct: 100 * movable,
+          topConsumers: Object.entries(ctx!.subjects.cpu![h.lparId]![pool].classes)
+            .filter(([, r]) => r.displaceable > 0)
+            .sort((a, b) => b[1].used - a[1].used || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).slice(0, 3)
+            .map(([scKey, r]) => ({ name: `${scKey}${r.workloads.length ? ` (${r.workloads.join(', ')})` : ''}`, scKey, kind: 'class' as const,
+              pct: 100 * r.used / (ctx!.subjects.cpu![h.lparId]![pool].engines || 1) })),
+        } : {}),
+      } : {}),
     };
     // A host that made the verdict capacity wins; otherwise the busiest CPC explains the policy verdict best.
     if (!best || (b.full && !best.full) || (b.full === best.full && b.cpcBusyPct > best.cpcBusyPct)) best = b;
   }
   return best;
+}
+
+/** Other substantial hosts contribute their verdict; imbalance is independently visible in host wait shares. */
+export function cpuAlternates(hour: HourAcc, hosts: readonly IncidentHost[], ctx: CpuJudgement): { mechanisms: Mechanism[]; overflowBlocked: boolean } {
+  const judged = judgedCpuHosts(hour, hosts, ctx);
+  const mechanisms: Mechanism[] = [];
+  let overflowBlocked = false;
+  for (const h of judged.filter((h, i) => i === 0 || h.excessSharePct >= 100 * CPU_SPLIT.coHostFrac)) {
+    const basis = capacityBasis(hour, [h], ctx);
+    overflowBlocked ||= basis?.overflowBlocked ?? false;
+    mechanisms.push(cappedForHour(hour, h.lparId) ? 'CAPPING' : basis?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY');
+  }
+  if (judged[0] && judged[0].excessSharePct >= 100 * (1 - CPU_SPLIT.coHostFrac) && judged.slice(1).some((h) =>
+    hour.ticks > 0 && (hour.lparBusyById[h.lparId] ?? 0) / hour.ticks < CPU_BANDS.hostRoomFrac)) mechanisms.push('ROUTING');
+  return { mechanisms, overflowBlocked };
 }
 
 /** An incident whose hour failed its SLA only through failures (with none it would have met it) gets the

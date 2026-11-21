@@ -24,26 +24,32 @@ function verdictLine(inc: Incident): string | null {
   const both = mechanisms.includes('CPU_CAPACITY') && mechanisms.includes('CPU_PRIORITY');
   const cpcLine = Math.round(CPU_CAPACITY.cpcBusyFrac * 100);
   const lparLine = Math.round(CPU_CAPACITY.lparBusyFrac * 100);
-  const donorLine = Math.round(CPU_CAPACITY.donorFrac * 100);
+  const donorLine = Math.round(CPU_CAPACITY.displaceableFrac * 100);
+  const share = b.displaceablePct ?? b.donorPct;
+  const pool = b.pool ?? 'CP';
+  const consumers = (b.topConsumers ?? []).map((c) => `${c.name} ${pct(c.pct)}`).join(', ');
+  const prefix = `${b.lparId}${b.excessSharePct !== undefined ? ` carried ${pct(b.excessSharePct)} of the CPU wait excess` : ''}: ${pool} pool${consumers ? `; consumers ${consumers}` : ''}. `;
   const cpcFull = b.cpcBusyPct >= 100 * CPU_CAPACITY.cpcBusyFrac;
   const lparFull = b.lparBusyPct >= 100 * CPU_CAPACITY.lparBusyFrac;
   const cpcText = `CPC ${b.cpcId} averaged ${pct(b.cpcBusyPct)} busy`;
-  const lparText = `LPAR ${b.lparId} used ${pct(b.lparBusyPct)} of the CP it could get`;
+  const lparText = `LPAR ${b.lparId} used ${pct(b.lparBusyPct)} of the ${pool} it could get`;
+
+  if (b.overflowBlocked) return `${prefix}${cpcText}; ${pct(share)} displaceable. zIIP work could not overflow despite CP room: policy or configuration prevented CP help.${both ? ' The zIIP pool was also at its limit, so either CPU answer scores.' : ''}`;
 
   if (mech === 'CPU_CAPACITY') {
     const where = cpcFull ? `${cpcText} (capacity line ${cpcLine} %)` : `${lparText} (capacity line ${lparLine} %)`;
-    const figures = `${where}, and less important work had ${pct(b.donorPct)} of the CP against the ${donorLine} % donor line`;
+    const figures = `${prefix}${where}, and displaceable work had ${pct(share)} of the ${pool} against the ${donorLine} % displaceable line`;
     return both
       ? `${figures}: the machine was at its limit, and the hour cannot settle capacity against priority, so either answer scores.`
       : `${figures}: the machine, not the policy, was short.`;
   }
   if (!cpcFull && !lparFull) {
     return both
-      ? `${cpcText}, below the ${cpcLine} % capacity line, with ${pct(b.donorPct)} of the CP displaceable: the hour does not settle capacity against priority, so either answer scores.`
-      : `${cpcText}, below the ${cpcLine} % capacity line: capacity was not the constraint.`;
+      ? `${prefix}${cpcText}, below the ${cpcLine} % capacity line, with ${pct(share)} of the ${pool} displaceable: the hour does not settle capacity against priority, so either answer scores.`
+      : `${prefix}${cpcText}, below the ${cpcLine} % capacity line: capacity was not the constraint.`;
   }
   const where = cpcFull ? `${cpcText} (capacity line ${cpcLine} %)` : `${lparText} (capacity line ${lparLine} %)`;
   return both
-    ? `${where}, and ${pct(b.donorPct)} of the CP went to less important work (donor line ${donorLine} %): the policy could have moved CPU, and the machine was at its limit, so either answer scores.`
-    : `${where}, but ${pct(b.donorPct)} of the CP went to less important work (donor line ${donorLine} %): WLM had the CPU to move, so the policy held this work back.`;
+    ? `${prefix}${where}, and ${pct(share)} of the ${pool} was displaceable (displaceable line ${donorLine} %): the policy could have moved CPU, and the machine was at its limit, so either answer scores.`
+    : `${prefix}${where}, but ${pct(share)} of the ${pool} was displaceable (displaceable line ${donorLine} %): WLM had the CPU to move, so the policy held this work back.`;
 }
