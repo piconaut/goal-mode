@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-21: agent RCA playtest (four bots, 8 days each, one per scenario plus Midwest Hard); RT-16 and RT-17 unblocked by the user (Q6, Q7), RT-16 first; findings filed as RT-28 … RT-31, PT-48, PT-49.
+- 2026-11-21: agent RCA playtest (four bots, 8 days each, one per scenario plus Midwest Hard); RT-16 and RT-17 unblocked by the user (Q6, Q7), RT-16 first; findings filed as RT-28 … RT-31, PT-48, PT-49 (#445).
 - 2026-11-21: CL-62 note on the archived WLM audit that its page citations predate the PDF-index rule; list `page-citations` finished and removed (#443).
 - 2026-11-21: CL-61 `src/sim/hw/pools.ts` capping comment names `cappedFrac` as the sim's own measure; RMF PDF p.401 cited only for WLM% (#442).
 - 2026-11-21: CL-60 docs/research.md citations labelled `PDF p.N (printed M)` from each page's footer; labels match their `#page=` links (#441).
