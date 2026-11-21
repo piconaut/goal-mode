@@ -36,6 +36,11 @@ function stripCode(text: string, file: string): string {
 
 // A comment or quote marker opening a wrapped line: "PDF" at the end of the line above still labels "p.N" after it.
 const LEAD = /^\s*(?:\/\/+|\*+|>+)?\s*/;
+// Across a line break, `printed` counts only after a PDF-labelled page ("… PDF p.201" / "(printed p.183)"): any "PDF"
+// word on the line above would otherwise pass a bare printed page below it.
+function labelledAcross(joined: string): boolean {
+  return /\bPDF\s*$/.test(joined) || /\bPDF\s*pp?\.\s?\d+.*\bprinted\s*$/.test(joined);
+}
 
 /** `prev` is the line above in the file: a label wrapped onto it ("… PDF" / "p.540 (printed 500)") still counts. */
 export function checkLine(text: string, file = 'x.ts', prev?: string): string[] {
@@ -43,7 +48,7 @@ export function checkLine(text: string, file = 'x.ts', prev?: string): string[] 
   const above = prev === undefined ? '' : `${stripCode(prev, file).trimEnd()} `;
   const labelled = (index: number | undefined) => {
     const before = src.slice(0, index);
-    return labelledBefore(before) || (above !== '' && labelledBefore(above + before.replace(LEAD, '')));
+    return labelledBefore(before) || (above !== '' && labelledAcross(above + before.replace(LEAD, '')));
   };
   const problems: string[] = [];
   for (const m of src.matchAll(RUN)) {

@@ -49,6 +49,8 @@ describe('citation gate: checkLine', () => {
     expect(checkLine('  p.540 (printed 500)', 'a.md', '  RMF Report Analysis SC34-2665-60')).toHaveLength(1);
     expect(checkLine('see also p.12', 'a.md', 'SG24-6472-03 PDF')).toHaveLength(1);
     expect(checkLine('  p.540', 'a.md')).toHaveLength(1);
+    // "printed" carries over only from a PDF-labelled page, not from any "PDF" word on the line above.
+    expect(checkLine('printed p.183 here', 'a.md', 'The PDF version differs.')).toHaveLength(1);
   });
 
   it('ignores things that are not page citations', () => {
