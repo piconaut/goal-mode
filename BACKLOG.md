@@ -404,22 +404,22 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
 ### CL-30 · Split `policyAdjust`
-`list: cleanup · status: blocked: after PR-19 · priority: low · size: L · area: sim`
+`list: cleanup · status: ready · priority: low · size: L · area: sim`
 
 Source: codebase survey (2026-11-16). `policyAdjust` in `src/sim/wlm/adjust.ts` is about 500 lines (368–868) with
 about 25 closures (`instPi`, `projectionBase`, `runaways`, `backlogCut`, `violatesCpuCritical`, `periodDonor`, `assess`,
 `candidates`, …). Change: build an explicit adjustment context once; move `assess` and the candidate and donor
 selection into their own modules (`src/sim/wlm/adjust/`); move the trace types and `setWlmTraceSink` (lines about
-113–205) and the delay-share helpers (about 24–75) to their own files. No logic change. PR-19 changes donor
-selection in this function, so it goes first. Done when: bench hashes are unchanged; `npm run compare` shows no
+113–205) and the delay-share helpers (about 24–75) to their own files. No logic change. PR-19 changed donor
+selection in this function and has merged (#400). Done when: bench hashes are unchanged; `npm run compare` shows no
 difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unchanged.
 
 ### CL-35 · Split `inspect.ts` by subcommand
-`list: cleanup · status: blocked: after PR-20 · priority: low · size: M · area: tooling`
+`list: cleanup · status: ready · priority: low · size: M · area: tooling`
 
 Source: codebase survey (2026-11-16). `tools/inspect.ts` (923 lines) holds the `dp`, `wlm`, `blame` and `wlm-stats`
 subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}.ts` with a thin dispatcher. PR-20
-edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
+edited `countSystem` in this file and has merged (#411). Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
 
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
