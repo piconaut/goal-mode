@@ -87,7 +87,8 @@ npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
   parentheses and the book's edition: `SG24-6472-03 PDF p.201 (printed 183)`; links use the same index
   (`#page=201`). The PDF index is what `#page=` links, `pdf_find.py --page` and viewers open; printed numbers differ
   from it by a per-book offset and can repeat. Never write a bare `p.N`. Older citations mix both conventions, so an
-  existing one is wrong only when neither reading supports it; relabel it when you touch it.
+  existing one is wrong only when neither reading supports it; relabel it when you touch it. The repo-wide relabel
+  is a scheduled cleanup (BACKLOG.md list `cleanup`, CL-50…CL-60), not part of unrelated work.
 - The *mechanics* should behave like real z/OS. The *numbers* are fictional but plausible.
 - When modelling a behaviour, cite the source (IBM doc, Redbook, or expert publication) in a
   comment or in SPEC §18. Prefer IBM docs, then established practitioners (Watson & Walker

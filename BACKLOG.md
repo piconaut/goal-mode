@@ -404,3 +404,121 @@ which holds for a closed hour (its tick is the interval end) but not for `hour: 
 2190 (12:05) the pin reads "CICS 110 D1 11:05–12:05" for the open hour's row. Change: label the open hour from its
 start (the hour the clock is in), or as "this hour, so far", and keep the closed-hour label as it is. Done when: a
 test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at the open hour's `:00`.
+
+### CL-50 · Page citations: docs/research.md
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: CLAUDE.md "Page citations" (user decision 2026-11-20, #435). A citation gives the PDF page index, labelled,
+with the printed page in parentheses and the book's edition — `SG24-6472-03 PDF p.201 (printed 183)` — and `#page=`
+links use the same index; never a bare `p.N`. This sweep is the scheduled exception to "relabel it when you touch
+it": measured 2026-11-20 (regex `(?<!PDF )\bpp?\.\s?\d+` over tracked `.ts`/`.tsx`/`.md`) there are 1035 bare
+occurrences in 100 files, 15 already labelled. This entry covers `docs/research.md` (262); CL-51…CL-58 cover the
+rest.
+Change: each row's label becomes `Short name PDF p.N (printed M)`. The `#page=N` link is already the PDF index, so
+the number usually stays and only the printed number is added; read the offset from the page footer (verified
+2026-11-20: erbb500 40, ieaw100 20, ieae200 36, sg246472 18, sg247621 12 — re-read it, do not assume). A row whose
+number is a printed page moves to the PDF index. Check the page contains the fact before relabelling; do not convert
+blindly. Done when: no bare `p.N`/`pp.N` remains in the file, every label's PDF index equals its `#page=` link, a
+20-row sample has been re-checked on its page, and `npm run compare` shows every system unchanged.
+
+### CL-51 · Page citations: SPEC.md
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `SPEC.md` has 148 bare citations, mostly in §17's fidelity
+table and §5's prose. Its rows mix conventions: some `p.N` are PDF indices (`p.534` = Table 222) and some are printed
+ones (`p.102` is the REGION rule, at PDF 122), so check each. Change: relabel every citation to
+`Book PDF p.N (printed M)` with the edition, and fix any number that only works as a printed page. Where a row cites a
+page range, give the PDF range and one printed range. Done when: no bare `p.N`/`pp.N` remains in `SPEC.md`, a sample
+of 20 citations across §5 and §17 has been re-checked on the page, the SPEC's own `#page=` links match their labels,
+and `npm run compare` shows every system unchanged.
+
+### CL-52 · Page citations: docs/wlm-design.md and docs/rca-design.md
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `docs/wlm-design.md` has 104 bare citations and
+`docs/rca-design.md` 23; §1 of wlm-design already states the PDF-index convention, but the text still writes bare
+pages. Known case to fix while here: `docs/rca-design.md:71` cites `[WLM Planning p.113](…#page=113)` (already a PDF
+index, printed 93) beside `[SG24-7621 (2010) p.81, p.126](…#page=93)` — two conventions in one row. The SG24 content
+is at PDF 93/138, so it becomes `SG24-7621 (2010) PDF p.93 (printed 81)`, `PDF p.138 (printed 126)` with the link at
+93, and the WLM Planning label gains `(printed 93)`. Change: relabel every citation and make each link's index the
+labelled PDF index. Done when: no bare `p.N`/`pp.N` remains in either file, the relabelled pages have been
+spot-checked (the audit on 2026-11-20 read ~15 of them), and `npm run compare` shows every system unchanged.
+
+### CL-53 · Page citations: src/sim comments
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `src/sim/**` has 140 bare citations in comments. Comment-only
+work, not a model change: no code line changes, so `npm run compare` is the proof, not goldens or a sweep. Change:
+relabel `Book PDF p.N (printed M)` throughout, converting printed numbers (e.g. WLM Planning printed p.102 is PDF
+p.122). `src/sim/wlm/eval/results.ts:104` cites pp.539–540 for the RMF delay-sample definition its APPROX diverges
+from, which is right but needs the PDF/printed labels. Done when: no bare `p.N`/`pp.N` remains under `src/sim`,
+`git diff` shows only comment lines, and `npm run compare` shows every system unchanged.
+
+### CL-54 · Page citations: src/game, src/ui and src/worker
+`list: cleanup · status: ready · priority: medium · size: S · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `src/game/**` has 46 bare citations and `src/ui/**` 6.
+Comment-only. Change: relabel all citations to `Book PDF p.N (printed M)` and fix any page that is wrong under both
+readings. Done when: no bare `p.N`/`pp.N` remains under `src/game`, `src/ui` or `src/worker`, `git diff` shows only
+comment lines, and `npm run compare` shows every system unchanged.
+
+### CL-55 · Page citations: src/content
+`list: cleanup · status: ready · priority: medium · size: S · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `src/content/**` has 60 bare citations, in scenario/event/codex
+comments and the evidence metric definitions. Several are quoted IBM sentences whose page is already right (`Db2 13
+Managing Performance p.143`, `RMF p.540`). Change: relabel to `Book PDF p.N (printed M)` with the edition, checking
+that each page still contains the quoted sentence. Done when: no bare `p.N`/`pp.N` remains under `src/content`, the
+Codex entry sources (`src/content/codex/entries.ts`) show the same convention, and `npm run compare` shows every
+system unchanged.
+
+### CL-56 · Page citations: tests
+`list: cleanup · status: ready · priority: medium · size: M · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `tests/**` has 158 bare citations, mostly in comments that
+explain what a test pins (`tests/helpers/reportIdentities.ts` alone has 69). They do not affect behaviour, but they
+are the pages a reviewer reads to judge a test. Change: relabel to `Book PDF p.N (printed M)`; no test logic or
+expected values change. Done when: no bare `p.N`/`pp.N` remains under `tests/`, `git diff` shows comment lines only,
+the affected test files pass, and `npm run compare` shows every system unchanged.
+
+### CL-57 · Page citations: skills, tooling scripts and remaining docs
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. The rest of the repo: `.claude/skills/**` 30 bare citations
+(mostly `wlm-why`), `PROGRESS.md` 7, `BACKLOG.md` 6, `tools/*.ts` 4 and `docs/audit-loops/**` 1. Change: relabel them
+to `Book PDF p.N (printed M)`; in PROGRESS/BACKLOG keep the line short, since these are status entries rather than
+ledgers. Done when: no bare `p.N`/`pp.N` remains in `.claude/skills`, `PROGRESS.md`, `BACKLOG.md`, `CLAUDE.md`,
+`AGENTS.md`, `README.md`, `tools/` or `docs/audit-loops/`.
+
+### CL-58 · Page citations: the archived WLM audit
+`list: cleanup · status: blocked: after CL-50, CL-51, CL-52, CL-53, CL-54, CL-55, CL-56, CL-57 · priority: low · size: S · area: tooling`
+
+Source: CLAUDE.md "Page citations" (#435), sweep CL-50. `docs/archive/wlm-audit-2026-11.md` has 40 bare citations
+and is a frozen audit record. Preferred fix: a one-line note at the top naming the convention the archive used (its
+pages are printed numbers), so a reader does not repeat the printed/PDF mistake this rule exists to stop. Relabelling
+is the alternative if the note would misstate a page. Done when: the file carries that note (or has no bare
+`p.N`/`pp.N`), and CL-50…CL-57 are merged.
+
+### CL-59 · The uncapped-allocation comment cites RMF p.401 for the sim's own measure
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: citation audit 2026-11-20. `src/sim/hw/pools.ts:149` says the second allocation run means "capping counts
+only what a binding cap removed and PR/SM contention doesn't (RMF Report Analysis p.401)", but p.401 defines `WLM%`
+as the "Percentage of time when WLM capped the partition" and the `CAPPING` DEF flags — it does not describe an
+uncapped-minus-delivered measure or exclude contention. That measure is the sim's own (SPEC §17 "LPAR capping
+measurement" says so). Change: state it as the sim's measure and keep p.401 only for what it defines
+(`RMF Report Analysis PDF p.401 (printed 361)`: WLM% is the share of the interval capped, not capacity removed).
+Done when: the comment no longer attributes the measure to the page, and `npm run compare` shows every system
+unchanged.
+
+### CL-60 · A CI check for new bare page citations
+`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+
+Source: session review of #436 (2026-11-20): a one-off sweep stops the current problem but not new bare `p.N`
+citations, which is how the printed/PDF mix spread. Change: a check over the lines a PR adds or changes (the same
+diff range CI already computes) that flags a `p.N`/`pp.N` not preceded by `PDF ` when the line also names a book ID
+(erbb500, ieaw100, ieae200, ieag200, ieag100, ieag300, erbru00, ieaw200, halz002, hasa300, e0zs100, sg246472,
+sg247621, sg246645, redp…, db2z_13_*, the CICS books, `Watson`, `Enrico`). Existing files stay as they are, so
+the check only governs new and touched lines. Done when: the check runs in `npm run check` or the CI check job, it
+fails on a probe branch that adds `// (RMF Report Analysis p.534)`, it passes on `PDF p.534 (printed 494)`, and it
+passes on `dev` unchanged.
