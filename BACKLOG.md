@@ -97,8 +97,9 @@ RCA judging and incident truth: the work that makes RCA verdicts fair and eviden
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. RT-16 … RT-21 wait for a human playtest: the list
-  "finishing" in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed
+- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. An agent playtest of four 8-day runs (2026-11-21)
+  confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
+  RT-17 on it (2026-11-21). RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
@@ -106,22 +107,28 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   image test.
 
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
-`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
+`list: rca-truth · status: ready · priority: high · size: L · area: sim`
 
-After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
+Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q7: yes). Agent playtest 2026-11-21 evidence: Revenue seed 23
+D8, a runaway DDF query in the hurt work's own class with PROD2's only zIIP 100 % busy (WLMGL zIIP delay 99.6 %) was
+judged CPU_PRIORITY only on "CPC 72.7 % busy"; Harbourline seed 37 D2–D4, CPU_PRIORITY at 60–68 % CPC busy with CPU
+delay 2–8 % on every system. After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
 (prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
 displaceable CP instead of lower-importance CP; bands from `content/incidents.ts`; CAPPING also for a resource-group
 maximum on the class or its server, with `DELAY_CAP` as its evidence (RMF Report Analysis p.540); the basis and
 `mechanismExplanation` name the judged host (A4–A6). Moves truth mechanisms and `buyCapacityForIncidents`: sweep.
 Done when: R-13 is CPU_PRIORITY/POLICY, R-2's basis names PROD2, U-9 … U-11 are tests, SPEC §10 and §17 are updated.
-Cross-note (WLM audit 2026-11-10): WT-09 makes CICS regions' CPU belong to a server period; do this entry after
-WT-09 and take "CP use by address-space role" and the hurt work's own servers from it (docs/archive/wlm-audit-2026-11.md §7, §8 Q1).
+Cross-note (WLM audit 2026-11-10): WT-09 (landed) makes CICS regions' CPU belong to a server period; take "CP use by address-space role" and the hurt work's own servers from it (docs/archive/wlm-audit-2026-11.md §7, §8 Q1).
 Cross-note (#307 review, 2026-11-12): since WT-07 WLM also takes CPU from a happy more important period, down to its
 goal, while `capacityBasis` counts only less important CP; displaceable CP should count that headroom
 (`docs/rca-design.md` A4, SPEC §17 "Incident ground truth").
 
 ### RT-17 · Healthy baseline per hour of day
-`list: rca-truth · status: blocked: playtest (deferred by the user; docs/rca-design.md §4.2, Q6) · priority: high · size: M · area: game`
+`list: rca-truth · status: ready · priority: high · size: M · area: game`
+
+Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q6: yes for this entry; RT-19 and RT-20 stay parked). Agent
+playtest 2026-11-21 evidence: Harbourline seed 37 MKTORD at 318/s and 345/s against 133–204/s in other hours was
+judged not ≥ 1.25 × "recent normal" (the daily peaks feed the rolling baseline); RT-18's surge test reads this slot.
 
 One baseline per workload per clock hour (EWMA over days), with the rolling EWMA as fallback until a slot has data;
 co-dominant groups (≥ ⅓ of the excess) are accepted; a floor of 10 % of the SLA budget below which no delay group

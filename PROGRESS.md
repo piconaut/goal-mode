@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-21: agent RCA playtest (four bots, 8 days each, one per scenario plus Midwest Hard); RT-16 and RT-17 unblocked by the user (Q6, Q7).
 - 2026-11-21: CL-62 note on the archived WLM audit that its page citations predate the PDF-index rule; list `page-citations` finished and removed (#443).
 - 2026-11-21: CL-61 `src/sim/hw/pools.ts` capping comment names `cappedFrac` as the sim's own measure; RMF PDF p.401 cited only for WLM% (#442).
 - 2026-11-21: CL-60 docs/research.md citations labelled `PDF p.N (printed M)` from each page's footer; labels match their `#page=` links (#441).
@@ -90,8 +91,8 @@ Recent work, one line each (details in the PRs and Git history):
 **D1. Targeted fixes unlocked by a correct RCA.** An event's cheap operations fix (e.g. `MOBILE_BACKOFF` for a Db2
 retry storm) is offered only once the player has pinned proof of the cause; generic levers stay open, and wrong
 guesses cost something. Design, notes and user decisions: [docs/rca-design.md](docs/rca-design.md) §5 (on the truth
-model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; next a human playtest; RT-16 …
-RT-21 are parked until it; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm cannot
+model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; RT-16 and RT-17 unblocked after an agent playtest
+(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm cannot
 yet be told from a demand surge in any report, so RT-23 researches a discriminator and its fix stays ungated.
 
 ### WLM policy adjustment audit (2026-11-10 … 2026-11-13): closed

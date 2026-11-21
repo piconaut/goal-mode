@@ -916,8 +916,8 @@ judged against accepted sets and recipes, not against the primary label.
 | Q3 | §4.6: evidence as two-predicate recipes, pin relations instead of `anySubject`? | Yes | Yes, and every common recipe needs a tier-0/1 path (2026-11-10) | RT-12, RT-13 |
 | Q4 | §4.5: group by cause identity; stop silent inheritance across different causes? | Yes | Yes, with two refinements: card causes group across the played day (the two-hour window applies only to non-card causes), and RT-15 lands after RT-14 (2026-11-10) | RT-15 |
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
-| Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10) | RT-17, RT-19, RT-20 |
-| Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Open; after the playtest | RT-16 |
+| Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
+| Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21) | RT-16 |
 | Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately; open | RT-22, RT-24 |
 | Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Open | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |
