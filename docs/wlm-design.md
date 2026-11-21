@@ -793,6 +793,9 @@ Real WLM behaviour the sim doesn't model, each documented as an approximation (S
   adjustment action in the sim (approximation 5).
 - **Started tasks** report no transaction completions, so a response-time goal on one has no PI.
 - **REGION/BOTH region management** keeps a DP per served class (§5.8).
+- **Enclave server periods** (§3.11). Real WLM puts enclave server address spaces (DDF, CB, IWEB, NETV) in a
+  `$SRMSnnn` period managed toward the enclaves' goals. The sim manages DDF enclaves to their own class and builds
+  server periods for CICS TRANSACTION regions only (`src/sim/wlm/holders.ts`).
 
 Open questions:
 - Whether zIIP service is normalised to CP speed for period durations: not found (§3.1).
