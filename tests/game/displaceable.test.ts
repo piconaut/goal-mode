@@ -2,6 +2,7 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { displaceable, slaAtRisk, snapshotCpuConsumers } from '../../src/game/displaceable';
 import { incidentSubjects, type EvidencePin } from '../../src/game/evidence';
+import { batchAtRiskFromSec } from '../../src/game/night';
 import { judgeProof } from '../../src/game/proof';
 import { newRun } from '../../src/game/run';
 import { newHour } from '../../src/game/run/hourly';
@@ -58,9 +59,16 @@ describe('shared displaceable CPU accounting', () => {
     const night = { ...h, hourIndex: 15, cpByScpLpar: { PROD1: { 'BATCHPRD#1': grant(1) } } };
     const withForecast = (forecast: number) => ({ ...run, sim: { ...run.sim, batch: { ...run.sim.batch, jobs: [job], projectedCriticalEndSec: forecast } } });
     const value = (forecast: number, hour = night) => snapshotCpuConsumers(withForecast(forecast), MIDWEST, hour, hurt, [hurt, other], incidentSubjects(run, MIDWEST, hurt.id, 0)).cpu!.PROD1!.CP.classes['BATCHPRD#1']!.displaceable;
-    expect(value(run.batchDeadlineSec * 0.75)).toBe(0);
-    expect(value(run.batchDeadlineSec * 0.74)).toBe(1);
-    expect(value(run.batchDeadlineSec, { ...night, hourIndex: 6 })).toBe(1);
+    // The margin is a quarter of the night window before the deadline (18:00–06:00 → protect from 03:00), not a
+    // quarter of the absolute clock. Forecasts are seconds from the 06:00 day start.
+    const threshold = batchAtRiskFromSec(0, run.batchDeadlineSec);
+    expect(value(threshold)).toBe(0);
+    expect(value(threshold - 1)).toBe(1);
+    // The night is 18:00 to the day end: 17:00 is not protected even with a late forecast, 18:00 and 05:00 are.
+    expect(value(run.batchDeadlineSec, { ...night, hourIndex: 11 })).toBe(1);
+    expect(value(run.batchDeadlineSec, { ...night, hourIndex: 12 })).toBe(0);
+    expect(value(run.batchDeadlineSec, { ...night, hourIndex: 23 })).toBe(0);
+    expect(value(run.batchDeadlineSec, { ...night, hourIndex: 0 })).toBe(1);
   });
   it('projects own CICS transactions to the reported region row and excludes only their shared-region share', () => {
     const a = { ...MIDWEST.workloads.find((w) => w.id === 'RBANK')!, servers: [] };

@@ -162,7 +162,7 @@ the `server` relation.
 | U-9: host capped 6 % with no share of the excess | CAPPING | the judged host's verdict |
 | U-10: Db2 (importance 3, the victim's server) at 11.5 % of a 99 % CPC | CPU_PRIORITY | CPU_CAPACITY, priority accepted (band) |
 | U-11: 80 % of the CP at the victim's importance by a non-SLA consumer | CPU_CAPACITY | CPU_PRIORITY |
-| R-2 | basis PROD1 | basis PROD2; CPU_CAPACITY primary, priority accepted |
+| R-2 | basis PROD1 | basis PROD2; CPU_PRIORITY primary, CPU_CAPACITY and ROUTING accepted (32.6 % displaceable: happy CICS regions, monitors and ADHOC; Db2 excluded) |
 | R-7 MOBILE | CPU_PRIORITY | by the displaceable share; both accepted (band, POWER_CAP card) |
 | R-13 Revenue G1, days 0/5/8 21:00 | CPU_CAPACITY/GROWTH | CPU_PRIORITY/POLICY (batch displaceable) |
 | Agent playtest 2026-11-21, Revenue seed 23 D8: runaway DDF query in the hurt class, PROD2's only zIIP 100 % busy, WLMGL zIIP delay 99.6 % | CPU_PRIORITY on "CPC 72.7 % busy" | judged on the zIIP pool of PROD2: full, and the runaway is another workload in the same class, so displaceable ⇒ CPU_PRIORITY with the query named in the basis; with IIPHONORPRIORITY=NO and the CPs at 73 %, also the §3.2 policy cause; RUNAWAY_WORK from the card as now |

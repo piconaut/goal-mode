@@ -50,9 +50,35 @@ describe('RT-32 judged CPU host', () => {
     h.cpuWaitByWorkloadLpar!.HURT!.PROD1!.cp = 2;
     h.cpuWaitByWorkloadLpar!.HURT!.PROD2!.cp = 1;
     h.cappedTicksByLpar.PROD2 = 6;
-    expect(cpuAlternates(h, hosts, ctx()).mechanisms).toEqual(['CPU_CAPACITY', 'CAPPING', 'ROUTING']);
+    // Only the co-host is re-judged: the judged host's own verdict is the primary already.
+    expect(cpuAlternates(h, hosts, ctx()).mechanisms).toEqual(['CAPPING', 'ROUTING']);
     h.cpuWaitByWorkloadLpar!.HURT!.PROD2!.cp = 0.99;
     expect(cpuAlternates(h, hosts, ctx()).mechanisms).not.toContain('CAPPING');
+  });
+
+  it('new work has no healthy baseline, so the host choice is the raw wait (U-13)', () => {
+    const h = hour();
+    h.cpuWaitByWorkloadLpar = { NEW: {
+      PROD1: { cp: 100, ziip: 0, backlog: 0, completions: 50 },
+      PROD2: { cp: 300, ziip: 0, backlog: 0, completions: 100 },
+    } };
+    const b = capacityBasis(h, hosts, { workloadId: 'NEW', baseline: {}, subjects: subjects(0) })!;
+    expect(b.lparId).toBe('PROD2');
+    expect(b.excessSharesPct).toEqual({ PROD2: 75, PROD1: 25 });
+  });
+
+  it('routing imbalance reads the judged pool, not CP, when zIIP leads (C3)', () => {
+    const h = hour();
+    h.cpuWaitByWorkloadLpar = { HURT: {
+      PROD1: { cp: 0, ziip: 210, backlog: 0, completions: 100 },
+      PROD2: { cp: 0, ziip: 90, backlog: 0, completions: 100 },
+    } };
+    h.ziipBusyById = { CPCA: 100 };
+    h.ziipLparBusyById = { PROD1: 100, PROD2: 90 };
+    // PROD2's CPs had room, but its zIIP pool (the judged pool) did not: no room to route to.
+    expect(cpuAlternates(h, hosts, ctx()).mechanisms).not.toContain('ROUTING');
+    h.ziipLparBusyById.PROD2 = 70;
+    expect(cpuAlternates(h, hosts, ctx()).mechanisms).toContain('ROUTING');
   });
   it('a partial hour with a wait ledger but no consumer snapshot keeps the donor reading', () => {
     const b = capacityBasis(hour(), hosts, ctx({ ...EMPTY_SUBJECTS, hosts: ['PROD1', 'PROD2'] }))!;
