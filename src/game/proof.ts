@@ -2,14 +2,14 @@
 // of its recipe in content/evidence.ts. The mechanism's complete recipe replaces the old relevance sum; the trigger's
 // makes the evidence strong. Pure; judged against the incident's recorded subjects like the per-pin verdicts.
 
-import { MECHANISM_RECIPES, TRIGGER_RECIPES, type PinRelation, type PredicateOption, type ProofRecipe } from '../content/evidence';
+import { EVIDENCE_METRICS, MECHANISM_RECIPES, PROOF, TRIGGER_RECIPES, type EvidenceMetric, type PinRelation, type PredicateOption, type ProofRecipe } from '../content/evidence';
 import { triggerLabel } from '../content/rca';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
-import { incidentWindow, notableFloor, pinRelation, smfHourEndTick, type EvidencePin } from './evidence';
+import { incidentWindow, notableFloor, pinRelation, smfHourEndTick, fmtValue, type EvidencePin, type PinVerdict } from './evidence';
 import { displaceable } from './displaceable';
-import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from './types';
+import type { CapacityBasis, Incident, IncidentSubjects, Mechanism, RunState, Trigger } from './types';
 import { subsystemClasses } from './wlmEdit';
 
 interface PredicateCheck {
@@ -17,6 +17,8 @@ interface PredicateCheck {
   met: boolean;
   /** The attached pins that satisfy it. */
   pinIds: number[];
+  /** When it fails, the largest reading among the related pins that fail it, so the reply can say what the pin showed (RT-30). */
+  failedReading?: { pinId: number; metric: EvidenceMetric; value: number };
 }
 
 export interface RecipeCheck {
@@ -156,9 +158,27 @@ function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, re
   const predicates = recipe.predicates.map((pred, k): PredicateCheck => {
     const ids = k === 0 ? first : holding(pred, (o, p) => !o.sameWork || firstWork.has(workOf(p)));
     const pinIds = pins.map((p) => p.id).filter((id) => ids.has(id));
-    return { label: pred.label, met: pinIds.length > 0, pinIds };
+    const failed = pinIds.length > 0 ? undefined : failedReadingOf(pred, related);
+    return { label: pred.label, met: pinIds.length > 0, pinIds, ...(failed ? { failedReading: failed } : {}) };
   });
   return { claim, complete: predicates.every((x) => x.met), predicates };
+}
+
+/** The largest reading among the related pins that fail a predicate, for the reply's quote. Largest, not closest
+ *  to the line: for a ruling-out predicate ("< 25 %") it is the pin furthest over, which is why it failed.
+ *  Only a pin the predicate's own relation and option allow is quoted: a wrong-class row must not explain the
+ *  failure (RT-30). A rate reading is an ended rate, whatever metric carries the cost. */
+function failedReadingOf(pred: ProofRecipe['predicates'][number], related: readonly Related[]): PredicateCheck['failedReading'] {
+  let best: PredicateCheck['failedReading'];
+  for (const { p, ctx, relation } of related) {
+    if (relation === null) continue;
+    const o = pred.options.find((x) => x.metric === p.metric && x.relations.includes(relation));
+    if (!o || optionHolds(ctx, p, relation, o)) continue;
+    const value = o.reading === 'rate' ? p.rate?.value : p.value;
+    if (value === undefined) continue;
+    if (!best || Math.abs(value) > Math.abs(best.value)) best = { pinId: p.id, metric: o.reading === 'rate' ? 'ENDED_RATE' : o.metric, value };
+  }
+  return best;
 }
 
 /**
@@ -190,17 +210,50 @@ export function judgeProof(
 /** A recipe's heading in the reply: the claim, whether the pins prove it, and whether a proof earns anything. */
 export function recipeHeading(c: RecipeCheck, what: 'Mechanism' | 'Trigger'): string {
   const name = what === 'Trigger' ? triggerLabel(c.claim as Trigger) : c.claim;
-  const unearned = c.complete && c.accepted === false ? ', but it was not the cause, so it earns nothing' : '';
-  return `${what} ${name} ${c.complete ? 'proven' : 'not proven'}${unearned}`;
+  const verdict = c.complete ? 'proven' : 'your pins did not prove it';
+  const unearned = c.complete && c.accepted === false ? ', and it earns nothing: it was not the cause' : '';
+  return `${what} ${name}: ${verdict}${unearned}`;
 }
 
-/** One predicate in the reply: ticked or not, in report terms, with the pins that showed it. */
+/** One predicate in the reply: ticked or not, in report terms, with the pins that showed it. A failed predicate
+ *  quotes the largest failing pinned reading, so the player can see which number missed the line (RT-30). */
 export function predicateText(x: PredicateCheck, pinLabel: (id: number) => string): string {
-  return `${x.met ? '✓' : '✗'} ${x.label}${x.met ? ` (${x.pinIds.map(pinLabel).join(', ')})` : ''}`;
+  if (x.met) return `✓ ${x.label} (${x.pinIds.map(pinLabel).join(', ')})`;
+  const quote = x.failedReading
+    ? ` — your pin ${pinLabel(x.failedReading.pinId)}: ${EVIDENCE_METRICS[x.failedReading.metric].label.replace(/ %$/, '')} ${fmtValue(x.failedReading.metric, x.failedReading.value)}`
+    : '';
+  return `✗ ${x.label}${quote}`;
 }
 
 /** One line per recipe for the play CLI's reply. */
 export function proofLines(r: ProofResult, pinLabel: (id: number) => string = (id) => `#${id}`): string[] {
   const line = (c: RecipeCheck, what: 'Mechanism' | 'Trigger') => `${recipeHeading(c, what)}: ${c.predicates.map((x) => predicateText(x, pinLabel)).join('; ')}`;
   return [line(r.mechanism, 'Mechanism'), line(r.trigger, 'Trigger')];
+}
+
+/** Every filed pin's line: the clause it counted for (mechanism, trigger, or both), and why the rest did not
+ *  count (RT-30). */
+export function pinVerdictLines(proof: ProofResult | undefined, verdicts: readonly PinVerdict[], pinLabel: (id: number) => string): string[] {
+  const mech = new Set(proof?.mechanism.predicates.flatMap((x) => x.pinIds));
+  const trig = new Set(proof?.trigger.predicates.flatMap((x) => x.pinIds));
+  return verdicts.map((v) => {
+    const where = [mech.has(v.pinId) ? 'mechanism' : '', trig.has(v.pinId) ? 'trigger' : ''].filter(Boolean).join(' and ');
+    return `${pinLabel(v.pinId)} ${where ? `counted for the ${where}` : `did not count: ${v.relevance > 0 ? 'it fits the cause but proves no predicate' : v.why}`}`;
+  });
+}
+
+/** When a met CPU predicate's pin is over a line the hour average misses, the truth reads the clock hour
+ *  (RT-30; RT-31 decides the time base itself). */
+export function hourBaseNote(proof: ProofResult, pins: readonly EvidencePin[], basis: CapacityBasis | null | undefined): string | null {
+  if (!basis) return null;
+  const met = new Set(proof.mechanism.predicates.filter((x) => x.met).flatMap((x) => x.pinIds));
+  const pct = (x: number) => `${x.toFixed(1)} %`;
+  for (const p of pins) {
+    if (!met.has(p.id)) continue;
+    if (p.metric === 'CPC_BUSY' && p.value >= PROOF.busyPct && basis.cpcBusyPct < PROOF.busyPct)
+      return `The truth reads the clock hour: CPC ${basis.cpcId} averaged ${pct(basis.cpcBusyPct)} busy, under the ${PROOF.busyPct} % line your pin met.`;
+    if (p.metric === 'LPAR_BUSY' && p.value >= PROOF.busyPct && basis.lparBusyPct < PROOF.busyPct)
+      return `The truth reads the clock hour: LPAR ${basis.lparId} averaged ${pct(basis.lparBusyPct)} busy, under the ${PROOF.busyPct} % line your pin met.`;
+  }
+  return null;
 }

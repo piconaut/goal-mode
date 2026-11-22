@@ -268,7 +268,7 @@ export interface Incident {
   subjects: IncidentSubjects;
   /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed. `proof` is the filed claims' recipes
    * over the attached pins (RT-13; absent when no pin was attached). */
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string } | null;
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string; /** The hour-base note at filing (RT-30), when a met pin was over a line the hour average missed. */ hourNote?: string } | null;
   trustLost: number;
   /** Id of the group's lead, the first incident of its cause (docs/rca-design.md §4.5): one RCA covers the group,
    * scored once (SPEC §10). Absent on a lead and on an incident listed as new. */

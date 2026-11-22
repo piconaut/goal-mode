@@ -31,10 +31,10 @@ import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
 import { buildView } from './view';
 import { MECHANISMS, TRIGGERS } from './sla';
-import { alsoAcceptedOf, groupAcceptedOf, primaryTextOf, rcaGroupOf } from './run/rca';
+import { alsoAcceptedOf, groupAcceptedOf, rcaAnswerText, rcaGroupOf } from './run/rca';
 import { TRIGGER_LABEL } from '../content/rca';
 import { EVIDENCE } from '../content/evidence';
-import { proofLines } from './proof';
+import { pinVerdictLines, proofLines } from './proof';
 import { idText } from './ids';
 import type { Mon3PinLookup } from './mon3PinHistory';
 import type { GameContent } from './run/shared';
@@ -151,9 +151,17 @@ export function applyGameCommand(
       const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
       const evidence = rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : '';
       const proof = rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : '';
+      // The answer and the proof are different things (RT-30): the truth accepts the answer (or not), and the pins
+      // prove the recipe (or not). The answer line is shared with the RCA card.
+      const answer = rcaAnswerText(group, cmd.mechanism, cmd.trigger, accepted);
+      // Every filed pin is listed with the clause it counted for or why it did not count, and the hour note recorded
+      // at filing when a met pin was over a line the hour average missed (RT-30).
+      const pinLines = rca ? pinVerdictLines(rca.proof, rca.evidence ?? [], (id) => idText('pin', id)) : [];
+      const pinsLine = pinLines.length ? `\nPins: ${pinLines.join('; ')}` : '';
+      const hourNote = rca?.hourNote ? `\n${rca.hourNote}` : '';
       return yes(
         r,
-        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. Mechanism ${accepted.mechanisms.includes(cmd.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cmd.trigger) ? 'right' : 'wrong'} (primary ${primaryTextOf(group)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}`,
+        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. ${answer}${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}${pinsLine}${hourNote}`,
       );
     }
     case 'PIN':

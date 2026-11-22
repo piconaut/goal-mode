@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: RT-30 RCA replies separate the accepted answer from the proof (accepted / your pins did not prove it), mark an accepted alternate with the primary, quote the pin's reading on a failed predicate, list every filed pin with why it did not count, and say the truth reads the clock hour when a pin met a line the hour average misses; the RCA card renders the same text.
 - 2026-11-22: RT-17 one healthy baseline per workload per clock hour (EWMA 0.5 over days, rolling EWMA as fallback) feeds the mechanism judgement, the CPU drill-down, AIOps and the frozen SMF "vs base" ratio; a delay group with ≥ ⅓ of the excess is accepted, and under 10 % of the response-time goal none explains the miss, so the 20:00 lock incidents (R-6, R-15) read as CPU.
 - 2026-11-22: Per-PR timing of the November sim changes, the regressions it found and the remaining targets are in docs/headless-performance-options.md ("Results: November regressions").
 - 2026-11-22: Per-tick WLM period records start with their sustained-demand fields, keeping one object shape through the evaluator (#295 regression; hash-neutral).
@@ -69,8 +70,6 @@ Recent work, one line each (details in the PRs and Git history):
 - 2026-11-15: RCA truth: RT-13 proof recipes (#357), RT-14 card footprints (#359), RT-15 grouping by cause (#361).
 - 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
 - 2026-11-14: agent instructions pruned of incident notes (#355); PR-04 … PR-08, PR-10 UI fixes (#348–#352, #358).
-- 2026-11-13 … 11-14: RT-10 and RT-11 pin sources (#344, #345); RT-08 capping as share of the hour (#342); RT-25
-  validator (#341).
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).

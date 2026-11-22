@@ -134,24 +134,6 @@ incident's own rows and window, or keep it at zero with a reply that says which 
 whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.
 Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
 
-### RT-30 · RCA reply wording: what was accepted, what was proven, and every pin
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-Source: agent playtest 2026-11-21, all four runs. Changes:
-- "Mechanism right" beside "✗ not proven" (Midwest seed 11 INC11; Midwest Hard seed 54 INC27, INC31; Harbourline
-  seed 37 INC11, INC63): say "accepted" for
-  the answer and "your pins did not prove it" for the recipe.
-- An accepted alternate never says it was not the primary: say "accepted (primary: X)".
-- Ruling-out predicates read backwards when they fail, e.g. "✗ they failed rather than ran late: CPU or I/O wait
-  < 25 %" beside a 61 % pin (Revenue seed 23 INC14, Midwest Hard seed 54 INC31): word each predicate as the fact the pin must show,
-  and quote the pin's value when it fails.
-- Pins that meet no predicate are left out of the verdict (Midwest seed 11 INC1 PIN2/PIN4, INC11 PIN16; Revenue seed 23
-  PIN9, PIN16): list every filed pin with why it did not count (wrong window, wrong subject, value inside normal).
-- When a pin meets a line the verdict's hour average does not (Midwest seed 11 INC6: pin CPC 90.1 % for 13:00–13:30, hour average 87.1 %), say that
-  the truth reads the clock hour.
-After RT-28 (same reply code). Done when: reply snapshots in the play CLI tests cover each case, and the browser RCA
-panel shows the same text.
-
 ### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
 `list: rca-truth · status: blocked: design · priority: low · size: M · area: game`
 
@@ -162,7 +144,8 @@ clock-hour average of every tick (87.1 %). Every CPU line and every RT-32 band i
 in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
 use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
 whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-32,
-so the choice applies to its bands. The reply wording half is RT-30's. Done when: the user decides, the INC6 shape
+so the choice applies to its bands. The reply wording half is RT-30's (landed: the reply now says the truth reads the
+clock hour). Done when: the user decides, the INC6 shape
 (one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change

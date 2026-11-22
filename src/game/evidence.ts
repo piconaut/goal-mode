@@ -444,7 +444,7 @@ export function notableFloor(metric: EvidenceMetric, baseline: number | undefine
   return Math.max(d.notableAt, d.notableMultiple !== undefined && baseline !== undefined ? d.notableMultiple * baseline : 0);
 }
 
-const fmtValue = (m: EvidenceMetric, v: number) => {
+export const fmtValue = (m: EvidenceMetric, v: number) => {
   const d = EVIDENCE_METRICS[m];
   return d.unit === '×' ? `×${v.toFixed(2)}` : `${v >= 100 ? v.toFixed(0) : v.toFixed(1)}${d.unit ? ` ${d.unit}` : ''}`.replace(' %', '%');
 };
