@@ -6,7 +6,8 @@ import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { SERVER_KEY } from '../../sim/wlm/holders';
-import { sumCpuGrants, sumCpuWaits } from '../hourAccounting';
+import type { ServiceDefinition } from '../../sim/wlm/types';
+import { accumulateCpuGrant, accumulateCpuGrants, accumulateCpuWaits } from '../hourAccounting';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
 import { activeIn, addHour, capacityBasis, cappingVerdict, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
 import { hostImages } from '../footprint';
@@ -27,7 +28,9 @@ import { addGroupedIncident } from './grouping';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
 
-export const newHour = (tick: number): HourAcc => ({
+type ActiveHour = Required<Omit<HourAcc, 'cicsStorage'>> & Pick<HourAcc, 'cicsStorage'>;
+
+export const newHour = (tick: number): ActiveHour => ({
   hourIndex: Math.floor(tick / TICKS_PER_HOUR),
   ticks: 0,
   workloads: {},
@@ -50,38 +53,69 @@ export const newHour = (tick: number): HourAcc => ({
   dbatQueuedByLpar: {},
 });
 
-export function accumulateHour(run: RunState): RunState {
-  const h = run.hour ?? newHour(run.sim.tick - 1);
-  const workloads = { ...h.workloads };
-  const cpuWaitByWorkloadLpar = { ...h.cpuWaitByWorkloadLpar };
+function cloneRows<T>(source: Record<string, T> | undefined, copy: (value: T) => T): Record<string, T> {
+  const result = { ...source };
+  for (const key of Object.keys(result)) result[key] = copy(result[key]!);
+  return result;
+}
+
+function cloneLedger<T extends object>(source: Record<string, Record<string, T>> | undefined): Record<string, Record<string, T>> {
+  return cloneRows(source, (rows) => cloneRows(rows, (row) => ({ ...row })));
+}
+
+/** Take a private copy before advancing a run that may be retained as a snapshot or forked. */
+export function copyHourForAdvance(run: RunState): ActiveHour {
+  const h = run.hour;
+  if (!h) return newHour(run.sim.tick - 1);
+  return {
+    ...h,
+    workloads: cloneRows(h.workloads, (w) => ({ ...w, parts: { ...w.parts } })),
+    cappedByLpar: { ...h.cappedByLpar },
+    cappedTicksByLpar: { ...h.cappedTicksByLpar },
+    cpcBusyById: { ...h.cpcBusyById },
+    lparBusyById: { ...h.lparBusyById },
+    cpByImportance: cloneRows(h.cpByImportance, (a) => a.slice()),
+    cpuWaitByWorkloadLpar: cloneLedger(h.cpuWaitByWorkloadLpar),
+    cpByScpLpar: cloneLedger(h.cpByScpLpar),
+    cpByRoleLpar: cloneLedger(h.cpByRoleLpar),
+    cpByWorkloadLpar: cloneLedger(h.cpByWorkloadLpar),
+    capDelayByScpLpar: cloneLedger(h.capDelayByScpLpar),
+    roleCappedTicks: { ...h.roleCappedTicks },
+    ziipBusyById: { ...h.ziipBusyById },
+    ziipLparBusyById: { ...h.ziipLparBusyById },
+    dbatQueuedByLpar: { ...h.dbatQueuedByLpar },
+    ...(h.cicsStorage ? { cicsStorage: { ...h.cicsStorage } } : {}),
+  };
+}
+
+// Policy activation replaces the definition. Reuse each period's rank while that definition is active.
+const ranksByDefinition = new WeakMap<ServiceDefinition, Map<string, number>>();
+
+/** Update an hour owned by this advance. Standalone calls take their own copy. */
+export function accumulateHour(run: RunState, h = copyHourForAdvance(run)): RunState {
+  const { workloads, cappedByLpar, cappedTicksByLpar, cpcBusyById, lparBusyById, cpByImportance,
+    cpuWaitByWorkloadLpar, cpByScpLpar, cpByRoleLpar, cpByWorkloadLpar, capDelayByScpLpar,
+    roleCappedTicks, ziipBusyById, ziipLparBusyById, dbatQueuedByLpar } = h;
   for (const w of run.sim.last.workloads) {
-    if (w.cpuWaitByLpar) cpuWaitByWorkloadLpar[w.id] = sumCpuWaits(cpuWaitByWorkloadLpar[w.id], w.cpuWaitByLpar);
-    const a = workloads[w.id] ?? { completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
-    const parts = { ...a.parts };
-    for (const [k, v] of Object.entries(w.parts)) parts[k] = (parts[k] ?? 0) + v;
-    workloads[w.id] = {
-      completions: a.completions + w.completions,
-      withinSla: a.withinSla + w.withinSla,
-      failed: a.failed + w.failed,
-      rtSumSec: a.rtSumSec + w.rtSumSec,
-      parts,
-    };
+    if (w.cpuWaitByLpar) accumulateCpuWaits(cpuWaitByWorkloadLpar[w.id] ??= {}, w.cpuWaitByLpar);
+    const a = (workloads[w.id] ??= { completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} });
+    const { parts } = a;
+    for (const k in w.parts) parts[k] = (parts[k] ?? 0) + w.parts[k]!;
+    a.completions += w.completions;
+    a.withinSla += w.withinSla;
+    a.failed += w.failed;
+    a.rtSumSec += w.rtSumSec;
   }
   // Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR running a Db2 member
   // (QUEDBAT/QDSTQDBT, Db2 13 Command Reference p.303: work items that had to wait for a DBAT).
-  const dbatQueuedByLpar = { ...h.dbatQueuedByLpar };
   for (const lt of run.sim.last.lpars) {
     const waited = lt.dbatWaited;
     if (waited !== undefined && waited > 1e-9) dbatQueuedByLpar[lt.lparId] = (dbatQueuedByLpar[lt.lparId] ?? 0) + waited;
   }
   let capped = 0;
   let delivered = 0;
-  const cappedByLpar = { ...h.cappedByLpar };
-  const cappedTicksByLpar = { ...h.cappedTicksByLpar };
   const deliveredByCpc: Record<string, number> = {};
-  const lparBusyById = { ...h.lparBusyById };
   const ziipDeliveredByCpc: Record<string, number> = {};
-  const ziipLparBusyById = { ...h.ziipLparBusyById };
   for (const l of run.sim.lpars) {
     const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
     const ziip = l.pools.find((p) => p.pool === 'ZIIP');
@@ -99,83 +133,55 @@ export function accumulateHour(run: RunState): RunState {
     if (cpcId) deliveredByCpc[cpcId] = (deliveredByCpc[cpcId] ?? 0) + cp.deliveredEngines;
   }
   const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
-  const cpcBusyById = { ...h.cpcBusyById };
-  const ziipBusyById = { ...h.ziipBusyById };
   for (const c of run.sim.config.cpcs) {
     if (c.engines.CP > 0) cpcBusyById[c.id] = (cpcBusyById[c.id] ?? 0) + (deliveredByCpc[c.id] ?? 0) / c.engines.CP;
     if (c.engines.ZIIP > 0) ziipBusyById[c.id] = (ziipBusyById[c.id] ?? 0) + (ziipDeliveredByCpc[c.id] ?? 0) / c.engines.ZIIP;
   }
-  const cpByImportance = { ...h.cpByImportance };
-  const cpByScpLpar = { ...h.cpByScpLpar };
-  const cpByRoleLpar = { ...h.cpByRoleLpar };
-  const cpByWorkloadLpar = { ...h.cpByWorkloadLpar };
-  const capDelayByScpLpar = { ...h.capDelayByScpLpar };
-  const roleCappedTicks = { ...h.roleCappedTicks };
   const def = run.sim.wlm.definition;
+  let ranks = ranksByDefinition.get(def);
+  if (!ranks) ranksByDefinition.set(def, (ranks = new Map()));
   for (const lt of run.sim.last.lpars) {
-    const acc = [...(cpByImportance[lt.lparId] ?? [0, 0, 0, 0, 0, 0, 0])];
-    for (const x of lt.scps) acc[importanceRank(def, x.scKey)]! += x.cpEngines;
-    cpByImportance[lt.lparId] = acc;
-    if (lt.cpByRole) cpByRoleLpar[lt.lparId] = sumCpuGrants(cpByRoleLpar[lt.lparId], lt.cpByRole);
-    if (lt.cpByWorkload) cpByWorkloadLpar[lt.lparId] = sumCpuGrants(cpByWorkloadLpar[lt.lparId], lt.cpByWorkload);
-    const cp = { ...cpByScpLpar[lt.lparId] };
-    const cap = { ...capDelayByScpLpar[lt.lparId] };
+    const acc = (cpByImportance[lt.lparId] ??= [0, 0, 0, 0, 0, 0, 0]);
+    if (lt.cpByRole) accumulateCpuGrants(cpByRoleLpar[lt.lparId] ??= {}, lt.cpByRole);
+    if (lt.cpByWorkload) accumulateCpuGrants(cpByWorkloadLpar[lt.lparId] ??= {}, lt.cpByWorkload);
+    const cp = (cpByScpLpar[lt.lparId] ??= {});
+    const cap = (capDelayByScpLpar[lt.lparId] ??= {});
     for (const x of lt.scps) {
-      const a = cp[x.scKey];
-      cp[x.scKey] = { cp: (a?.cp ?? 0) + x.cpEngines, ziip: (a?.ziip ?? 0) + x.ziipEngines, iipcp: (a?.iipcp ?? 0) + x.iipcpEngines };
-      const b = cap[x.scKey];
+      let rank = ranks.get(x.scKey);
+      if (rank === undefined) ranks.set(x.scKey, (rank = importanceRank(def, x.scKey)));
+      acc[rank]! += x.cpEngines;
+      accumulateCpuGrant(cp[x.scKey] ??= { cp: 0, ziip: 0, iipcp: 0 }, x.cpEngines, x.ziipEngines, x.iipcpEngines);
+      const b = (cap[x.scKey] ??= { cap: 0, samples: 0 });
       // Same using + delay denominator as WLMGL (rmf.wlmRecord), including OTHER and queued samples.
       // CAP is separate from CPU delay: SC34-2665-60 PDF p.540 (printed 500).
       const samples = x.usingCpu + x.usingZiip + x.usingIo + x.delayCpu + x.delayZiip + x.delayIo + x.delayStorage + x.delayCap + (x.delayQueue ?? 0) + x.delayOther;
-      cap[x.scKey] = { cap: (b?.cap ?? 0) + x.delayCap, samples: (b?.samples ?? 0) + samples };
+      b.cap += x.delayCap;
+      b.samples += samples;
       // Server samples already belong to the region class above. Also retain their internal holder's row,
       // not a second addition to the class's CAP (srvDelayCap is a subset of delayCap).
       if (x.srvUsing !== undefined) {
-        const srv = cap[SERVER_KEY];
-        cap[SERVER_KEY] = { cap: (srv?.cap ?? 0) + (x.srvDelayCap ?? 0), samples: (srv?.samples ?? 0) + x.srvUsing + (x.srvDelay ?? 0) };
+        const srv = (cap[SERVER_KEY] ??= { cap: 0, samples: 0 });
+        srv.cap += x.srvDelayCap ?? 0;
+        srv.samples = srv.samples + x.srvUsing + (x.srvDelay ?? 0);
       }
     }
-    cpByScpLpar[lt.lparId] = cp;
-    capDelayByScpLpar[lt.lparId] = cap;
     for (const role in lt.roleHealth) if (lt.roleHealth[role]!.capped) {
       const key = `${lt.lparId}:${role}`;
       roleCappedTicks[key] = (roleCappedTicks[key] ?? 0) + 1;
     }
   }
-  let cicsStorage = h.cicsStorage;
   for (const lt of run.sim.last.lpars) {
     for (const x of lt.cicsStorage ?? []) {
-      cicsStorage = { ...cicsStorage };
+      const cicsStorage = (h.cicsStorage ??= {});
       const a = cicsStorage[x.region];
       cicsStorage[x.region] = { peakMb: Math.max(a?.peakMb ?? 0, x.inUseMb), limitMb: x.limitMb, sosSec: (a?.sosSec ?? 0) + (x.sos ? TICK_SEC : 0) };
     }
   }
-  return {
-    ...run,
-    hour: {
-      ...h,
-      ticks: h.ticks + 1,
-      workloads,
-      maxCappedFrac: Math.max(h.maxCappedFrac, capped),
-      cappedByLpar,
-      cappedTicksByLpar,
-      cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
-      cpcBusyById,
-      lparBusyById,
-      cpByImportance,
-      cpuWaitByWorkloadLpar,
-      cpByScpLpar,
-      cpByRoleLpar,
-      cpByWorkloadLpar,
-      capDelayByScpLpar,
-      roleCappedTicks,
-      ziipBusyById,
-      ziipLparBusyById,
-      lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
-      dbatQueuedByLpar,
-      ...(cicsStorage ? { cicsStorage } : {}),
-    },
-  };
+  h.ticks += 1;
+  h.maxCappedFrac = Math.max(h.maxCappedFrac, capped);
+  h.cpcBusySum += engines > 0 ? delivered / engines : 0;
+  h.lockIndexSum += run.sim.env.lockIndex;
+  return { ...run, hour: h };
 }
 
 /** Fold this hour's averages into today's capacity peaks. */

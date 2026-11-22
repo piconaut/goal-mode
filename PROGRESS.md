@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: Hourly CPU accounting reuses a private accumulator across ticks in each advance, preserving the saved hour records and deterministic results.
 - 2026-11-22: CI `citations` passes at once on the `dev` → `main` milestone PR (user decision): its lines were gated on their PRs into `dev` or predate the rule; milestone #459 opened.
 - 2026-11-21: RT-23 and RF-08 research settled and both entries unblocked: a retry storm is read as the SMF 101 class-1 rollback share (`QWACABRT / (QWACCOMM + QWACABRT)`) — a game inference, since IBM documents the backouts but not that they mean client retries — and retries that commit need SMF 102 client identity, which the game does not collect; a capacity group's average is modelled as a zero-filled per-member four-hour view (IBM states the symptoms, not the arithmetic; the Sub-Capacity Pricing book is now in the books repo). Ledger rows in docs/research.md qualify the `KEEPDYNAMIC(YES)` and `ACCTG(ALLCOMMIT)` accounting-interval exceptions.
 - 2026-11-21: CL-30 split policy adjustment into a per-call context, trial assessment, candidate/donor selection and trace/delay helpers; public imports and existing tests stay unchanged.
