@@ -165,7 +165,7 @@ interchangeable: the book (title, version, form number/edition), the **PDF page 
 (the number the page itself shows in its header or footer). The two page numbers differ by a
 per-book offset, so cite the PDF index labelled, with the printed number in parentheses:
 
-`[z/OS 3.1 MVS SMF (SA38-0667-60) PDF p.512 (printed 484) — Record type 30 > Processor accounting section](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=512)`
+`[z/OS 3.1 MVS SMF (SA38-0667-60) PDF p.512 (printed 484) — Record type 42 > Subtype 20 > Job and data set information](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=512)`
 
 - Never write a bare `p.N`: the number alone does not say which index it is.
 - The printed number is the page's own header/footer, which `pdf_find.py --page N` prints with
@@ -178,14 +178,19 @@ per-book offset, so cite the PDF index labelled, with the printed number in pare
 
 Redbook citation (the edition date is on the title page; a Redbook has no z/OS release):
 
-`[IBM Redbook SG24-6472-03, System Programmer's Guide to: Workload Manager (Mar 2008) PDF p.201 (printed 183) — Chapter 3 > …](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=201)`
+`[IBM Redbook SG24-6472-03, System Programmer's Guide to: Workload Manager (Mar 2008) PDF p.201 (printed 183) — Chapter 5: Setting goals > Using report classes](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=201)`
 
 Patent citation (Google Patents page for identity, or its PDF with `#page=N` for a page):
 
 `[US 5,473,773 (IBM, issued 5 Dec 1995) PDF p.4 (sheet 3 of 14) — …](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=4)`
 
-A patent's pages are numbered by sheet (`Sheet 3 of 14`), not by page; give the sheet as the
-printed reference instead of inventing a `p.N`.
+On patent drawing pages, give the printed sheet label (`Sheet 3 of 14`). Descriptive text
+can instead have printed column numbers; cite those as columns, not as pages or sheets:
+
+`[US 5,473,773 (IBM, issued 5 Dec 1995) PDF p.16 (printed columns 1–2) — Background and summary of the invention](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=16)`
+
+Use the printed reference that the cited page actually shows; if it has none, say so as
+above. Always retain the PDF index and matching `#page=N` link.
 
 The page index and section breadcrumb come straight from `pdf_find.py` (`== p.N | …`); the
 printed number comes from the page itself (above). Form numbers are in the book table.
