@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-21: CL-35 split investigation subcommands into `tools/inspect/`; the dispatcher keeps its CLI and public exports, with implementation statements and tests unchanged.
 - 2026-11-21: PR-25 citation gate accepts a printed-page token only in the parenthesis directly after its PDF page run, using the same rule for wrapped lines.
 - 2026-11-21: CL-49 current-hour Db2/CICS evidence labels start at :00 through capture time; closed-hour labels, values and judging timestamps unchanged (SPEC §10).
 - 2026-11-21: CL-48 PROCU's game-only class summary shows EAppl CP once, with its IIPCP subset and zIIP column; all evidence metrics remain available, job columns unchanged (SPEC §8).

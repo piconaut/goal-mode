@@ -403,14 +403,6 @@ selection into their own modules (`src/sim/wlm/adjust/`); move the trace types a
 selection in this function and has merged (#400). Done when: bench hashes are unchanged; `npm run compare` shows no
 difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unchanged.
 
-### CL-35 · Split `inspect.ts` by subcommand
-`list: cleanup · status: ready · priority: low · size: M · area: tooling`
-
-Source: codebase survey (2026-11-16). `tools/inspect.ts` (923 lines) holds the `dp`, `wlm`, `blame` and `wlm-stats`
-subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}.ts` with a thin dispatcher. PR-20
-edited `countSystem` in this file and has merged (#411). Done when: the diff is moves and imports only, and
-`tests/tools/inspect.test.ts` passes unchanged.
-
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
 
