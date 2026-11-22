@@ -15,6 +15,8 @@ npm run test:watch   # Vitest in watch mode
 npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
 npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
+npm run bench:pair -- --base origin/dev [--head <ref>] [--mode sim|live] [--scenario harbourline]   # warm both revisions, alternate timed blocks, compare timings and hashes
+npm run profile:summary -- [--limit 20] <profile.cpuprofile> [<profile.cpuprofile> ...]   # rank functions by self time and inclusive time
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
 npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by side per RMF interval (format in tools/lab.ts; example specs in tools/lab-examples/)
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard|ironman] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
@@ -40,6 +42,42 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 ```
 
 `tools/lab-examples/` holds example lab specs (`dc-control.json`, `dc-treatment.json`) to pass to `npm run lab`.
+
+## Performance investigations
+
+Use `bench:pair` to compare a change against a Git revision in one Node process. The base defaults to
+`origin/dev` and the head defaults to the current working tree, including uncommitted changes. Pass
+`--head <ref>` to compare two commits. The tool checks out the requested refs in temporary worktrees
+and shares the current checkout's installed dependencies, so both revisions need compatible dependencies.
+
+```sh
+npm run bench:pair -- --base origin/dev --mode live --scenario harbourline
+npm run bench:pair -- --base ebf6ab6 --head 2f07636 --mode sim --scenario midwest
+```
+
+- `--mode sim` (the default) calls the simulation core's `step`. `--mode live` advances a normal game day with
+  no player actions, including events and hourly accounting. Live mode supports up to one day per run.
+- Each revision gets 2,160 warm-up ticks by default. Each of the three measured pairs starts from a fresh
+  seed-42 state and runs 8,640 ticks. Set `--warmup`, `--rounds`, `--seed` and `--ticks` to override those values.
+- The revisions take turns running 120 ticks per block. Their order alternates by block and round.
+  Live mode calls `advance` in chunks of up to 12 ticks within each block. Adjust the sizes with `--block` and
+  `--chunk`. On Linux, prefix the command with `taskset -c <cpu>` to pin the process to one CPU.
+- Read the individual pairs and the median paired wall-time and CPU-time changes. The end-state hashes
+  flag output changes while allowing timing comparisons across revisions that intentionally change state.
+  Use `--json` for the results as data and `npm run compare` for a detailed behaviour diff.
+
+Capture a CPU profile with Node, then pass the resulting file to `profile:summary`. These examples profile
+one core simulation day and one day played by the hands-off bot.
+
+```sh
+mkdir -p runs/profiles
+node --cpu-prof --cpu-prof-dir=runs/profiles --cpu-prof-name=core.cpuprofile --import tsx tools/bench.ts --scenario harbourline
+node --cpu-prof --cpu-prof-dir=runs/profiles --cpu-prof-name=live.cpuprofile --import tsx tools/bot.ts --bot donothing --scenario harbourline --days 1
+npm run profile:summary -- --limit 15 runs/profiles/core.cpuprofile runs/profiles/live.cpuprofile
+```
+
+Self time shows where the profiler sampled a function directly. Inclusive time also counts samples in
+functions it called, counting a recursive frame once per sample. The percentages are shares of sampled time.
 
 ## Where the rest of the tooling lives
 
