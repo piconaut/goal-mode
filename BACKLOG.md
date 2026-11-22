@@ -247,12 +247,14 @@ incident (§5.1). Done when: browser and play CLI can open, file and review one,
 ### RT-23 · A discriminator for the retry storm
 `list: rca-truth · status: ready · priority: low · size: M · area: sim`
 
-Research settled 2026-11-21 (docs/research.md "Db2 and hardware configuration"): IBM has no retry field, but Db2
-accounting (SMF 101, IFCID 3) class 1 counts commits (`QWACCOMM`) and rollbacks (`QWACABRT`, "the number of units
-that were backed out": application program abends, rollback requests, deadlocks, operator cancels, thread abends from
-resource shortage). With DDF's default `CMTSTAT=INACTIVE` the accounting interval starts at the first SQL statement and
-ends at commit or rollback, so `QWACABRT / (QWACCOMM + QWACABRT)` per workload-hour is the documented retry signal for
-work that is backed out. Retries that commit at Db2 are indistinguishable in aggregate; telling those apart needs
+Research settled 2026-11-21 (docs/research.md "Db2 and hardware configuration"): no retry field was found in the Db2
+books read, but Db2 accounting (SMF 101, IFCID 3) class 1 counts commits (`QWACCOMM`) and rollbacks (`QWACABRT`, "the
+number of units that were backed out": application program abends, rollback requests, deadlocks, operator cancels,
+thread abends from resource shortage). With DDF's default `CMTSTAT=INACTIVE` the accounting interval starts at the first
+SQL statement and ends at commit or rollback when the thread can go inactive; `ACCUMACC` rolls up 10 intervals per
+record by default. The game reads `QWACABRT / (QWACCOMM + QWACABRT)` per workload-hour as the retry signal for work
+that is backed out — an inference, since IBM documents the backouts but not that they mean client retries. Retries
+that commit at Db2 are indistinguishable in aggregate; telling those apart needs
 per-client identity (SMF 101 `QMDAAPPL`/`QMDAPLAT`/`QMDASUFX`, or client statistics IFCID 411/412 and the 2024
 IFCID 417, SMF type 102), which the game's SMF 100/101 views do not collect — decided out of scope.
 Change: add the rollback count to the DB2 (SMF 101) view and the Db2 statistics view, and make RETRY_STORM back out a
@@ -346,8 +348,8 @@ Pricing PDF p.69 (printed 53)); and a partition that joined less than four hours
 unused group capacity and, therefore, might cap differently than existing group members", with RMF flagging its LIMIT
 with `*` (RMF Report Analysis PDF p.98 and p.400 (printed 58 and 360)). No page read says whether the combined average
 is the sum of the members' own R4HAs — the only such wording found is a vendor's display description — so do not seed a
-group window from members' R4HAs. No report prints the group's used average either: Partition Data's `AVAILABLE` is the unused side of it ("If the value is
-negative, the group is capped"), so a member's view is about `limit − AVAILABLE`.
+group window from members' R4HAs. No report prints the group's used average either: Partition Data's `AVAILABLE` is
+the unused side of it ("If the value is negative, the group is capped"), so a member's view is about `limit − AVAILABLE`.
 Change: give each member its own group-average window, zero-filled at group definition/IPL and at that member's join,
 with the group limit check reading the member's window (APPROX: inferred from the documented "different view"; the
 arithmetic is not stated); record the join tick and flag the member's LIMIT with `*` for four hours. Show `AVAILABLE`

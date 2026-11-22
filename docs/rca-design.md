@@ -854,10 +854,12 @@ at unchanged CPU per transaction" (the D1 note) is true of both. Options:
 
 1. **A realistic side-effect on the card.** Retries follow client timeouts, so a storm should come with abandoned
    work: a higher share of rolled-back or abnormally ended threads in Db2 accounting, or timeouts at the
-   distributor. *Unverified*: the book search in this session did not confirm which accounting field an analyst
-   would read (searched Db2 13 Managing Performance for rollback/abort counters in the accounting sections); it
-   needs a `zos-docs` pass before it is modelled (RT-23 is `blocked: research`). It also needs the card to stop
-   being a fixed multiplier, or at least to expose a second modifier.
+   distributor. *Verified 2026-11-21*: Db2 accounting (SMF 101, IFCID 3) class 1 carries `QWACABRT` rollbacks,
+   which include application abends, deadlocks and thread abends from resource shortage (OMEGAMON for Db2 PE 5.4
+   PDF p.2968 (printed 2942)); with `CMTSTAT=INACTIVE` the interval ends at commit or rollback when the thread can
+   go inactive, and `ACCUMACC` rolls up 10 intervals per record by default (Db2 13 Managing Performance PDF p.725,
+   PDF p.818 (printed 705, 798)). That a rising rollback share means client retries is the game's inference, not
+   IBM's. It also needs the card to stop being a fixed multiplier, or at least to expose a second modifier.
 2. **An inbox clue from the application team** ("many duplicate request IDs") on the hint ladder, accepted as the
    second half of the proof once received. Cheap, but then the proof is "wait for the mail".
 3. **Leave it ungated**: the storm keeps an open fix, and D1's first showcase is a card with a real discriminator
