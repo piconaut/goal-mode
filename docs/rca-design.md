@@ -530,7 +530,7 @@ Sources of accepted answers:
 (weight 0.5, `SLOT_BASELINE_DECAY`), folded in `closeHour` from the same met, undisturbed hours; `slotBaseline` falls
 back to the rolling `baselines`, so a save from before RT-17 behaves as it did. The slot is what judges its hour
 (`mechanismOf`), what the CPU drill-down reads, what the AIOps ranking reads, and what the frozen SMF "vs base" ratio
-divides by. `DELAY_FLOOR_FRAC = 0.1` and `CO_DOMINANT_SHARE = ⅓` are in `game/sla.ts`; a co-dominant group is an
+divides by. `DELAY_FLOOR_FRAC = 0.1` and `CO_DOMINANT_SHARE = ⅓` are in `content/sla.ts` (FICTIONAL); a co-dominant group is an
 accepted answer, with the CPU group mapped to the capacity/priority verdict. Items 3–5 stay with RT-19, RT-20 and the
 incident-long set.
 

@@ -1,4 +1,5 @@
 import { PLANNER } from '../../content/planner';
+import { SLOT_BASELINE_DECAY } from '../../content/sla';
 import { clockAt } from '../../sim/core/clock';
 import { msuPerCp } from '../../sim/hw/cpc';
 import { streamRng } from '../../sim/core/rng';
@@ -9,7 +10,7 @@ import { SERVER_KEY } from '../../sim/wlm/holders';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { accumulateCpuGrant, accumulateCpuGrants, accumulateCpuWaits } from '../hourAccounting';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { activeIn, addHour, capacityBasis, cappingVerdict, clockHourOf, coDominantGroups, cpuMechanismOf, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, SLOT_BASELINE_DECAY, slotBaseline, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { activeIn, addHour, capacityBasis, cappingVerdict, clockHourOf, coDominantGroups, cpuMechanismOf, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, slotBaseline, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
 import { hostImages } from '../footprint';
 import {
   type CapacityDay,

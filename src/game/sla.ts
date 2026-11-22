@@ -1,6 +1,6 @@
 // Hourly SLA accounting, incident detection and ground-truth causes (SPEC §10, §12).
 
-import { NEW_WORKLOAD_DAYS } from '../content/sla';
+import { CO_DOMINANT_SHARE, DELAY_FLOOR_FRAC, NEW_WORKLOAD_DAYS } from '../content/sla';
 import { clockAt } from '../sim/core/clock';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { SERVER_KEY } from '../sim/wlm/holders';
@@ -15,12 +15,6 @@ import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, IncidentSubjects, M
 import { sumCapSamples, sumCpuGrants, sumCpuWaits, sumRecords } from './hourAccounting';
 
 export const BASELINE_DECAY = 0.8;
-/** A clock-hour slot's EWMA: half the old value, half this hour (docs/rca-design.md §4.2(1), weight 0.5). */
-export const SLOT_BASELINE_DECAY = 0.5;
-/** The share of the total delay excess at which a second group is co-dominant (RT-17, §4.2(2)). */
-export const CO_DOMINANT_SHARE = 1 / 3;
-/** Below this share of the SLA's response-time budget, no delay group explains the miss (A6, §4.2(2)). */
-export const DELAY_FLOOR_FRAC = 0.1;
 
 /** The clock hour (0–23) a tick falls in: the key of a workload's hour-of-day baseline. */
 export const clockHourOf = (tick: number): number => Math.floor(clockAt(tick).hourOfDay);
