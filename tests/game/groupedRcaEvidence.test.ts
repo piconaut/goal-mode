@@ -4,7 +4,7 @@ import { MIDWEST } from '../../src/content/scenarios';
 import type { EvidencePin } from '../../src/game/evidence';
 import { judgeEvidence, incidentSubjects } from '../../src/game/evidence';
 import { newRun, submitRca } from '../../src/game/run';
-import { alsoAcceptedOf } from '../../src/game/run/rca';
+import { alsoAcceptedOf, primaryTextOf } from '../../src/game/run/rca';
 import type { Incident, RunState } from '../../src/game/types';
 import { truthOf } from '../helpers/truth';
 
@@ -77,6 +77,31 @@ describe('grouped RCA evidence verdicts', () => {
     expect(rca.explain).toMatch(/machine, not the policy/);
   });
 
+  it('names each distinct primary with its workloads, and each reason with its victim (RT-28)', () => {
+    const r = grouped();
+    const [lead, member] = r.incidents;
+    r.incidents = [
+      lead!,
+      // The member's hour backs a different answer, and its reason for a further alternate is its own.
+      {
+        ...member!,
+        truth: {
+          ...truthOf('CPU_CAPACITY', 'POLICY'),
+          accepted: { mechanisms: ['CPU_CAPACITY', 'DEPENDENCY'], triggers: ['POLICY'] },
+          notes: { DEPENDENCY: 'its Db2 connection was short' },
+        },
+      },
+    ];
+    expect(primaryTextOf(r.incidents)).toBe('CPU_PRIORITY/Policy or configuration: RBANK; CPU_CAPACITY/Policy or configuration: CARDAUTH');
+    expect(alsoAcceptedOf(r.incidents)).toEqual([
+      { answer: 'CPU_CAPACITY', why: undefined },
+      { answer: 'DEPENDENCY', why: 'CARDAUTH: its Db2 connection was short' },
+    ]);
+    // A group whose members agree keeps the one-primary text a single incident has.
+    expect(primaryTextOf([lead!])).toBe('CPU_PRIORITY/Policy or configuration');
+    expect(primaryTextOf([lead!, { ...member! }])).toBe('CPU_PRIORITY/Policy or configuration');
+  });
+
   it('keeps the group lead when score and evidence checks tie', () => {
     const r = grouped();
     r.pins = [pin(r, { subject: 'UNRELATED' })];
@@ -94,9 +119,9 @@ describe('grouped RCA evidence verdicts', () => {
       { ...a!, truth: { ...a!.truth, accepted: { mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY'], triggers: ['POLICY'] }, notes: { CPU_CAPACITY: 'the machine may have been the constraint' } } },
       { ...b!, truth: { ...b!.truth, accepted: { mechanisms: ['DEPENDENCY'], triggers: ['BATCH_OVERLAP'] } } },
     ];
-    // The reply and the review show the union too, led by the lead's own alternates and their reasons.
+    // The reply and the review show the union too, led by the lead's own alternates, each reason naming its victim.
     expect(alsoAcceptedOf(r.incidents)).toEqual([
-      { answer: 'CPU_CAPACITY', why: 'the machine may have been the constraint' },
+      { answer: 'CPU_CAPACITY', why: 'RBANK: the machine may have been the constraint' },
       { answer: 'DEPENDENCY', why: undefined },
       { answer: 'BATCH_OVERLAP', why: undefined },
     ]);

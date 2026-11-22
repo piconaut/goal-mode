@@ -1,4 +1,5 @@
 import { EVIDENCE, PROOF } from '../../content/evidence';
+import { triggerLabel } from '../../content/rca';
 import type { Scenario } from '../../sim/core/scenario';
 import { judgeGroupEvidence } from '../evidence';
 import { judgeProof } from '../proof';
@@ -30,29 +31,73 @@ export function rcaGroupOf(incidents: readonly Incident[], incidentId: number): 
 
 /** A group's accepted answers: the union of its members', led by the lead's primary (docs/rca-design.md §4.5). One
  * RCA covers one cause, so an answer that is right for any victim is right for the filing. */
-export function groupAcceptedOf(group: readonly Incident[]): { mechanisms: Mechanism[]; triggers: Trigger[]; notes: Record<string, string> } {
+export function groupAcceptedOf(group: readonly Incident[]): {
+  mechanisms: Mechanism[];
+  triggers: Trigger[];
+  notes: Record<string, string>;
+  noteFrom: Record<string, string>;
+} {
   const mechanisms: Mechanism[] = [];
   const triggers: Trigger[] = [];
   const notes: Record<string, string> = {};
+  const noteFrom: Record<string, string> = {};
   for (const inc of group) {
     const accepted = inc.truth.accepted;
     for (const m of accepted.mechanisms) if (!mechanisms.includes(m)) mechanisms.push(m);
     for (const t of accepted.triggers) if (!triggers.includes(t)) triggers.push(t);
     // The first reason offered for an answer is the one shown, and the lead's comes first.
-    for (const [answer, why] of Object.entries(inc.truth.notes ?? {})) notes[answer] ??= why;
+    for (const [answer, why] of Object.entries(inc.truth.notes ?? {})) {
+      if (notes[answer] !== undefined) continue;
+      notes[answer] = why;
+      noteFrom[answer] = inc.workloadId;
+    }
   }
-  return { mechanisms, triggers, notes };
+  return { mechanisms, triggers, notes, noteFrom };
 }
 
-/** The group's answers that are not the lead's primary, each with its reason: the reply's "also accepted" (RT-07). */
+/** The group's answers that are not the lead's primary, each with its reason: the reply's "also accepted" (RT-07).
+ *  In a group whose members differ, the reason names the victim it came from (RT-28). */
 export function alsoAcceptedOf(group: readonly Incident[]): { answer: Mechanism | Trigger; why?: string }[] {
   const lead = group[0];
   if (!lead) return [];
   const accepted = groupAcceptedOf(group);
+  const whyOf = (answer: string) => {
+    const why = accepted.notes[answer];
+    if (why === undefined) return undefined;
+    return group.length > 1 ? `${accepted.noteFrom[answer]}: ${why}` : why;
+  };
   return [
-    ...accepted.mechanisms.filter((m) => m !== lead.truth.mechanism).map((m) => ({ answer: m, why: accepted.notes[m] })),
-    ...accepted.triggers.filter((t) => t !== lead.truth.trigger).map((t) => ({ answer: t, why: accepted.notes[t] })),
+    ...accepted.mechanisms.filter((m) => m !== lead.truth.mechanism).map((m) => ({ answer: m, why: whyOf(m) })),
+    ...accepted.triggers.filter((t) => t !== lead.truth.trigger).map((t) => ({ answer: t, why: whyOf(t) })),
   ];
+}
+
+/** One distinct primary of a group, with the workloads whose truth it is. */
+export interface GroupPrimary {
+  mechanism: Mechanism;
+  trigger: Trigger;
+  workloads: string[];
+}
+
+/** The group's distinct primaries, the lead's first (RT-28). */
+export function groupPrimariesOf(group: readonly Incident[]): GroupPrimary[] {
+  const out: GroupPrimary[] = [];
+  for (const inc of group) {
+    const same = out.find((p) => p.mechanism === inc.truth.mechanism && p.trigger === inc.truth.trigger);
+    if (same) {
+      if (!same.workloads.includes(inc.workloadId)) same.workloads.push(inc.workloadId);
+    } else out.push({ mechanism: inc.truth.mechanism, trigger: inc.truth.trigger, workloads: [inc.workloadId] });
+  }
+  return out;
+}
+
+/** The reply's header text for the group's primary: one primary as before, or each distinct primary with the
+ *  workloads whose truth it is (RT-28). A single incident, or a group whose members agree, reads unchanged. */
+export function primaryTextOf(group: readonly Incident[]): string {
+  const primaries = groupPrimariesOf(group);
+  const one = (p: GroupPrimary) => `${p.mechanism}/${triggerLabel(p.trigger)}`;
+  if (primaries.length <= 1) return primaries.length ? one(primaries[0]!) : '';
+  return primaries.map((p) => `${one(p)}: ${p.workloads.join(', ')}`).join('; ');
 }
 
 /** Root-cause analysis for an incident and every incident linked to it; scored once against the ground truth. */
