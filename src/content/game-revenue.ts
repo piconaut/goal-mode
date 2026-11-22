@@ -31,7 +31,7 @@ export const REVENUE_GAME = defineGame({
   calendarFacts: [
     { id: 'deadline', text: 'Filing season runs to the deadline next month: e-filing climbs about 2 % a day until then, and the last week is the busiest of the year.' },
     { id: 'refunds', text: 'The refund file goes to the Treasury overnight and must be done by 05:00: the status page is busiest the morning after each run.' },
-    { id: 'payday', text: 'Payday is the 15th: employers file their withholding and taxpayers check their refunds, so the portal and the contact centre both peak.' },
+    { id: 'payday', text: 'Payday is the 15th: employers file their withholding that day, so the employer filing service peaks; taxpayers do not file any more than usual.' },
     { id: 'monthend', text: 'Month end adds the monthly withholding and reconciliation runs on top of the nightly refund file.' },
   ],
 });
