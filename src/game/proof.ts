@@ -164,15 +164,18 @@ function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, re
   return { claim, complete: predicates.every((x) => x.met), predicates };
 }
 
-/** The related pin closest to a failing predicate (the largest reading of its metrics), for the reply's quote. */
+/** The related pin closest to a failing predicate (the largest reading of its metrics), for the reply's quote.
+ *  Only a pin the predicate's own relation and option allow is quoted: a wrong-class row must not explain the
+ *  failure (RT-30). A rate reading is an ended rate, whatever metric carries the cost. */
 function failedReadingOf(pred: ProofRecipe['predicates'][number], related: readonly Related[]): PredicateCheck['failedReading'] {
   let best: PredicateCheck['failedReading'];
-  for (const { p } of related) {
-    const o = pred.options.find((x) => x.metric === p.metric);
-    if (!o) continue;
+  for (const { p, ctx, relation } of related) {
+    if (relation === null) continue;
+    const o = pred.options.find((x) => x.metric === p.metric && x.relations.includes(relation));
+    if (!o || optionHolds(ctx, p, relation, o)) continue;
     const value = o.reading === 'rate' ? p.rate?.value : p.value;
     if (value === undefined) continue;
-    if (!best || Math.abs(value) > Math.abs(best.value)) best = { pinId: p.id, metric: o.metric, value };
+    if (!best || Math.abs(value) > Math.abs(best.value)) best = { pinId: p.id, metric: o.reading === 'rate' ? 'ENDED_RATE' : o.metric, value };
   }
   return best;
 }
@@ -227,10 +230,15 @@ export function proofLines(r: ProofResult, pinLabel: (id: number) => string = (i
   return [line(r.mechanism, 'Mechanism'), line(r.trigger, 'Trigger')];
 }
 
-/** Every filed pin's line: the ones a predicate counted, and why the rest did not (RT-30). */
+/** Every filed pin's line: the clause it counted for (mechanism, trigger, or both), and why the rest did not
+ *  count (RT-30). */
 export function pinVerdictLines(proof: ProofResult | undefined, verdicts: readonly PinVerdict[], pinLabel: (id: number) => string): string[] {
-  const counted = new Set((proof ? [...proof.mechanism.predicates, ...proof.trigger.predicates] : []).flatMap((x) => x.pinIds));
-  return verdicts.map((v) => `${pinLabel(v.pinId)} ${counted.has(v.pinId) ? 'counted' : `did not count: ${v.relevance > 0 ? 'it fits the cause but proves no predicate' : v.why}`}`);
+  const mech = new Set(proof?.mechanism.predicates.flatMap((x) => x.pinIds));
+  const trig = new Set(proof?.trigger.predicates.flatMap((x) => x.pinIds));
+  return verdicts.map((v) => {
+    const where = [mech.has(v.pinId) ? 'mechanism' : '', trig.has(v.pinId) ? 'trigger' : ''].filter(Boolean).join(' and ');
+    return `${pinLabel(v.pinId)} ${where ? `counted for the ${where}` : `did not count: ${v.relevance > 0 ? 'it fits the cause but proves no predicate' : v.why}`}`;
+  });
 }
 
 /** When a met CPU predicate's pin is over a line the hour average misses, the truth reads the clock hour
