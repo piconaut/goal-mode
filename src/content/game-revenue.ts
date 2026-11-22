@@ -16,6 +16,7 @@ export const REVENUE_GAME = defineGame({
     { id: 'Regulator', weight: 1 },
   ],
   batchMissFacet: 'Refunds',
+  // FICTIONAL: the app owners, including the pre-filled returns team, and the filing-season calendar (PT-49).
   appOwners: {
     EFILE: 'Maya Chen (online filing)',
     ACCOUNT: 'Luis Ortega (taxpayer accounts)',
@@ -24,6 +25,8 @@ export const REVENUE_GAME = defineGame({
     EMPLOYER: 'Graham Ellis (employer services)',
     ANALYTICS: 'Rosa Delgado (compliance analytics)',
     TSO: 'Samir Patel (development)',
+    // Event-added app: the same team that owns online filing (PT-49).
+    PREFILL: 'Maya Chen (online filing)',
   },
   calendarFacts: [
     { id: 'deadline', text: 'Filing season runs to the deadline next month: e-filing climbs about 2 % a day until then, and the last week is the busiest of the year.' },

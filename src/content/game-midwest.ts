@@ -15,6 +15,7 @@ export const MIDWEST_GAME = defineGame({
       { flaw: 'F11', label: 'RMF records every 15 minutes', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] },
     ],
   },
+  // FICTIONAL: the app owners and the business calendar Midwest's people know (PT-49).
   appOwners: {
     RBANK: 'Sam Lee (retail banking)',
     CARDAUTH: 'Ana Costa (cards)',
@@ -23,6 +24,9 @@ export const MIDWEST_GAME = defineGame({
     PAYMQ: 'Fatima Haddad (payments)',
     ADHOC: 'Erik Lund (BI and analytics)',
     TSO: 'Robin Shah (development)',
+    // Event-added apps keep the team that runs the related service (PT-49).
+    ACQBANK: 'Diane Foster (acquired bank integration)',
+    BOOKING: 'Chris Novak (branch systems)',
   },
   calendarFacts: [
     { id: 'payday', text: 'Payday is the 15th: everyone checks their balance and moves money that day, mostly from their phones.' },
