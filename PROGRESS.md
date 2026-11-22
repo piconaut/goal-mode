@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: CI `citations` passes at once on the `dev` → `main` milestone PR (user decision): its lines were gated on their PRs into `dev` or predate the rule; milestone #459 opened.
 - 2026-11-21: CL-30 split policy adjustment into a per-call context, trial assessment, candidate/donor selection and trace/delay helpers; public imports and existing tests stay unchanged.
 - 2026-11-21: CL-35 split investigation subcommands into `tools/inspect/`; the dispatcher keeps its CLI and public exports, with implementation statements and tests unchanged.
 - 2026-11-21: PR-25 citation gate accepts a printed-page token only in the parenthesis directly after its PDF page run, using the same rule for wrapped lines.
@@ -355,7 +356,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   The body also needs a "## Behaviour change" section listing the golden changes since the last merge to `main` (CI
-  `behaviour-note` gate). Each one gets a `pr-reviewer` review (base `main`, head `dev`), which it also posts on the PR
+  `behaviour-note` gate; `citations` passes at once on it, user decision 2026-11-22). Each one gets a `pr-reviewer` review (base `main`, head `dev`), which it also posts on the PR
   as a reference comment. When the verdict is MERGE and all required checks are green, merge it with a **merge commit**
   (not squash, so `dev` and `main` keep shared history); otherwise fix or comment. No human approval is needed (user
   decision 2026-10-26). NEEDS USER verdicts go to the user.
