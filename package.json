@@ -14,6 +14,8 @@
     "bot": "tsx tools/bot.ts",
     "check": "tsc --noEmit && vitest run",
     "bench": "tsx tools/bench.ts",
+    "bench:pair": "tsx tools/benchPair.ts",
+    "profile:summary": "tsx tools/profileSummary.ts",
     "compare": "tsx tools/compare.ts",
     "sweep": "tsx tools/sweep.ts",
     "sweep:remote": "tsx tools/sweepRemote.ts",
