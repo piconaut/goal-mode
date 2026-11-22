@@ -34,6 +34,7 @@ inferring it. Separately versioned tools such as SCRT do not follow this rule.
 | Data Gatherer Programmer's Guide (RMF/DG data, SMF 70–79 layouts, Monitor III DDS/APIs) | `grbdp00` | GC31-5701 |
 | MVS Planning: Workload Management | `ieaw100` | SC34-2662 |
 | MVS Programming: Workload Management Services | `ieaw200` | SC34-2663 |
+| Planning for Sub-Capacity Pricing (SCRT caps, group capacity and the four-hour window) | `e0zi100` | SA23-2301 |
 | MVS Initialization and Tuning Guide | `ieae100` | SA23-1379 |
 | MVS Initialization and Tuning Reference (PARMLIB members) | `ieae200` | SA23-1380 |
 
