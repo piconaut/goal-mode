@@ -91,17 +91,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-48 · Play CLI pins: CF and DASD interval ids, PROCU history, pin labels
-`list: playtest-fixes · status: ready · priority: high · size: S · area: tooling`
-
-Source: agent playtest 2026-11-21 (runs not committed). `tools/playCore.ts` `pin` turns the interval id the CLI
-shows into an interval index for WLMGL and CPC only, so `pin CF CF02 CF_SYNC 678` passes 678 as an index and fails
-"No such CF Activity row" although `report CF 678` shows CF02; `pin DASD … <id>` has the same bug. Without an id a CF
-or DASD pin reads the latest interval, not the incident's: say so in the pin's reply. Also: a pin's label shows the
-interval end ("D1 12:30" for 12:00–12:30); label it with the interval's range as `report` does. Reported, not yet
-confirmed: `pin PROCU --at` refused a past range (Revenue seed 23 D8). Done when: CF and DASD pins by interval id are
-tested in the play CLI tests, labels match `report`, and the PROCU report is confirmed or fixed.
-
 ### PT-49 · Business-calendar facts and application owners are Midwest's in every scenario
 `list: playtest-fixes · status: ready · priority: low · size: S · area: content`
 

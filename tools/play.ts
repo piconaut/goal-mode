@@ -9,7 +9,7 @@
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
-//   npm run play -- runs/a.json pin CICS <hour> <AOR region> SOS_MIN   (SMF 110 region storage) | pin PROCU <system> <jobname> [--at "D2 10:40"]   (Monitor III job rows; no --at = now)
+//   npm run play -- runs/a.json pin CICS <hour> <AOR region> SOS_MIN   (SMF 110 region storage) | pin PROCU <system> <jobname> [--at "D2 10:40"]   (Monitor III job rows; a past --at is refused, as the CLI's history keeps no job rows)
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
 //   npm run play -- runs/a.json activate | discard | policy-activate <name> | policy-load <name> | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
