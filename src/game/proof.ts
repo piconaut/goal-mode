@@ -17,7 +17,7 @@ interface PredicateCheck {
   met: boolean;
   /** The attached pins that satisfy it. */
   pinIds: number[];
-  /** When it fails, the related pin's closest reading, so the reply can say what the pin showed (RT-30). */
+  /** When it fails, the largest reading among the related pins that fail it, so the reply can say what the pin showed (RT-30). */
   failedReading?: { pinId: number; metric: EvidenceMetric; value: number };
 }
 
@@ -164,7 +164,8 @@ function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, re
   return { claim, complete: predicates.every((x) => x.met), predicates };
 }
 
-/** The related pin closest to a failing predicate (the largest reading of its metrics), for the reply's quote.
+/** The largest reading among the related pins that fail a predicate, for the reply's quote. Largest, not closest
+ *  to the line: for a ruling-out predicate ("< 25 %") it is the pin furthest over, which is why it failed.
  *  Only a pin the predicate's own relation and option allow is quoted: a wrong-class row must not explain the
  *  failure (RT-30). A rate reading is an ended rate, whatever metric carries the cost. */
 function failedReadingOf(pred: ProofRecipe['predicates'][number], related: readonly Related[]): PredicateCheck['failedReading'] {
@@ -215,7 +216,7 @@ export function recipeHeading(c: RecipeCheck, what: 'Mechanism' | 'Trigger'): st
 }
 
 /** One predicate in the reply: ticked or not, in report terms, with the pins that showed it. A failed predicate
- *  quotes the closest pinned reading, so the player can see which number missed the line (RT-30). */
+ *  quotes the largest failing pinned reading, so the player can see which number missed the line (RT-30). */
 export function predicateText(x: PredicateCheck, pinLabel: (id: number) => string): string {
   if (x.met) return `✓ ${x.label} (${x.pinIds.map(pinLabel).join(', ')})`;
   const quote = x.failedReading

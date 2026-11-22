@@ -478,7 +478,7 @@ truth: {
   reasons still name their victim.
 - **Built as RT-30 (2026-11-22):** the reply separates the accepted answer ("accepted", or "not accepted", with
   "(primary …)" on an accepted alternate) from the recipe ("proven", or "your pins did not prove it"); a failed
-  predicate is worded as the fact the pin must show and quotes the closest pinned reading; every filed pin is listed
+  predicate is worded as the fact the pin must show and quotes the largest reading among the related pins that fail it; every filed pin is listed
   as counted or with why it did not count; and a CPU pin over a line the hour average misses says the truth reads the
   clock hour. SPEC §10 has the wording.
 - *Contributing causes* are accepted answers. A contributing cause that could not be seen in player data is not
