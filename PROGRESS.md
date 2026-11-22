@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: PT-49 application owners and business-calendar facts move into each scenario's game content, so Midwest, Revenue and Harbourline answer `APP_ENTRY` with their own owner and `CALENDAR` with their own facts; absent data keeps the old fallbacks ("the <app> owner", no standing facts).
 - 2026-11-22: RT-30 RCA replies separate the accepted answer from the proof (accepted / your pins did not prove it), mark an accepted alternate with the primary, quote the pin's reading on a failed predicate, list every filed pin with why it did not count, and say the truth reads the clock hour when a pin met a line the hour average misses; the RCA card renders the same text.
 - 2026-11-22: RT-17 one healthy baseline per workload per clock hour (EWMA 0.5 over days, rolling EWMA as fallback) feeds the mechanism judgement, the CPU drill-down, AIOps and the frozen SMF "vs base" ratio; a delay group with ≥ ⅓ of the excess is accepted, and under 10 % of the response-time goal none explains the miss, so the 20:00 lock incidents (R-6, R-15) read as CPU.
 - 2026-11-22: Per-PR timing of the November sim changes, the regressions it found and the remaining targets are in docs/headless-performance-options.md ("Results: November regressions").

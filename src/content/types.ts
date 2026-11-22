@@ -56,4 +56,10 @@ export interface GameContent {
   startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
   /** Analytics tools already installed on day 1 (SPEC §13.5); their measurement overhead applies from the start. */
   startTools?: string[];
+  /** Who owns each workload, in business words, for the Inbox's "ask around" replies (PT-49). Absent = no named
+   *  owner, and the reply calls them "the <workload> owner". */
+  appOwners?: Record<string, string>;
+  /** Facts about this business's calendar anyone in it knows (payday, month end, filing season). Absent = the
+   *  CALENDAR contact has no standing facts and says so once the event rumours run out. */
+  calendarFacts?: { id: string; text: string }[];
 }

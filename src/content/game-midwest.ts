@@ -15,4 +15,18 @@ export const MIDWEST_GAME = defineGame({
       { flaw: 'F11', label: 'RMF records every 15 minutes', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] },
     ],
   },
+  appOwners: {
+    RBANK: 'Sam Lee (retail banking)',
+    CARDAUTH: 'Ana Costa (cards)',
+    MOBILE: 'Jordan Wu (digital channels)',
+    TELLER: 'Chris Novak (branch systems)',
+    PAYMQ: 'Fatima Haddad (payments)',
+    ADHOC: 'Erik Lund (BI and analytics)',
+    TSO: 'Robin Shah (development)',
+  },
+  calendarFacts: [
+    { id: 'payday', text: 'Payday is the 15th: everyone checks their balance and moves money that day, mostly from their phones.' },
+    { id: 'monthend', text: 'Month end (29th–30th) adds about a third more reporting batch on top of the usual night.' },
+    { id: 'weekend', text: 'Weekends are quiet for branches, but mobile traffic hardly drops.' },
+  ],
 });

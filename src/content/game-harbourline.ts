@@ -21,4 +21,20 @@ export const HARBOURLINE_GAME = defineGame({
   batchMissFacet: 'Payments',
   // SPEC §13.5: a large shop already runs the tier-1 data collectors; SMF 113, planners and automation are still bought.
   startTools: ['RMF_MON3', 'PARTITION_DATA', 'CF_DASD', 'CICS_MON', 'DB2_ACCT'],
+  appOwners: {
+    MKTORD: 'Helen Marsh (markets order capture)',
+    MKTQRY: 'Dev Sharma (markets data)',
+    RETAIL: 'Grace Okafor (retail banking)',
+    CARDS: 'Tomasz Nowak (cards)',
+    PAYMENTS: 'Aisha Rahman (payments)',
+    MOBILE: 'Noah Kim (mobile)',
+    ADHOC: 'Ingrid Larsen (finance analytics)',
+    TSO: 'Peter Novak (development)',
+  },
+  calendarFacts: [
+    { id: 'trading', text: 'Trading days burst around the 09:30 open and again before the 16:00 close, and the floor notices every slow second.' },
+    { id: 'payday', text: 'Payday is the 15th: card spending and mobile banking both jump, and the contact centre hears about it the next morning.' },
+    { id: 'monthend', text: 'Month end brings the settlement and reporting runs on top of the usual night.' },
+    { id: 'weekend', text: 'Weekends are quiet on the trading floor, but cards and mobile hardly drop.' },
+  ],
 });
