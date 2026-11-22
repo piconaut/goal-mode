@@ -3,7 +3,7 @@
 // subsystem concurrency) use the previous tick's values carried in `env`.
 // Stage bodies live in ./tick/ (ctx, control, demand, dispatch, helpers); this file orchestrates them.
 
-import { cfServiceForSystem, evaluateCf, type CfImageInput, type CfSystemResult } from '../cf/cf';
+import { cfServiceForSystems, evaluateCf, type CfImageInput } from '../cf/cf';
 import { cpSpeed, ziipSpeed } from '../hw/cpc';
 import type { PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
@@ -216,12 +216,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     return [{ cfg, availableEngines: rt.availableEngines, entitlementEngines: rt.entitlementEngines, dedicated: icf.dedicated }];
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
-  const siteKm = (lparId: string) => plan.siteKmOf[lparId] ?? 0;
-  const cfBySystem: Record<string, CfSystemResult> = {};
-  for (const l of zosLpars) {
-    const here = siteKm(l.id);
-    cfBySystem[l.id] = cfServiceForSystem(cf, config.cfStructures, (cfId) => Math.abs(siteKm(cfId) - here), scenario.cfTunables, sums.cfRequestsBy[l.id] ?? 0);
-  }
+  const cfBySystem = cfServiceForSystems(cf, config.cfStructures, zosLpars, plan.siteKmOf, scenario.cfTunables, sums.cfRequestsBy);
   const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + prev.mods.lockBoost;
 
   // Batch critical-path projection and end-of-night summary.

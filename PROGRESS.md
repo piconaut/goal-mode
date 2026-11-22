@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: Per-system CF accounting shares service calculations at each site within a tick and still records each system's own request rate.
 - 2026-11-22: Added a paired benchmark for core and live runs across revisions and a Node CPU profile summarizer, with usage in `docs/tools.md`.
 - 2026-11-22: Hourly CPU accounting reuses a private accumulator across ticks in each advance, preserving the saved hour records and deterministic results.
 - 2026-11-22: CI `citations` passes at once on the `dev` → `main` milestone PR (user decision): its lines were gated on their PRs into `dev` or predate the rule; milestone #459 opened.

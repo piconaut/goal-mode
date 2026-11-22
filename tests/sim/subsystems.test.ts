@@ -1,6 +1,6 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
-import { cfServiceForSystem, evaluateCf } from '../../src/sim/cf/cf';
+import { cfServiceForSystem, cfServiceForSystems, evaluateCf } from '../../src/sim/cf/cf';
 import { CF_DUPLEX } from '../../src/content/cf';
 import { evaluateDasd } from '../../src/sim/io/dasd';
 import { advanceJob, closeNight, emptyBatch, jobCpuDemand, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
@@ -91,10 +91,20 @@ describe('coupling facility', () => {
     // GBP duplexing copies only writes.
     expect(a!.secondaries!.find((x) => x.name === 'GBP')!.requestRate).toBeCloseTo(4_000 * CF_DUPLEX.cacheWriteFrac, 6);
     const km = (cf: string) => (cf === 'A' ? 15 : 0);
-    const rows = cfServiceForSystem(res, cfg, km, t, 100).byStructure!;
+    const local = cfServiceForSystem(res, cfg, km, t, 100);
+    const rows = local.byStructure!;
     expect(rows.filter((x) => x.name === 'LOCK1').map((x) => [x.role, x.cfLparId, x.distKm, x.requestRate])).toEqual([
       ['PRIM', 'B', 0, 60],
       ['SEC', 'A', 15, 60],
+    ]);
+    const locations = { A: 15, B: 0, PROD1: 0, PROD2: 0, DR: 15 };
+    const systems = cfServiceForSystems(res, cfg, [{ id: 'PROD1' }, { id: 'PROD2' }, { id: 'DR' }],
+      locations, t, { PROD1: 100, PROD2: 50, DR: 100 });
+    expect(systems.PROD1).toEqual(local);
+    expect(systems.PROD2).toEqual({ ...local, requestRate: 50, byStructure: rows.map((r) => ({ ...r, requestRate: r.requestRate / 2 })) });
+    expect(systems.DR!.byStructure!.filter((x) => x.name === 'LOCK1').map((x) => [x.role, x.distKm, x.requestRate])).toEqual([
+      ['PRIM', 15, 60],
+      ['SEC', 0, 60],
     ]);
   });
   it('a shared, low-weight CF converts to async and burns more z/OS CPU per request', () => {
