@@ -138,8 +138,8 @@ export function applyGameCommand(
       if (missing.length && !pins.length) return no('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without evidence.');
       if (missing.length) return no(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${pins.map((p) => idText('pin', p.id)).join(' ')}`);
       const r = submitRca(run, cmd.incidentId, cmd.mechanism, cmd.trigger, sc, cmd.evidenceIds ?? []);
-      // One RCA covers the group: its primary is the lead's and its accepted answers are the union of the members'
-      // (RT-15, docs/rca-design.md §4.5).
+      // One RCA covers the group: its accepted answers are the union of the members', and the header names each
+      // distinct primary with its workloads, each accepted reason with its victim (RT-15, RT-28, §4.5).
       const group = rcaGroupOf(r.incidents, cmd.incidentId);
       const covered = group.filter((i) => i.id !== cmd.incidentId && i.rca).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === cmd.incidentId)?.rca;

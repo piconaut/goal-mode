@@ -100,6 +100,7 @@ describe('grouped RCA evidence verdicts', () => {
     // A group whose members agree keeps the one-primary text a single incident has.
     expect(primaryTextOf([lead!])).toBe('CPU_PRIORITY/Policy or configuration');
     expect(primaryTextOf([lead!, { ...member! }])).toBe('CPU_PRIORITY/Policy or configuration');
+    expect(primaryTextOf([])).toBe('');
   });
 
   it('keeps the group lead when score and evidence checks tie', () => {
