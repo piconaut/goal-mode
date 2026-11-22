@@ -259,7 +259,8 @@ One loop, the same shape as IBM's (§3), sized for the sim:
   - projection re-runs the sim's own dispatcher model at sustained demand (§5.4), where WLM uses learned plots;
   - the coefficients IBM does not publish are invented (§5.10).
 
-Code: `src/sim/wlm/adjust.ts` (the loop), `plan.ts` (plans), `ladder.ts`, `holders.ts`, `projection.ts`,
+Code: `src/sim/wlm/adjust.ts` (the loop) and `adjust/` (per-call context, trial assessment, candidate and donor
+selection, delay shares, CPU protection, trace types), `plan.ts` (plans), `ladder.ts`, `holders.ts`, `projection.ts`,
 `batchRt.ts`, `goals.ts` and `runtime.ts` (PIs and accumulators), `src/sim/zos/dispatcher.ts`. The coefficients
 are `POLICY_ADJUST` in `src/content/wlm/tuning.ts`.
 

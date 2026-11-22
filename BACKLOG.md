@@ -218,7 +218,7 @@ credited with the queue at the baseline hold time, not the unqueued time (R-15).
 THREAD_LIMIT). Done when: R-15's 20:00 incident is THREAD_LIMIT/POLICY and R-14 is one CAPPING group.
 Cross-note (WLM audit 2026-11-10): WT-09 (server periods) and WT-10 (waits are not delays) change the same
 per-period split of region CPU wait and other waits; do this entry after them and share one split
-(docs/archive/wlm-audit-2026-11.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust.ts`: `managedDelays` (CPU,
+(docs/archive/wlm-audit-2026-11.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust/delays.ts`: `managedDelays` (CPU,
 zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
