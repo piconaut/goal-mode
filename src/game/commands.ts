@@ -230,7 +230,7 @@ export function applyGameCommand(
     case 'TFP':
       return result(decideTfp(run, cmd.accept));
     case 'ASK':
-      return result(askAround(run, cmd.topic, cmd.workloadId ?? null, sc));
+      return result(askAround(run, cmd.topic, cmd.workloadId ?? null, sc, content));
     case 'PROJECT':
       return result(workOnProject(run, cmd.id, cmd.hours));
   }

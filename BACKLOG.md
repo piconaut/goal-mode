@@ -91,16 +91,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-49 · Business-calendar facts and application owners are Midwest's in every scenario
-`list: playtest-fixes · status: ready · priority: low · size: S · area: content`
-
-Source: agent playtest 2026-11-21, Revenue seed 23. `src/content/inquiries.ts` `CALENDAR_FACTS` ("Payday is the 15th:
-… mostly from their phones") and `APP_OWNERS` (Midwest workloads only) are not per scenario, so the revenue agency's
-CALENDAR reply talks about bank paydays, and `ask APP_ENTRY ANALYTICS` falls back to "the ANALYTICS owner" (it gave no
-reply within 17 h; check whether that is the 20 % don't-know or a bug). Move both into the scenario content for
-Midwest, Revenue and Harbourline. Done when: each scenario's CALENDAR and APP_ENTRY replies use its own facts and
-owners, with a test per scenario.
-
 ## rca-truth
 
 RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating, ending in design
