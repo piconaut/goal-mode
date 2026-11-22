@@ -1456,6 +1456,8 @@ storage view's SOS time), Partition Data, and the CF Activity and DASD Activity 
 time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time).
 Hourly Db2/CICS pins label a closed hour's full range; a current-hour pin labels `:00` through the capture time.
 This is the game's hourly reporting window; the pin's end tick and evidence judging are unchanged.
+RMF interval pins (WLMGL, Partition Data, CF and DASD Activity) label the interval's range as the report shows it
+(`D1 13:00–13:30`); they too store only the interval's end tick.
 A pin is
 relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
