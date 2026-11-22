@@ -1,0 +1,227 @@
+commit,pr,merged,title,scenario,pass,pairs,median_wall_pct,pair_wall_pct,hashes
+232a5d1,147,2026-11-02,Report CICS resource samples on region classes; add Monitor III SYSWKM,harbourline,1,3,11.59,+11.59 +10.56 +14.98,differ
+232a5d1,147,2026-11-02,Report CICS resource samples on region classes; add Monitor III SYSWKM,harbourline,2,7,13.80,+15.91 +12.46 +16.71 +11.65 +16.03 +11.55 +13.80,differ
+232a5d1,147,2026-11-02,Report CICS resource samples on region classes; add Monitor III SYSWKM,midwest,1,3,8.73,+3.66 +8.73 +15.34,differ
+232a5d1,147,2026-11-02,Report CICS resource samples on region classes; add Monitor III SYSWKM,midwest,2,7,11.84,+5.58 +5.33 +6.55 +11.84 +12.57 +16.18 +17.11,differ
+6e84f19,146,2026-11-02,"Share equal-DP CPU by ready units, not by demand",harbourline,1,3,5.94,+5.94 +1.99 +6.35,differ
+6e84f19,146,2026-11-02,"Share equal-DP CPU by ready units, not by demand",harbourline,2,7,4.44,+4.44 +1.83 +4.39 +5.23 +6.87 +2.03 +5.73,differ
+6e84f19,146,2026-11-02,"Share equal-DP CPU by ready units, not by demand",midwest,1,3,4.27,+4.27 +3.55 +10.67,differ
+6e84f19,146,2026-11-02,"Share equal-DP CPU by ready units, not by demand",midwest,2,7,7.33,+7.33 +5.61 +4.09 +3.94 +15.13 +9.74 +10.46,differ
+8423186,145,2026-11-02,Fix shared CICS overflow and WLM CP accounting,harbourline,1,3,2.62,+4.41 +2.62 +0.63,differ
+8423186,145,2026-11-02,Fix shared CICS overflow and WLM CP accounting,midwest,1,3,-2.91,-4.22 -2.21 -2.91,differ
+8c0dd9e,160,2026-11-02,Monitor III time bar: Go to a time and label the shown range (playtest round 1 history gap),harbourline,1,3,4.06,+6.52 +4.06 +3.95,match
+8c0dd9e,160,2026-11-02,Monitor III time bar: Go to a time and label the shown range (playtest round 1 history gap),midwest,1,3,-1.97,-1.87 -1.97 -3.12,match
+d83005c,153,2026-11-02,Bound WLM state samples by an address space's dispatchable units,harbourline,1,3,2.90,+2.90 -1.41 +6.75,differ
+d83005c,153,2026-11-02,Bound WLM state samples by an address space's dispatchable units,midwest,1,3,-8.74,-10.18 -8.74 -5.94,differ
+f06099e,159,2026-11-02,"SYSWKM: the Veloc pin records the server's velocity, not CPU delay (playtest round 1)",harbourline,1,3,-0.36,-0.36 -0.95 +1.36,match
+f06099e,159,2026-11-02,"SYSWKM: the Veloc pin records the server's velocity, not CPU delay (playtest round 1)",midwest,1,3,-1.32,-1.32 -6.88 -0.04,match
+46ea767,167,2026-11-03,Revenue retune: heavier compliance analytics restores G1's pressure (M8.7),harbourline,1,3,3.13,+4.27 -0.83 +3.13,match
+46ea767,167,2026-11-03,Revenue retune: heavier compliance analytics restores G1's pressure (M8.7),midwest,1,3,-3.56,+2.90 -13.23 -3.56,match
+635833d,166,2026-11-03,CICS_SOS: EDSA storage model per AOR instead of an MXT cut (M8.7),harbourline,1,3,-0.63,-2.73 -0.63 -0.04,differ
+635833d,166,2026-11-03,CICS_SOS: EDSA storage model per AOR instead of an MXT cut (M8.7),midwest,1,3,2.21,+5.08 -1.68 +2.21,differ
+c9275e7,168,2026-11-03,Split step.ts into tick stage modules (hash-neutral),harbourline,1,3,0.93,+0.93 -1.10 +1.61,match
+c9275e7,168,2026-11-03,Split step.ts into tick stage modules (hash-neutral),midwest,1,3,2.38,+2.38 -5.27 +4.21,match
+d8ada51,170,2026-11-03,Fix batch demand feedback and WLM receiver ordering,harbourline,1,3,-0.40,+1.32 -3.14 -0.40,differ
+d8ada51,170,2026-11-03,Fix batch demand feedback and WLM receiver ordering,midwest,1,3,0.25,+7.89 -6.67 +0.25,differ
+020ad95,199,2026-11-04,Make Manage Region Using Goals Of a fixed TRANSACTION setting for the player,harbourline,1,3,-0.31,-0.31 -3.12 +3.95,match
+020ad95,199,2026-11-04,Make Manage Region Using Goals Of a fixed TRANSACTION setting for the player,midwest,1,3,-4.37,-4.90 -4.37 +5.08,match
+15ca90b,194,2026-11-04,fix: credit zIIP evidence for CPU priority incidents,harbourline,1,3,5.06,+4.55 +5.72 +5.06,match
+15ca90b,194,2026-11-04,fix: credit zIIP evidence for CPU priority incidents,midwest,1,3,1.05,+1.05 -4.16 +4.66,match
+ae353ef,175,2026-11-04,Prevent resource-group caps from creating phantom CPU busy and MSU,harbourline,1,3,8.32,+6.35 +8.72 +8.32,differ
+ae353ef,175,2026-11-04,Prevent resource-group caps from creating phantom CPU busy and MSU,harbourline,2,7,9.73,+12.21 +5.82 +14.81 +9.73 +12.14 +4.47 +8.16,differ
+ae353ef,175,2026-11-04,Prevent resource-group caps from creating phantom CPU busy and MSU,midwest,1,3,9.45,+14.44 +7.40 +9.45,differ
+ae353ef,175,2026-11-04,Prevent resource-group caps from creating phantom CPU busy and MSU,midwest,2,7,7.87,+8.64 +6.11 +7.87 +11.98 +7.62 +8.83 +5.09,differ
+feaebe9,198,2026-11-04,Reserve 1 CP + 1 zIIP on every Prod LPAR; warn on zIIP purchase with no reserved zIIP,harbourline,1,3,6.85,+6.85 +5.76 +8.22,differ
+feaebe9,198,2026-11-04,Reserve 1 CP + 1 zIIP on every Prod LPAR; warn on zIIP purchase with no reserved zIIP,harbourline,2,7,0.84,+1.76 +0.39 -1.05 +1.54 +1.85 -3.98 +0.84,differ
+feaebe9,198,2026-11-04,Reserve 1 CP + 1 zIIP on every Prod LPAR; warn on zIIP purchase with no reserved zIIP,midwest,1,3,-0.36,-0.36 -8.50 +1.96,differ
+feaebe9,198,2026-11-04,Reserve 1 CP + 1 zIIP on every Prod LPAR; warn on zIIP purchase with no reserved zIIP,midwest,2,7,0.26,+4.36 -1.74 -4.49 +0.86 -1.68 +0.26 +3.22,differ
+1f58a18,200,2026-11-05,fix: expire new-workload RCA attribution,harbourline,1,3,-1.17,-1.17 -3.02 +2.01,match
+1f58a18,200,2026-11-05,fix: expire new-workload RCA attribution,midwest,1,3,-6.53,-6.53 -6.64 +3.20,match
+33efc7f,206,2026-11-05,fix: restore CPU on repeated log archiver incidents,harbourline,1,3,-0.10,+0.47 -0.10 -0.55,match
+33efc7f,206,2026-11-05,fix: restore CPU on repeated log archiver incidents,midwest,1,3,-2.03,-4.79 -0.82 -2.03,match
+34befe2,205,2026-11-05,fix: attribute power caps to affected workloads,harbourline,1,3,1.54,+1.52 +1.54 +2.06,match
+34befe2,205,2026-11-05,fix: attribute power caps to affected workloads,midwest,1,3,-2.86,-2.86 -5.79 +0.32,match
+fae90cd,222,2026-11-06,inspect wlm (why WLM accepted or rejected each DP move) + wlm-why and playtest-companion skills,harbourline,1,3,-1.32,-5.98 +1.54 -1.32,match
+fae90cd,222,2026-11-06,inspect wlm (why WLM accepted or rejected each DP move) + wlm-why and playtest-companion skills,midwest,1,3,-1.77,-1.77 -6.87 +0.80,match
+036590f,225,2026-11-07,Batch: Db2 job on an image without Db2 fails at connect (DSNE100I),harbourline,1,3,-0.13,-0.13 -3.50 +1.15,match
+036590f,225,2026-11-07,Batch: Db2 job on an image without Db2 fails at connect (DSNE100I),midwest,1,3,-6.68,-8.26 -6.68 +3.96,match
+a4f11ef,229,2026-11-07,Codex: add SMF 101 and SMF 110 entries,harbourline,1,3,-2.80,-6.44 -2.80 +4.04,match
+a4f11ef,229,2026-11-07,Codex: add SMF 101 and SMF 110 entries,midwest,1,3,-0.87,-0.87 -5.86 +2.09,match
+c772671,226,2026-11-07,Batch: log each Db2 connect attempt and clear failCode on restart,harbourline,1,3,-1.20,-1.20 -5.15 +1.39,match
+c772671,226,2026-11-07,Batch: log each Db2 connect attempt and clear failCode on restart,midwest,1,3,-3.17,-3.17 -4.28 +6.86,match
+ddc95db,224,2026-11-07,WLM: enforce CPU protection instead of freezing when it is already broken,harbourline,1,3,1.76,+1.76 -0.01 +1.81,match
+ddc95db,224,2026-11-07,WLM: enforce CPU protection instead of freezing when it is already broken,midwest,1,3,-1.97,-3.27 -1.97 +6.19,match
+5dd5c44,236,2026-11-08,WLM editor: show resource group limits as MSU and CPs,harbourline,1,3,0.80,+0.80 -3.54 +1.62,match
+5dd5c44,236,2026-11-08,WLM editor: show resource group limits as MSU and CPs,midwest,1,3,-0.20,-0.20 -9.99 +3.83,match
+8ff847c,230,2026-11-08,Codex: teach reading END/S against a prior day,harbourline,1,3,-0.94,-0.94 -1.79 +2.09,match
+8ff847c,230,2026-11-08,Codex: teach reading END/S against a prior day,midwest,1,3,3.11,+3.11 -7.69 +3.99,match
+afd56c8,235,2026-11-08,CFACT: report lock-structure contention from the lock index,harbourline,1,3,-0.07,+1.88 -4.02 -0.07,differ
+afd56c8,235,2026-11-08,CFACT: report lock-structure contention from the lock index,midwest,1,3,-4.37,-4.37 -11.47 +3.23,differ
+c379018,233,2026-11-08,LOCK_ESCALATION: offer a commit-frequency fix,harbourline,1,3,-1.18,-1.18 -0.93 -1.94,match
+c379018,233,2026-11-08,LOCK_ESCALATION: offer a commit-frequency fix,midwest,1,3,0.88,+1.91 -0.84 +0.88,match
+c6c3e82,234,2026-11-08,RCA: count a competing class's CPU as CPU_PRIORITY evidence,harbourline,1,3,1.75,+1.75 -0.11 +6.91,match
+c6c3e82,234,2026-11-08,RCA: count a competing class's CPU as CPU_PRIORITY evidence,midwest,1,3,-0.12,-0.12 -3.52 +2.68,match
+f7eb9d0,232,2026-11-08,RCA: label the CICS SOS leak a software defect and explain the vocabulary,harbourline,1,3,-1.56,+1.31 -2.96 -1.56,match
+f7eb9d0,232,2026-11-08,RCA: label the CICS SOS leak a software defect and explain the vocabulary,midwest,1,3,-4.88,-1.12 -12.43 -4.88,match
+1300e69,258,2026-11-09,PT-06: report IIPCP only where a zIIP is defined,harbourline,1,3,-0.14,-0.14 -2.49 +0.36,differ
+1300e69,258,2026-11-09,PT-06: report IIPCP only where a zIIP is defined,midwest,1,3,-6.51,-6.74 -6.51 +3.58,differ
+1987228,249,2026-11-09,PT-01: WLM's projection budget is per importance,harbourline,1,3,-1.90,+0.59 -2.06 -1.90,differ
+1987228,249,2026-11-09,PT-01: WLM's projection budget is per importance,midwest,1,3,1.78,-1.76 +1.78 +3.08,match
+281a0b9,254,2026-11-09,PT-09: a fix planned from a forewarning arms against its card,harbourline,1,3,0.18,+0.18 -5.45 +1.37,match
+281a0b9,254,2026-11-09,PT-09: a fix planned from a forewarning arms against its card,midwest,1,3,-3.27,-3.72 -3.27 -0.05,match
+2c20e52,251,2026-11-09,PT-03: power-cap RCA explains itself and shows the capacity adjustment,harbourline,1,3,-4.33,-0.75 -4.33 -4.67,match
+2c20e52,251,2026-11-09,PT-03: power-cap RCA explains itself and shows the capacity adjustment,midwest,1,3,-7.40,-8.10 -7.40 -0.15,match
+4c7f96b,252,2026-11-09,"PT-05: the WLM log says why no move was taken, and the reports mark server-managed classes",harbourline,1,3,0.17,+0.17 +1.20 -4.79,differ
+4c7f96b,252,2026-11-09,"PT-05: the WLM log says why no move was taken, and the reports mark server-managed classes",midwest,1,3,-2.29,-2.29 -5.33 +3.37,differ
+9a11050,248,2026-11-09,CL-02: split wlm/evaluate.ts into stage modules (hash-neutral),harbourline,1,3,-1.46,-3.58 -1.46 +2.63,match
+9a11050,248,2026-11-09,CL-02: split wlm/evaluate.ts into stage modules (hash-neutral),midwest,1,3,-6.06,-9.96 -6.06 +0.09,match
+9c8ba1e,263,2026-11-09,CL-04: move WLM's receivers-per-importance limit into content,harbourline,1,3,-3.11,-4.88 -3.11 +0.33,match
+9c8ba1e,263,2026-11-09,CL-04: move WLM's receivers-per-importance limit into content,midwest,1,3,1.46,-4.84 +1.46 +4.68,match
+aa3036f,246,2026-11-09,CL-01: Midwest uses the shared pool() helper,harbourline,1,3,-2.28,-3.07 -2.28 -0.53,match
+aa3036f,246,2026-11-09,CL-01: Midwest uses the shared pool() helper,midwest,1,3,-3.78,-3.78 -6.13 -0.89,match
+e268d37,244,2026-11-09,"Milestone review notes: CFACT contention APPROX, MSU citation, isNewWorkload test",harbourline,1,3,0.26,+0.17 +0.26 +2.45,match
+e268d37,244,2026-11-09,"Milestone review notes: CFACT contention APPROX, MSU citation, isNewWorkload test",midwest,1,3,2.92,+2.92 -9.19 +7.90,match
+059de82,278,2026-11-10,"CL-06: lookup plan in step, policy adjustment and CICS regions",harbourline,1,3,-7.67,-7.67 -10.22 -5.49,match
+059de82,278,2026-11-10,"CL-06: lookup plan in step, policy adjustment and CICS regions",midwest,1,3,-7.19,-6.86 -8.92 -7.19,match
+16eeee7,269,2026-11-10,RT-02: every card that can be blamed declares its mechanisms,harbourline,1,3,-1.39,+1.19 -1.39 -3.31,match
+16eeee7,269,2026-11-10,RT-02: every card that can be blamed declares its mechanisms,midwest,1,3,-3.89,-3.89 -7.62 +1.93,match
+1edc970,271,2026-11-10,RT-03: an anySubject pin must come from an image the hurt work runs on,harbourline,1,3,-1.13,+1.14 -1.13 -3.77,match
+1edc970,271,2026-11-10,RT-03: an anySubject pin must come from an image the hurt work runs on,midwest,1,3,-0.51,-0.51 -4.60 +0.95,match
+874f81b,279,2026-11-10,"RT-05: pin CPC busy, image busy, the capacity change and the CP/zIIP split",harbourline,1,3,-1.11,-0.71 -1.11 -2.54,match
+874f81b,279,2026-11-10,"RT-05: pin CPC busy, image busy, the capacity change and the CP/zIIP split",midwest,1,3,0.11,+0.11 -6.33 +3.26,match
+8a7a0e1,277,2026-11-10,CL-05: lookup plan per config; dispatch and demand by index,harbourline,1,3,-7.58,-8.35 -7.58 -7.20,match
+8a7a0e1,277,2026-11-10,CL-05: lookup plan per config; dispatch and demand by index,midwest,1,3,-4.31,-2.72 -6.30 -4.31,match
+d1fc6bf,275,2026-11-10,WT-02: the WLM trace carries what the invariant tests need,harbourline,1,3,-2.43,-2.43 -3.45 -0.53,match
+d1fc6bf,275,2026-11-10,WT-02: the WLM trace carries what the invariant tests need,midwest,1,3,-3.15,-6.10 -3.15 +5.84,match
+2f614b5,296,2026-11-11,"WT-05: skip clocks, the delay test and a per-interval projection budget",harbourline,1,3,0.05,-1.85 +0.05 +2.54,differ
+2f614b5,296,2026-11-11,"WT-05: skip clocks, the delay test and a per-interval projection budget",midwest,1,3,1.52,+4.08 +1.52 +1.20,differ
+53b5789,287,2026-11-11,"RT-07: accepted answer sets, one primary, and the cause identity",harbourline,1,3,-3.38,-4.53 -0.37 -3.38,match
+53b5789,287,2026-11-11,"RT-07: accepted answer sets, one primary, and the cause identity",midwest,1,3,-3.44,-2.89 -3.99 -3.44,match
+71a0685,288,2026-11-11,RT-12: pin relations instead of `anySubject`,harbourline,1,3,-3.80,-8.24 -1.63 -3.80,match
+71a0685,288,2026-11-11,RT-12: pin relations instead of `anySubject`,midwest,1,3,-3.69,-4.10 -3.69 -2.87,match
+ac84d6a,295,2026-11-11,"WT-04: one PI basis, projections at sustained demand",harbourline,1,3,14.28,+8.50 +14.28 +15.64,differ
+ac84d6a,295,2026-11-11,"WT-04: one PI basis, projections at sustained demand",harbourline,2,7,15.02,+5.71 +13.10 +15.02 +17.88 +12.41 +15.36 +15.45,differ
+ac84d6a,295,2026-11-11,"WT-04: one PI basis, projections at sustained demand",midwest,1,3,15.83,+10.95 +16.95 +15.83,differ
+ac84d6a,295,2026-11-11,"WT-04: one PI basis, projections at sustained demand",midwest,2,7,17.45,+6.69 +11.25 +14.47 +17.45 +26.26 +20.03 +19.25,differ
+b2a9903,302,2026-11-11,WT-06: the canonical ladder: priorities are an order,harbourline,1,3,5.33,+1.60 +5.33 +6.43,differ
+b2a9903,302,2026-11-11,WT-06: the canonical ladder: priorities are an order,harbourline,2,7,5.72,-0.88 -1.62 +5.89 +7.53 +5.72 +9.08 +5.19,differ
+b2a9903,302,2026-11-11,WT-06: the canonical ladder: priorities are an order,midwest,1,3,3.20,+0.15 +3.20 +8.30,differ
+b2a9903,302,2026-11-11,WT-06: the canonical ladder: priorities are an order,midwest,2,7,6.39,+0.48 +3.61 +12.52 +0.29 +6.39 +7.58 +8.99,differ
+fd42d1b,290,2026-11-11,WT-01: `inspect … wlm-stats` policy adjustment statistics,harbourline,1,3,-2.99,-3.51 -2.81 -2.99,match
+fd42d1b,290,2026-11-11,WT-01: `inspect … wlm-stats` policy adjustment statistics,midwest,1,3,-1.57,+1.50 -5.86 -1.57,match
+1f4f212,307,2026-11-12,WT-07: order donors by goal achievement and the delayed processor,harbourline,1,3,6.16,-2.38 +6.16 +11.76,differ
+1f4f212,307,2026-11-12,WT-07: order donors by goal achievement and the delayed processor,harbourline,2,7,0.23,-0.31 +1.99 +2.13 -2.46 +0.77 -0.84 +0.23,differ
+1f4f212,307,2026-11-12,WT-07: order donors by goal achievement and the delayed processor,midwest,1,3,-1.01,-1.01 -2.08 +1.66,differ
+1f4f212,307,2026-11-12,WT-07: order donors by goal achievement and the delayed processor,midwest,2,7,-0.70,+2.39 -4.46 -2.34 +0.76 -0.70 -0.94 -0.14,differ
+23a9d77,321,2026-11-12,RF-03: the skip clock is 3 cycles and not honoured at five missing,harbourline,1,3,1.13,+1.13 +1.13 +3.67,differ
+23a9d77,321,2026-11-12,RF-03: the skip clock is 3 cycles and not honoured at five missing,midwest,1,3,2.36,-2.34 +2.36 +7.32,differ
+2d383e8,316,2026-11-12,WT-08: bounded atomic WLM policy plans,harbourline,1,3,-2.93,-0.54 -2.93 -3.56,differ
+2d383e8,316,2026-11-12,WT-08: bounded atomic WLM policy plans,midwest,1,3,-3.19,-3.07 -6.52 -3.19,differ
+d656323,318,2026-11-12,WT-10: managed bottlenecks in turn; waits are not delays (W7),harbourline,1,3,-0.99,-2.37 -0.99 -0.57,differ
+d656323,318,2026-11-12,WT-10: managed bottlenecks in turn; waits are not delays (W7),midwest,1,3,1.20,+0.31 +1.20 +2.21,differ
+020ca0f,332,2026-11-13,WT-11: honor discretionary resource-group minima before happy goal work,harbourline,1,3,-3.97,-3.97 -5.12 +2.44,match
+020ca0f,332,2026-11-13,WT-11: honor discretionary resource-group minima before happy goal work,midwest,1,3,1.08,+0.45 +1.08 +6.58,match
+224951d,328,2026-11-13,"WT-15: Codex, SPEC, the wlm-why skill and the closing sweep",harbourline,1,3,0.17,+0.17 -1.07 +1.39,match
+224951d,328,2026-11-13,"WT-15: Codex, SPEC, the wlm-why skill and the closing sweep",midwest,1,3,2.85,+2.85 -0.85 +6.91,match
+264ab93,336,2026-11-13,WT-12: batch response-time priority projections,harbourline,1,3,-1.32,-1.32 -6.10 +3.02,match
+264ab93,336,2026-11-13,WT-12: batch response-time priority projections,midwest,1,3,2.92,+2.92 +1.38 +7.29,match
+4241a09,344,2026-11-13,RT-10: pin CF Activity and DASD Activity rows,harbourline,1,3,-1.17,-4.47 +2.46 -1.17,differ
+4241a09,344,2026-11-13,RT-10: pin CF Activity and DASD Activity rows,midwest,1,3,5.29,-1.34 +5.29 +5.47,differ
+866b322,331,2026-11-13,WT-16: correct velocity samples (I13 cost accepted),harbourline,1,3,1.11,+0.65 +6.33 +1.11,differ
+866b322,331,2026-11-13,WT-16: correct velocity samples (I13 cost accepted),midwest,1,3,2.90,-0.24 +2.90 +3.53,differ
+9b85f10,333,2026-11-13,WT-12: measure batch response-time completions (partial),harbourline,1,3,0.07,-1.49 +2.46 +0.07,match
+9b85f10,333,2026-11-13,WT-12: measure batch response-time completions (partial),midwest,1,3,0.64,+0.64 -0.62 +2.86,match
+a7a2f10,337,2026-11-13,"WT-17: trim wlm-design.md to the design, archive the audit; drop WT-14",harbourline,1,3,-0.05,+2.46 -0.05 -0.55,match
+a7a2f10,337,2026-11-13,"WT-17: trim wlm-design.md to the design, archive the audit; drop WT-14",midwest,1,3,1.59,+1.45 +4.95 +1.59,match
+db0479f,342,2026-11-13,"RT-08: CAPPING is the share of the hour an image was capped, not its worst tick",harbourline,1,3,-1.99,-1.99 -2.52 +1.04,match
+db0479f,342,2026-11-13,"RT-08: CAPPING is the share of the hour an image was capped, not its worst tick",midwest,1,3,5.24,+1.38 +5.24 +6.35,match
+fe67448,324,2026-11-13,WT-09: server periods hold the regions' priority (W3),harbourline,1,3,2.92,+0.76 +2.92 +4.95,differ
+fe67448,324,2026-11-13,WT-09: server periods hold the regions' priority (W3),harbourline,2,7,2.69,+0.47 +2.69 +4.58 +4.04 +2.45 +2.15 +6.30,differ
+fe67448,324,2026-11-13,WT-09: server periods hold the regions' priority (W3),midwest,1,3,7.11,+9.24 +2.32 +7.11,differ
+fe67448,324,2026-11-13,WT-09: server periods hold the regions' priority (W3),midwest,2,7,5.27,+7.67 +4.37 +5.16 +13.89 +3.19 +7.43 +5.27,differ
+0dc01b0,345,2026-11-14,"RT-11: pin CICS storage, PROCU jobs and work-manager states",harbourline,1,3,-1.50,-1.50 -2.45 -0.19,match
+0dc01b0,345,2026-11-14,"RT-11: pin CICS storage, PROCU jobs and work-manager states",midwest,1,3,1.00,+1.00 +0.67 +7.11,match
+9bce90c,353,2026-11-14,RT-09: rename the regression trigger to CHANGE_REGRESSION and move the five change cards,harbourline,1,3,4.51,-0.11 +4.51 +6.66,match
+9bce90c,353,2026-11-14,RT-09: rename the regression trigger to CHANGE_REGRESSION and move the five change cards,harbourline,2,7,4.47,+4.47 +2.82 +9.05 +4.20 +2.37 +4.63 +6.31,match
+9bce90c,353,2026-11-14,RT-09: rename the regression trigger to CHANGE_REGRESSION and move the five change cards,midwest,1,3,7.96,-0.59 +8.63 +7.96,match
+9bce90c,353,2026-11-14,RT-09: rename the regression trigger to CHANGE_REGRESSION and move the five change cards,midwest,2,7,7.46,-3.64 +4.13 +7.46 +6.72 +9.73 +10.06 +7.84,match
+fea7f8b,347,2026-11-14,Cross-report invariant suite: 43 identities over one seeded run per scenario,harbourline,1,3,8.24,+9.95 +7.10 +8.24,differ
+fea7f8b,347,2026-11-14,Cross-report invariant suite: 43 identities over one seeded run per scenario,harbourline,2,7,3.95,+0.98 +1.67 +9.59 +3.95 +2.91 +7.36 +6.68,differ
+fea7f8b,347,2026-11-14,Cross-report invariant suite: 43 identities over one seeded run per scenario,midwest,1,3,2.79,+2.79 -0.44 +6.34,differ
+fea7f8b,347,2026-11-14,Cross-report invariant suite: 43 identities over one seeded run per scenario,midwest,2,7,5.89,+3.93 +6.74 +4.66 +6.68 +7.88 +5.89 +4.76,differ
+3348c40,359,2026-11-15,"RT-14: card footprints — blame by resource and reach, fresh before background",harbourline,1,3,2.43,+1.11 +2.43 +3.22,match
+3348c40,359,2026-11-15,"RT-14: card footprints — blame by resource and reach, fresh before background",midwest,1,3,5.22,+5.22 +4.62 +5.40,match
+e17a478,357,2026-11-15,RT-13 (independent build): RCA evidence as two-predicate proof recipes,harbourline,1,3,6.60,+4.85 +6.60 +8.24,match
+e17a478,357,2026-11-15,RT-13 (independent build): RCA evidence as two-predicate proof recipes,midwest,1,3,2.62,-1.12 +2.62 +2.88,match
+18084c2,387,2026-11-16,CL-26: basepol uses the shared WLM policy builders,harbourline,1,3,-0.01,-0.01 +1.31 -2.26,match
+18084c2,387,2026-11-16,CL-26: basepol uses the shared WLM policy builders,midwest,1,3,4.39,+4.39 +0.72 +9.93,match
+325763c,386,2026-11-16,CL-25: one clock formatter,harbourline,1,3,-2.31,-3.31 -2.31 +2.12,match
+325763c,386,2026-11-16,CL-25: one clock formatter,midwest,1,3,1.28,-0.17 +1.28 +5.82,match
+4c556f9,376,2026-11-16,CL-20: refuse another build's save; delete the save fallbacks,harbourline,1,3,4.85,+2.01 +4.98 +4.85,match
+4c556f9,376,2026-11-16,CL-20: refuse another build's save; delete the save fallbacks,midwest,1,3,1.49,+1.49 +1.46 +4.55,match
+c792874,377,2026-11-16,PR-15: reconcile a carried DP when a policy edit changes the period,harbourline,1,3,6.19,+5.25 +6.51 +6.19,match
+c792874,377,2026-11-16,PR-15: reconcile a carried DP when a policy edit changes the period,harbourline,2,7,5.59,+5.59 +4.53 +6.96 +4.84 +5.34 +6.66 +7.26,match
+c792874,377,2026-11-16,PR-15: reconcile a carried DP when a policy edit changes the period,midwest,1,3,6.36,+3.16 +7.15 +6.36,match
+c792874,377,2026-11-16,PR-15: reconcile a carried DP when a policy edit changes the period,midwest,2,7,7.58,+10.25 -0.25 +5.56 +7.58 +11.43 +9.99 +3.82,match
+e625fe9,383,2026-11-16,CL-22: delete dead code and un-export file-private symbols,harbourline,1,3,-4.53,-4.53 -0.36 -7.41,match
+e625fe9,383,2026-11-16,CL-22: delete dead code and un-export file-private symbols,midwest,1,3,-0.21,-1.40 +1.44 -0.21,match
+ea21022,373,2026-11-16,CL-23: content owns its vocabulary; enforce the content layering,harbourline,1,3,7.49,+9.57 +1.75 +7.49,match
+ea21022,373,2026-11-16,CL-23: content owns its vocabulary; enforce the content layering,harbourline,2,7,4.67,+5.00 +2.46 +9.04 +10.40 +3.61 -0.28 +4.67,match
+ea21022,373,2026-11-16,CL-23: content owns its vocabulary; enforce the content layering,midwest,1,3,4.70,+2.36 +4.70 +7.57,match
+ea21022,373,2026-11-16,CL-23: content owns its vocabulary; enforce the content layering,midwest,2,7,2.70,-6.64 +5.55 +6.10 +2.11 +1.46 +2.70 +8.15,match
+f9d78f8,382,2026-11-16,CL-21: make the sim state's old-save fields required,harbourline,1,3,-4.43,-4.73 -4.43 +0.29,match
+f9d78f8,382,2026-11-16,CL-21: make the sim state's old-save fields required,midwest,1,3,7.17,+1.69 +7.17 +9.81,match
+049fec5,397,2026-11-17,PR-16: a late period above the top level joins it instead of MANAGED_MAX,harbourline,1,3,-0.88,+1.59 -3.80 -0.88,match
+049fec5,397,2026-11-17,PR-16: a late period above the top level joins it instead of MANAGED_MAX,midwest,1,3,2.95,+2.95 +0.92 +4.55,match
+310b2b1,401,2026-11-17,PT-16: the CPC forecast fits weekdays and forecasts MSU demand against capacity,harbourline,1,3,-0.43,-0.43 -0.00 -2.99,match
+310b2b1,401,2026-11-17,PT-16: the CPC forecast fits weekdays and forecasts MSU demand against capacity,midwest,1,3,3.03,+0.79 +3.03 +7.74,match
+7022d14,407,2026-11-17,CL-39: name the CF tunables and give game content one defaults helper,harbourline,1,3,-1.00,-1.89 -0.69 -1.00,match
+7022d14,407,2026-11-17,CL-39: name the CF tunables and give game content one defaults helper,midwest,1,3,1.24,+1.24 -1.72 +3.73,match
+bf16675,388,2026-11-17,CL-27: sim tunables into content,harbourline,1,3,-3.74,-0.73 -4.97 -3.74,match
+bf16675,388,2026-11-17,CL-27: sim tunables into content,midwest,1,3,5.73,+0.52 +7.18 +5.73,match
+d924668,398,2026-11-17,PR-17: I15 covers both kinds of resource-group minimum,harbourline,1,3,1.38,+2.23 -0.49 +1.38,match
+d924668,398,2026-11-17,PR-17: I15 covers both kinds of resource-group minimum,midwest,1,3,5.04,+6.66 +3.39 +5.04,match
+29b691a,415,2026-11-18,PT-08: alert on CICS short-on-storage minutes,harbourline,1,3,-2.28,-2.28 -0.88 -4.06,match
+29b691a,415,2026-11-18,PT-08: alert on CICS short-on-storage minutes,midwest,1,3,5.13,+1.20 +9.13 +5.13,match
+3d20549,417,2026-11-18,"PT-11: plan lead-time hardware live, and deactivate CoD from tomorrow",harbourline,1,3,0.30,+0.30 -3.89 +1.77,match
+3d20549,417,2026-11-18,"PT-11: plan lead-time hardware live, and deactivate CoD from tomorrow",midwest,1,3,3.18,+3.29 +3.18 +0.92,match
+89bfea3,413,2026-11-18,"PR-21: split Monitor III figures from decayed components, not the last tick",harbourline,1,3,5.07,+5.31 +4.52 +5.07,differ
+89bfea3,413,2026-11-18,"PR-21: split Monitor III figures from decayed components, not the last tick",harbourline,2,7,4.42,+2.06 +4.09 +6.36 +4.12 +11.38 +4.75 +4.42,differ
+89bfea3,413,2026-11-18,"PR-21: split Monitor III figures from decayed components, not the last tick",midwest,1,3,4.31,+4.31 +1.58 +12.42,differ
+89bfea3,413,2026-11-18,"PR-21: split Monitor III figures from decayed components, not the last tick",midwest,2,7,10.11,+5.98 +10.11 +11.79 +13.57 +8.46 +8.10 +12.48,differ
+f010774,421,2026-11-18,PT-12: show TFP per-product terms and a run-rate projection,harbourline,1,3,6.07,+6.28 +1.41 +6.07,differ
+f010774,421,2026-11-18,PT-12: show TFP per-product terms and a run-rate projection,harbourline,2,7,0.24,+2.70 +0.24 -1.46 +1.17 -0.63 -3.70 +6.32,differ
+f010774,421,2026-11-18,PT-12: show TFP per-product terms and a run-rate projection,midwest,1,3,3.02,+1.76 +3.02 +4.78,differ
+f010774,421,2026-11-18,PT-12: show TFP per-product terms and a run-rate projection,midwest,2,7,2.87,-0.42 +2.87 +1.74 +5.09 +8.57 +5.69 +1.08,differ
+1b31789,428,2026-11-19,RF-01: CPU Activity report with the CHANGE REASON header,harbourline,1,3,-0.14,+2.02 -5.91 -0.14,match
+1b31789,428,2026-11-19,RF-01: CPU Activity report with the CHANGE REASON header,midwest,1,3,4.37,+2.22 +4.60 +4.37,match
+4beb4d3,429,2026-11-19,"RF-04: velocity floor is a content coefficient, projected harm unbounded",harbourline,1,3,6.17,-1.17 +6.17 +8.49,match
+4beb4d3,429,2026-11-19,"RF-04: velocity floor is a content coefficient, projected harm unbounded",harbourline,2,7,1.19,-5.86 -1.22 +1.19 +1.17 +2.52 +2.24 +4.99,match
+4beb4d3,429,2026-11-19,"RF-04: velocity floor is a content coefficient, projected harm unbounded",midwest,1,3,4.30,+1.16 +4.30 +11.71,match
+4beb4d3,429,2026-11-19,"RF-04: velocity floor is a content coefficient, projected harm unbounded",midwest,2,7,8.39,+3.21 +0.60 +8.39 +14.71 +10.71 +8.20 +10.37,match
+2ee06a8,430,2026-11-20,RF-02: Db2 statistics (DISPLAY DDF) view with queued DBAT requests,harbourline,1,3,2.93,+2.93 -1.25 +5.51,match
+2ee06a8,430,2026-11-20,RF-02: Db2 statistics (DISPLAY DDF) view with queued DBAT requests,midwest,1,3,0.64,+0.42 +0.64 +4.82,match
+45815bd,431,2026-11-20,"RF-06: Partition Data WLM% is the time WLM capped, not the demand removed",harbourline,1,3,-0.47,-0.47 -1.77 +2.19,differ
+45815bd,431,2026-11-20,"RF-06: Partition Data WLM% is the time WLM capped, not the demand removed",midwest,1,3,4.03,+4.03 +0.55 +4.83,differ
+9717f0e,433,2026-11-20,RF-09: a starved server carries its dependents at its granted share,harbourline,1,3,0.29,+2.95 -0.73 +0.29,match
+9717f0e,433,2026-11-20,RF-09: a starved server carries its dependents at its granted share,midwest,1,3,5.17,-1.18 +5.45 +5.17,match
+a845a6c,432,2026-11-20,"RF-07: WLMGL ENDED counts every batch job end, whatever the goal",harbourline,1,3,4.65,+1.29 +4.65 +5.48,differ
+a845a6c,432,2026-11-20,"RF-07: WLMGL ENDED counts every batch job end, whatever the goal",midwest,1,3,2.43,+1.13 +2.43 +4.59,differ
+dfefa5e,442,2026-11-20,CL-61: pools.ts capping comment no longer credits RMF p.401,harbourline,1,3,-0.56,-0.56 -1.30 +2.03,match
+dfefa5e,442,2026-11-20,CL-61: pools.ts capping comment no longer credits RMF p.401,midwest,1,3,3.64,+3.64 +2.11 +9.10,match
+02112cb,447,2026-11-21,"RT-32: CPU verdict on the judged host and pool, by displaceable CPU",harbourline,1,3,-0.15,+0.22 -0.15 -3.44,match
+02112cb,447,2026-11-21,"RT-32: CPU verdict on the judged host and pool, by displaceable CPU",midwest,1,3,8.21,+4.58 +8.37 +8.21,match
+0c15211,452,2026-11-21,CL-47: scale sick-AOR failure fractions from zero,harbourline,1,3,-3.20,-2.75 -3.43 -3.20,match
+0c15211,452,2026-11-21,CL-47: scale sick-AOR failure fractions from zero,midwest,1,3,2.72,+2.72 +2.73 +1.61,match
+2f07636,446,2026-11-21,RT-16: CPU split design and reporting-only CPU accounting,harbourline,1,3,-1.24,-1.24 -1.49 +2.22,differ
+2f07636,446,2026-11-21,RT-16: CPU split design and reporting-only CPU accounting,midwest,1,3,4.95,+4.95 +3.63 +7.48,differ
+b8da7e5,458,2026-11-21,CL-30: split policy adjustment around a per-call context,harbourline,1,3,-2.01,-3.26 -2.01 +1.52,match
+b8da7e5,458,2026-11-21,CL-30: split policy adjustment around a per-call context,midwest,1,3,-1.67,-3.00 -1.67 +9.09,match
+c9855ab,449,2026-11-21,RT-33: a resource-group cap on the class or its server is CAPPING,harbourline,1,3,-2.92,-5.30 -2.92 +1.26,match
+c9855ab,449,2026-11-21,RT-33: a resource-group cap on the class or its server is CAPPING,midwest,1,3,2.65,+2.65 +2.51 +9.36,match
+9bcfa5f,467,2026-11-22,perf: accumulate CF Activity samples in one pass,harbourline,1,3,0.51,+1.49 +0.51 +0.13,match
+9bcfa5f,467,2026-11-22,perf: accumulate CF Activity samples in one pass,midwest,1,3,3.15,-0.01 +3.15 +3.23,match
+9dae233,466,2026-11-22,perf: share per-system CF service calculations by site,harbourline,1,3,4.55,+4.42 +4.55 +5.88,match
+9dae233,466,2026-11-22,perf: share per-system CF service calculations by site,harbourline,2,7,5.72,+5.72 +2.79 +3.62 +6.57 +8.69 +5.32 +7.55,match
+9dae233,466,2026-11-22,perf: share per-system CF service calculations by site,midwest,1,3,0.38,+0.38 -0.64 +2.56,match
+9dae233,466,2026-11-22,perf: share per-system CF service calculations by site,midwest,2,7,5.82,+5.73 -0.61 +1.60 +7.37 +6.44 +6.09 +5.82,match
