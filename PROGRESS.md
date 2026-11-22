@@ -11,6 +11,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 
 Recent work, one line each (details in the PRs and Git history):
 - 2026-11-22: CI `citations` passes at once on the `dev` → `main` milestone PR (user decision): its lines were gated on their PRs into `dev` or predate the rule; milestone #459 opened.
+- 2026-11-21: RT-23 and RF-08 research settled and both entries unblocked: a retry storm is read as the SMF 101 class-1 rollback share (`QWACABRT / (QWACCOMM + QWACABRT)`) — a game inference, since IBM documents the backouts but not that they mean client retries — and retries that commit need SMF 102 client identity, which the game does not collect; a capacity group's average is modelled as a zero-filled per-member four-hour view (IBM states the symptoms, not the arithmetic; the Sub-Capacity Pricing book is now in the books repo). Ledger rows in docs/research.md qualify the `KEEPDYNAMIC(YES)` and `ACCTG(ALLCOMMIT)` accounting-interval exceptions.
 - 2026-11-21: CL-30 split policy adjustment into a per-call context, trial assessment, candidate/donor selection and trace/delay helpers; public imports and existing tests stay unchanged.
 - 2026-11-21: CL-35 split investigation subcommands into `tools/inspect/`; the dispatcher keeps its CLI and public exports, with implementation statements and tests unchanged.
 - 2026-11-21: PR-25 citation gate accepts a printed-page token only in the parenthesis directly after its PDF page run, using the same rule for wrapped lines.
@@ -404,16 +405,13 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Exported saves arriving with every backslash doubled (playtest round 2, D20 export): halving them gives exactly what
   `encodeRunJson` writes, so something on the artifact host's download path doubled them (not verified). Import
   (browser and play CLI) repairs it. If it recurs, look at how the artifact host saves a Blob download.
-- Retry storm against real demand (RCA audit 2026-11-09): what does an analyst read to tell client retries from a
-  campaign? Candidates are rolled-back or abnormally ended DDF threads in Db2 accounting or statistics and connection
-  timeouts; a first search of Db2 13 Managing Performance did not confirm a field. BACKLOG RT-23.
 - Resource-group capping as an RCA mechanism: WLMGL CAP delay is resource-group and discretionary capping (RMF Report
   Analysis p.540), so should a class held by a resource-group maximum be judged `CAPPING` (docs/rca-design.md §4.3
   proposes yes, with the help text widened from "the image" to "the image or the class")?
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest); docs/archive/wlm-audit-2026-11.md §8
+- Waiting on the user: docs/rca-design.md §7 Q8a and Q8b; docs/archive/wlm-audit-2026-11.md §8
   Q1–Q9 are decided (2026-11-10). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
