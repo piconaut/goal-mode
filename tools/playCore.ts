@@ -58,7 +58,7 @@ export type PlayCommand =
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
   | { cmd: 'project'; id: string; hours: number }
   | { cmd: 'restart'; name: string }
-  /** intervalId (WLMGL): the stable interval id the CLI shows; it replaces req.index. */
+  /** intervalId (WLMGL, CPC, CF, DASD): the stable interval id the CLI shows; it replaces req.index. */
   /** at (MON3, CPC without an interval): a past time as `clockText` prints it (`D2 10:40`); it sets req.tick. */
   | { cmd: 'pin'; req: PinRequest; intervalId?: number; at?: string }
   | { cmd: 'unpin'; id: number }
@@ -206,6 +206,8 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'pin': {
       let req = c.req;
+      // Whether the command named an interval at all: the CLI's id, or a position in a `json` command's PinRequest.
+      const namedInterval = c.intervalId !== undefined || ((req.source === 'CF' || req.source === 'DASD') && req.index !== undefined);
       // Same gate as the view the browser pins from.
       const feature = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
       if (feature && !hasFeature(run, feature)) return fail(needsText(feature, `A ${req.source} pin`));
@@ -246,7 +248,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       }
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'PIN', req }, content, sc(run), { mon3History: history });
       // Without an interval id a CF or DASD pin reads the buffer's latest interval, which need not be the incident's.
-      if (o.ok && (req.source === 'CF' || req.source === 'DASD') && c.intervalId === undefined)
+      if (o.ok && (req.source === 'CF' || req.source === 'DASD') && !namedInterval)
         return done(o.run, `${o.message} (no interval id given: this is the latest RMF interval, not the incident's)`);
       return done(o.run, o.message, o.ok, o.pending);
     }
