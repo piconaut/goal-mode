@@ -865,7 +865,7 @@ at unchanged CPU per transaction" (the D1 note) is true of both. Options:
 3. **Leave it ungated**: the storm keeps an open fix, and D1's first showcase is a card with a real discriminator
    (REGRESSION or XLOG_LOOP).
 
-Recommendation: 3 now, 1 when researched. The user ruled out a gateway retries view as too generous (2026-11-05);
+Recommendation: 3 now, 1 once RT-23 is implemented. The user ruled out a gateway retries view as too generous (2026-11-05);
 option 1 is an indirect signal in a record the player already has.
 
 ### 5.4 The cost of a wrong diagnosis
