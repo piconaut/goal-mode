@@ -159,23 +159,44 @@ Lead with the answer, stated only as far as the text supports it. For field layo
 offset, name, length, format and meaning as the book shows them — people use these to write
 parsers. Keep direct quotes short; paraphrase the rest.
 
-End with `Sources:`, one line per page used:
+End with `Sources:`, one line per page used. A citation carries three things that are not
+interchangeable: the book (title, version, form number/edition), the **PDF page index** (what
+`#page=N` opens and what `pdf_find.py` prints as `== p.N`), and the **printed page number**
+(the number the page itself shows in its header or footer). The two page numbers differ by a
+per-book offset, so cite the PDF index labelled, with the printed number in parentheses:
 
-`[z/OS 3.1 MVS SMF (SA38-0667-60), p.512 — Record type 30 > Processor accounting section](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=512)`
+`[z/OS 3.1 MVS SMF (SA38-0667-60) PDF p.512 (printed 484) — Record type 42 > Subtype 20 > Job and data set information](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=512)`
 
-Other products follow the same shape. Name the product and version, and give the form
-number when the table or the title page has one; the URL is the table's URL plus `#page=N`.
+- Never write a bare `p.N`: the number alone does not say which index it is.
+- The printed number is the page's own header/footer, which `pdf_find.py --page N` prints with
+  the page body (it is the first or last line; raise `--max-chars` if a dense page truncates
+  it). If a page genuinely shows no number, write `PDF p.N` and say so in the answer.
+- `#page=N` is always the PDF index, never the printed number.
+- For a range give both: `PDF pp.236–237 (printed 196–197)`.
+- Other products follow the same shape. Name the product and version, and give the form
+  number when the table or the title page has one; the URL is the table's URL plus `#page=N`.
 
-Redbook citation:
+Redbook citation (the edition date is on the title page; a Redbook has no z/OS release):
 
-`[IBM Redbook SG24-6472-03, System Programmer's Guide to: Workload Manager (Mar 2008), p.40 — Chapter 3 > …](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=40)`
+`[IBM Redbook SG24-6472-03, System Programmer's Guide to: Workload Manager (Mar 2008) PDF p.201 (printed 183) — Chapter 5: Setting goals > Using report classes](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=201)`
 
 Patent citation (Google Patents page for identity, or its PDF with `#page=N` for a page):
 
-`[US 5,473,773 (IBM, issued 5 Dec 1995), p.2 — …](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=2)`
+`[US 5,473,773 (IBM, issued 5 Dec 1995) PDF p.4 (sheet 3 of 14) — …](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=4)`
 
-The page number and section breadcrumb come straight from `pdf_find.py` (`== p.N | …`);
-`#page=N` uses that same PDF page index. Form numbers are in the book table.
+On patent drawing pages, give the printed sheet label (`Sheet 3 of 14`). Descriptive text
+can instead have printed column numbers; cite those as columns, not as pages or sheets:
+
+`[US 5,473,773 (IBM, issued 5 Dec 1995) PDF p.16 (printed columns 1–2) — Background and summary of the invention](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=16)`
+
+Use the printed reference that the cited page actually shows; if it has none, say so as
+above. Always retain the PDF index and matching `#page=N` link.
+
+The page index and section breadcrumb come straight from `pdf_find.py` (`== p.N | …`); the
+printed number comes from the page itself (above). Form numbers are in the book table.
+
+**A host project's rule wins.** When the project you are working in states its own citation
+rule, follow it; it changes the labelling, not the numbering.
 
 ## Example
 
@@ -186,4 +207,5 @@ User: what's SMF70CPA and when is it zero?
 3. `pdf_find.py … --grep SMF70CPA` → `== p.N | SMF record type 70 > CPU data section`,
    then `--page N` if the hit lines don't show the full description.
 4. Answer with the field's definition and the zero condition exactly as that page states
-   them — or say the page doesn't state when it's zero — and cite `#page=N`.
+   them — or say the page doesn't state when it's zero — and cite `PDF p.N (printed M)` with
+   a `#page=N` link.
