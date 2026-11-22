@@ -70,8 +70,6 @@ Recent work, one line each (details in the PRs and Git history):
 - 2026-11-15: RCA truth: RT-13 proof recipes (#357), RT-14 card footprints (#359), RT-15 grouping by cause (#361).
 - 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
 - 2026-11-14: agent instructions pruned of incident notes (#355); PR-04 … PR-08, PR-10 UI fixes (#348–#352, #358).
-- 2026-11-13 … 11-14: RT-10 and RT-11 pin sources (#344, #345); RT-08 capping as share of the hour (#342); RT-25
-  validator (#341).
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
