@@ -2,11 +2,12 @@ import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
 import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
-import { decayInto, emptyAcc, goalInfo, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
+import { decayInto, emptyAcc, goalInfo, initialDp, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
 import { holderTopology, servedKeys } from '../../wlm/holders';
 import { addToBuckets } from '../../wlm/goals';
-import type { LparConfig, LparRuntime } from '../types';
+import type { CpuGrant, LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
+import { DP } from '../../zos/dispatcher';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
 import { addParts, cicsHonorPriority, classifyJob, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
 import { atOrFind, type ImagePlan, regionsOf } from './plan';
@@ -46,9 +47,26 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   for (const s of prevSys?.scps ?? []) held[s.scKey] = s.dp;
   const server = topo.serverKey;
   let fresh: string[] | null = null;
+  // A period's DP is carried by key, but a policy activation can change what the period is (PR-15): a period that is
+  // no longer goal-managed gets its fixed DP back (discretionary work runs below the managed range, 192–201; goal
+  // periods use 203–247: SG24-6472 p.66), and a goal period whose carried DP is off the managed ladder (it was
+  // discretionary) is placed as new by its importance below. A server period and the periods it serves (the region
+  // classes and the transactions inside those regions) keep following their holder: the sim dispatches a region's
+  // transactions at the holder's DP (WT-09), so a discretionary transaction period does not become 196.
+  const served = new Set(regions?.keys ?? []);
+  for (const [k, dp] of Object.entries(held)) {
+    if (k === server || topo.heldBy[k] !== undefined || served.has(k)) continue;
+    const g = goalInfo(def, k);
+    if (!g) continue;
+    if (g.goal.kind === 'DISC') held[k] = initialDp(k);
+    else if (dp < DP.MANAGED_MIN || dp >= DP.MANAGED_MAX) {
+      delete held[k];
+      (fresh ??= []).push(k);
+    }
+  }
   if (server) {
     const kept = prevSys?.servers?.find((x) => x.key === server)?.dp;
-    // A save from before server periods: the regions ran at the highest served DP.
+    // The server period is new (its first tick): the regions ran at the highest DP among the periods it serves.
     let top: number | undefined = kept;
     if (top === undefined) for (const k of servedKeys(topo)) if (held[k] !== undefined && (top === undefined || held[k]! > top)) top = held[k];
     if (top !== undefined) {
@@ -60,7 +78,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   const dpMap = fresh ? placeNewPeriods(def, held, fresh, topo) : held;
   const dpOf = (k: string) => dpMap[k] ?? (dpMap[k] = placeLateDp(def, dpMap, k, topo));
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
-  const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
+  const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog);
   const out: ImageEvalInput = {
     prevSys,
     slices: sysCfg && !sysCfg.iipHonorPriority ? overflowSlices.map((s) => ({ ...s, mayOverflow: false })) : overflowSlices,
@@ -96,7 +114,7 @@ function lparEvalInput(t: TickCtx, img: ImagePlan): LparEvalInput {
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
     slices,
     backlog: prev.backlog,
-    ziipBacklog: prev.ziipBacklog ?? {},
+    ziipBacklog: prev.ziipBacklog,
     dpOf,
     capOf: t.capOfBy[l.id],
     ...rgMin(def, slicesBy[l.id] ?? [], prevSys?.scps ?? [], cpRt, img.suPerCpuSec, plexShare),
@@ -120,7 +138,7 @@ export function reserveOverflow(t: TickCtx, lpars: readonly LparConfig[]): boole
   for (const l of lpars) {
     const img = t.plan.byLparId[l.id]!;
     if (!img.hasZiips) continue;
-    if (!imageInput(t, img).slices.some((s) => s.mayOverflow && (s.ziipEngines > 0 || (t.prev.ziipBacklog?.[s.key] ?? 0) > 0))) continue;
+    if (!imageInput(t, img).slices.some((s) => s.mayOverflow && (s.ziipEngines > 0 || (t.prev.ziipBacklog[s.key] ?? 0) > 0))) continue;
     const input = lparEvalInput(t, img);
     input.prepared = prepareLpar(input);
     t.evalInputs[l.id] = input;
@@ -193,8 +211,21 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
 
   const compBy: Record<string, number> = {};
   const tries: Record<string, number> = {};
+  let cpByRole: Record<string, CpuGrant> | undefined;
+  let cpByWorkload: Record<string, CpuGrant> | undefined;
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
+    // Reporting only; use the same grants as ScpTick, leaving IIPCP separate.
+    const consumer = s.kind === 'AS' && s.role
+      ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0, iipcp: 0 })
+      : s.kind === 'TXN' && s.workloadId
+        ? ((cpByWorkload ??= {})[s.workloadId] ??= { cp: 0, ziip: 0, iipcp: 0 })
+        : undefined;
+    if (consumer) {
+      consumer.cp += r.cpGranted;
+      consumer.ziip += r.ziipGranted;
+      consumer.iipcp += r.iipcpGranted;
+    }
     if (r.newBacklog > 1e-9) {
       backlog[s.key] = r.newBacklog;
       if (r.newZiipBacklog > 1e-9) ziipBacklog[s.key] = r.newZiipBacklog;
@@ -205,7 +236,16 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       wt.withinSla += r.withinSla;
       wt.failed += r.failed;
       wt.rtSumSec += r.completions * r.userRtSec;
-      if (r.parts) addParts(wt.parts, r.parts, r.completions);
+      if (r.parts) {
+        addParts(wt.parts, r.parts, r.completions);
+        if (r.completions > 0) {
+          const wait = ((wt.cpuWaitByLpar ??= {})[l.id] ??= { cp: 0, ziip: 0, backlog: 0, completions: 0 });
+          wait.cp += r.parts.cpuQueue * r.completions;
+          wait.ziip += r.parts.ziip * r.completions;
+          wait.backlog += r.parts.backlogWait * r.completions;
+          wait.completions += r.completions;
+        }
+      }
       failedBy[s.workloadId] = (failedBy[s.workloadId] ?? 0) + r.failed;
       if (s.maxQueueMsgs !== undefined) {
         const per = s.cpuSecPerTxn + s.ziipSecPerTxn;
@@ -275,17 +315,19 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       );
       if (ended && jr.job.startTick !== null) {
         const goal = goalInfo(def, ref.slice.scKey)?.goal;
-        if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
-          // A batch transaction is a job (WLM Planning 3.1 p.71); use stepRmf's queue + elapsed time.
-          const rtSec = (jr.job.endTick! - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
-          const measured = [res.scps.find((x) => x.scKey === ref.slice.scKey)!];
-          // Report classes carry completions, RT and buckets too (WLM Planning 3.1 p.113).
-          if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
-          for (const target of measured) {
-            target.completions += 1;
-            target.rtSumSec += rtSec;
+        // A batch transaction is a job, and ENDED counts every job that ends whatever the period's goal type
+        // (WLM Planning 3.1 p.71; RMF Report Analysis 3.1 p.530-531). Its response time is stepRmf's queue + elapsed.
+        const rtSec = (jr.job.endTick! - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
+        const measured = [res.scps.find((x) => x.scKey === ref.slice.scKey)!];
+        // Report classes carry completions, RT and buckets too (WLM Planning 3.1 p.113).
+        if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
+        for (const target of measured) {
+          target.completions += 1;
+          target.rtSumSec += rtSec;
+          if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
             // The initiator wait, which a DP move cannot change; kept apart for the batch RT projection (WT-12).
             target.rtQueueSumSec = (target.rtQueueSumSec ?? 0) + (jr.job.startTick - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
+            // Buckets stay for response time goals: RMF's per-system distribution for velocity periods is not modelled.
             addToBuckets(target.buckets, goal.rtSec, 1, rtSec, 0);
           }
         }
@@ -335,10 +377,13 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   systems.push(srv ? { lparId: l.id, scps, servers: srv.map((x) => ({ ...x })) } : { lparId: l.id, scps });
   const cics = regions?.targets;
   const cicsStorage = t.cicsStorageBy[l.id];
+  const dbatWaited = t.dbatWaitedByLpar[l.id];
   lparTicks.push({
     lparId: l.id,
     scps: res.scps,
     roleHealth: res.roleHealth,
+    ...(cpByRole ? { cpByRole } : {}),
+    ...(cpByWorkload ? { cpByWorkload } : {}),
     // RMF projects IIPCP only where a zIIP is defined to the image (online or reserved): Init & Tuning p.434
     // (PROJECTCPU default NO reports nothing on an LPAR with no zIIP at all) and p.431 (defined but offline is
     // still reported for planning). With none, the overflow is plain CP work.
@@ -346,6 +391,6 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     ...(res.rcs ? { rcs: res.rcs } : {}),
     ...(cics ? { cics } : {}),
     ...(cicsStorage ? { cicsStorage } : {}),
+    ...(dbatWaited !== undefined && dbatWaited > 1e-9 ? { dbatWaited } : {}),
   });
 }
-

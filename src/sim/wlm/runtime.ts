@@ -30,16 +30,26 @@ export interface ScpAcc {
   delayIo: number;
   delayOther: number;
   delayCap: number;
-  /** Decayed storage (paging) and queue delay, both also in `delay` (WT-10: managed delays told apart). Absent in old
-   * saves: `decayInto` seeds storage with the part of `delay` no other component explains, queue with 0. */
-  delayStorage?: number;
+  /** Decayed storage (paging) delay, also in `delay` (WT-10: managed delays told apart). */
+  delayStorage: number;
+  /** Decayed queue delay, also in `delay`; absent from the RMF interval accumulator when the period queued nothing. */
   delayQueue?: number;
   cpuEngines: number;
   /** Decayed zIIP engines used (the zIIP counterpart of `cpuEngines`, for donors of a zIIP bottleneck; WT-07). Absent
-   * in a period's first tick and in old saves: seeded at steady state. */
+   * in a period's first tick: seeded at steady state. */
   ziipEngines?: number;
+  /** Reporting-only decayed components of `using` and `cpuEngines` (PR-21): the Monitor III split of PROC/DEV
+   * users and CP/zIIP/IIPCP engines is read from these instead of the last tick's mix, so a sysplex row is the sum
+   * of its systems. Absent in an accumulator that has no samples yet. */
+  usingCpu?: number;
+  usingZiip?: number;
+  usingIo?: number;
+  iipcpEngines?: number;
+  /** Decayed zIIP engines as Monitor III reports them (PR-21): unlike the management `ziipEngines`, this starts at
+   * zero rather than a steady-state seed, so it reports only sampled zIIP service and the sysplex totals add up. */
+  ziipEnginesView?: number;
   /** Decayed arriving demand, engines, without backlog: × (1 − ACC_DECAY) is the sustained demand WLM projects
-   * with (docs/wlm-design.md §5.4). Absent in a period's first tick and in old saves: seeded at steady state. */
+   * with (docs/wlm-design.md §5.4). Absent in a period's first tick: seeded at steady state. */
   demandCp?: number;
   demandZi?: number;
   /** Parts of using / delay left out of velocity (I/O priority management off); absent when none. */
@@ -48,7 +58,7 @@ export interface ScpAcc {
   /** Velocity samples of transaction-server regions: reported, but not used to manage this period; absent when none. */
   srvUsing?: number;
   srvDelay?: number;
-  /** The capping delay inside `srvDelay` (the managed-delay test leaves capping out); absent in old saves. */
+  /** The capping delay inside `srvDelay` (the managed-delay test leaves capping out); present with `srvUsing`. */
   srvDelayCap?: number;
 }
 
@@ -56,10 +66,8 @@ export interface ScpAcc {
 export const velUsing = (a: { using: number; usingIoNoVel?: number }): number => a.using - (a.usingIoNoVel ?? 0);
 export const velDelay = (a: { delay: number; delayIoNoVel?: number }): number => a.delay - (a.delayIoNoVel ?? 0);
 
-/** The capping delay inside `srvDelay`. A save from before `srvDelayCap` holds server history without it: the most it
- * can be (all capping, up to `srvDelay`) is assumed, so the managed-delay test errs toward assessing the period. */
-export const srvDelayCapOf = (a: { delayCap: number; srvDelay?: number; srvDelayCap?: number }): number =>
-  a.srvDelayCap ?? Math.min(a.delayCap, a.srvDelay ?? 0);
+/** The capping delay inside `srvDelay`; a period with server samples carries it, one without them has none. */
+export const srvDelayCapOf = (a: { srvDelayCap?: number }): number => a.srvDelayCap ?? 0;
 
 export interface ScpState {
   scKey: string;
@@ -84,8 +92,8 @@ export interface ServerPeriodState {
 export interface WlmSystemState {
   lparId: string;
   scps: ScpState[];
-  /** Sorted by key. Absent with no server period, and in a save from before server periods: then created with the
-   * highest DP among the served periods, which is where the regions ran (docs/wlm-design.md §5.1). */
+  /** Sorted by key. Absent with no server period: created with the highest DP among the served periods, which is
+   * where the regions ran (docs/wlm-design.md §5.1). */
   servers?: ServerPeriodState[];
 }
 
@@ -104,7 +112,7 @@ export interface ScpGoalInfo {
   resourceGroup: string | null;
 }
 
-export function parseScKey(scKey: string): { serviceClass: string; period: number } {
+function parseScKey(scKey: string): { serviceClass: string; period: number } {
   const i = scKey.lastIndexOf('#');
   return { serviceClass: scKey.slice(0, i), period: Number(scKey.slice(i + 1)) - 1 };
 }
@@ -133,14 +141,13 @@ function goalInfoUncached(def: ServiceDefinition, scKey: string): ScpGoalInfo | 
   return { serviceClass, period, goal: p.goal, importance: p.importance, cpuCritical: c.cpuCritical, resourceGroup: c.resourceGroup };
 }
 
-export function initialDp(def: ServiceDefinition, scKey: string): number {
+export function initialDp(scKey: string): number {
   const { serviceClass } = parseScKey(scKey);
   if (serviceClass === SYSTEM) return DP.SYSTEM;
   if (serviceClass === SYSSTC) return DP.SYSSTC;
-  const g = goalInfo(def, scKey);
-  if (!g || g.goal.kind === 'DISC') return 196;
-  // The first ladder: one level per importance (docs/wlm-design.md §5.6); the interval's end makes it canonical.
-  return levelDp(g.importance - 1);
+  // Only a period that is not goal-managed asks for its first DP: discretionary work runs at 196 (SPEC §5.4). Goal
+  // periods are placed on the ladder by importance (placeNew).
+  return 196;
 }
 
 const isGoal = (def: ServiceDefinition, k: string): boolean => {
@@ -193,7 +200,7 @@ export function placeNewPeriods(
         L = placeNew(L, server!, lad.imp(server!)!, lad.imp);
         placed = true;
       }
-    } else if (!isGoal(def, k)) out[k] = initialDp(def, k);
+    } else if (!isGoal(def, k)) out[k] = initialDp(k);
     else {
       L = placeNew(L, k, lad.imp(k)!, lad.imp);
       placed = true;
@@ -206,12 +213,14 @@ export function placeNewPeriods(
 
 /**
  * The DP of one new period once the tick's other DPs are in use, so nothing else may be renumbered: its level's DP,
- * or for a new level the free priority below the level above it (above the level below it on top). APPROX: with no
+ * or for a new level the free priority below the level above it (above the level below it on top). There is no free
+ * priority above the top level (MANAGED_MAX is kept free, docs/wlm-design.md §5.6), so a period placed above it joins
+ * the top level, sharing it with the less important period there until a policy move separates them. APPROX: with no
  * free priority there (two new levels in one gap in one tick) it shares the level below until the next move. A served
  * period takes its server period's DP.
  */
 export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string, number>>, k: string, topo: HolderTopology = NO_SERVERS): number {
-  if (!isGoal(def, k)) return initialDp(def, k);
+  if (!isGoal(def, k)) return initialDp(k);
   const server = topo.heldBy[k];
   if (server !== undefined && dps[server] !== undefined) return dps[server]!;
   const { L: L0, imp, goal } = holderLadder(def, dps, topo);
@@ -222,7 +231,8 @@ export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string,
   const up = L[i - 1]?.[0];
   const down = L[i + 1]?.[0];
   if (up !== undefined) return Math.max(goal[up]! - 1, DP.MANAGED_MIN);
-  if (down !== undefined) return Math.min(goal[down]! + 1, DP.MANAGED_MAX);
+  // MANAGED_MAX stays free above the top level (I9): there the new period joins the top level instead.
+  if (down !== undefined) return Math.min(goal[down]! + 1, levelDp(0));
   return levelDp(0);
 }
 
@@ -264,10 +274,15 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     delayIo: acc.delayIo * d + t.delayIo,
     delayOther: acc.delayOther * d + t.delayOther,
     delayCap: acc.delayCap * d + t.delayCap,
-    delayStorage: (acc.delayStorage ?? Math.max(0, acc.delay - acc.delayCpu - acc.delayZiip - acc.delayIo - acc.delayCap)) * d + t.delayStorage,
+    delayStorage: acc.delayStorage * d + t.delayStorage,
     delayQueue: (acc.delayQueue ?? 0) * d + (t.delayQueue ?? 0),
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
     ziipEngines: acc.ziipEngines === undefined ? t.ziipEngines / (1 - d) : acc.ziipEngines * d + t.ziipEngines,
+    ziipEnginesView: (acc.ziipEnginesView ?? 0) * d + t.ziipEngines,
+    usingCpu: (acc.usingCpu ?? 0) * d + t.usingCpu,
+    usingZiip: (acc.usingZiip ?? 0) * d + t.usingZiip,
+    usingIo: (acc.usingIo ?? 0) * d + t.usingIo,
+    iipcpEngines: (acc.iipcpEngines ?? 0) * d + t.iipcpEngines,
     demandCp: acc.demandCp === undefined ? (t.demandCp ?? 0) / (1 - d) : acc.demandCp * d + (t.demandCp ?? 0),
     demandZi: acc.demandZi === undefined ? (t.demandZi ?? 0) / (1 - d) : acc.demandZi * d + (t.demandZi ?? 0),
     ...(acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined
@@ -309,9 +324,17 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   out.delayIo += a.delayIo;
   out.delayOther += a.delayOther;
   out.delayCap += a.delayCap;
-  if (a.delayStorage !== undefined) out.delayStorage = (out.delayStorage ?? 0) + a.delayStorage;
+  out.delayStorage += a.delayStorage;
   if (a.delayQueue !== undefined) out.delayQueue = (out.delayQueue ?? 0) + a.delayQueue;
   out.cpuEngines += a.cpuEngines;
+  if (a.ziipEngines !== undefined) out.ziipEngines = (out.ziipEngines ?? 0) + a.ziipEngines;
+  if (a.ziipEnginesView !== undefined) out.ziipEnginesView = (out.ziipEnginesView ?? 0) + a.ziipEnginesView;
+  if (a.usingCpu !== undefined) {
+    out.usingCpu = (out.usingCpu ?? 0) + a.usingCpu;
+    out.usingZiip = (out.usingZiip ?? 0) + (a.usingZiip ?? 0);
+    out.usingIo = (out.usingIo ?? 0) + (a.usingIo ?? 0);
+  }
+  if (a.iipcpEngines !== undefined) out.iipcpEngines = (out.iipcpEngines ?? 0) + a.iipcpEngines;
   if (a.usingIoNoVel !== undefined) {
     out.usingIoNoVel = (out.usingIoNoVel ?? 0) + a.usingIoNoVel;
     out.delayIoNoVel = (out.delayIoNoVel ?? 0) + (a.delayIoNoVel ?? 0);

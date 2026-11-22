@@ -236,6 +236,85 @@ Re-profile, 3-day bench, inclusive shares, CL-05 → CL-06 (profiled totals: Har
 all record copying of persisted accumulators) and the `step` body's own per-tick copies (5–7 % self). Both are
 option 2's territory, which still needs a user decision. No config lookup is left that shows in the profile.
 
+## Results: test-suite overhead (CL-15, 2026-11-16)
+
+The survey expected per-file import and collect time to dominate the suite. They do not: import and transform are about
+4 % of file time, a further ~15 % is work outside the assertions (collection and test hooks), and the wall time follows
+total work divided by workers rather than the longest file. No runner setting is kept.
+
+Host: 8 CPUs, Node 22.23.4, vitest 4.1.12, `dev` at `85217b7`; `uptime` reported load average 5.7–8.6 during the runs.
+The command is the one `.github/workflows/test.yml` uses: `npx vitest run --reporter=default --reporter=json
+--outputFile.json=…`. Times are vitest's own `Duration` line; the suite is 113 files and 1,419 tests.
+
+| Setting | Duration | `transform` | `import` | per-file sum | Failures |
+|---|---:|---:|---:|---:|---|
+| default (forks, 7 workers) | 278.2 s | 11.8 s | 57.9 s | 1,849.6 s | 4 timeouts |
+| default (forks, 7 workers) | 319.7 s | 12.8 s | 68.5 s | 2,117.9 s | the same 4 |
+| `--pool=threads` | 297.1 s | 10.4 s | 62.4 s | 1,965.3 s | the same 4 |
+| `--maxWorkers=4` | 354.5 s | 9.0 s | 42.6 s | 1,343.9 s | none |
+
+Per-file times move with contention (the same file takes 206.5 s at the default 7 workers and 153.2 s at 4), so the
+per-file sum is not like-for-like between arms.
+
+**Where the time goes** (run 1; the reporter's per-file durations against the JSON's summed assertion durations):
+
+- per-file durations sum to 1,849.6 s; assertions take 1,561.9 s, so 287.7 s (15.6 %) is outside them: module
+  collection, `beforeAll` hooks and teardown. The largest are `report-invariants.test.ts` (147.4 s for 16.7 s of
+  assertions, its `beforeAll` at `:17` builds the states), `proofRecipes` (83.1 / 47.2), `counterfactual`
+  (180.4 / 148.4) and `inspect` (64.8 / 44.1);
+- `transform` and `import` are 69.7 s together, 3.8 % of the file time;
+- 71 of 113 files finish in under 1 s, and the 10 UI files total 0.2 s;
+- vitest's node pool defaults to `availableParallelism() − 1`, so 7 workers here: 1,849.6 s over 7 × 278.2 s is 95 %
+  utilisation.
+
+**There is no wall floor in the longest file.** `tests/sim/realism.test.ts` is the longest at 206.5 s, but total work
+over 7 workers is 264 s, already above it, and the run took 278 s: the remaining 5 % (14 s) is packing and contention,
+not one file. At `--maxWorkers=4` the same file measures 153.2 s and the suite reaches 95 % of 4 × 354.5 s. Splitting
+a file can help balance, but it cannot take the suite near `wlm-realism`'s 166.8 s, so no splitting entry was filed;
+re-measure after CL-12 changes the profile before deciding.
+
+Cheap-file profile: `tests/game/daily.test.ts` (4–5 ms of tests) took 192 / 197 / 198 ms in three solo runs — transform
+41–43 ms, import 53–56 ms, the rest runner startup. Three cheap files in one run take 270 ms together, with transform
+189 ms and import 233 ms summed over parallel workers, so per-file cost is real but small at suite scale.
+
+**Settings tried.** `--pool=threads` is inside the 278–320 s spread of the two default runs (a two-sample range, not a
+measured noise distribution). `--maxWorkers=4` is 11 % slower than the 320 s default run and 27 % slower than the 278 s
+one; the direction is clear, the size is not. `deps.optimizer` and `server.deps.inline` were not tried: they pre-bundle
+dependencies, and the UI files that would benefit total 0.2 s.
+
+The four timeouts (three in `counterfactual.test.ts`, one in `mon3Charts.test.ts`) are 30 s `testTimeout` misses at the
+default 7 workers on a loaded host; the same tests pass at 4 workers and in the remote runs (43816581950, 43818914728,
+and 43831168364, the first commit of this branch).
+
+**Conclusion:** no config change kept. The measured lever is the 287.7 s outside the assertions (most of it
+start-state hooks, which is CL-12's disk-cached fixtures), not the runner. Packing is nearly saturated
+(264 s bound against 278 s observed, a ~5 % residual).
+
+## Results: plan lookups (CL-07, 2026-11-16)
+
+Measured before deciding whether to add classification results and period indices to `LparPlan`: self time, per
+function, summed over samples whose stack runs through `dispatchLpar` or `lparDemand`; esbuild bundle of
+`tools/bench.ts`, `node --cpu-prof`, 3 days, seed 42, this host:
+
+| Function | Harbourline | Midwest |
+|---|---:|---:|
+| `classifyJob` | 0.03 % | 0.09 % |
+| `classify` (the WLM classifier it calls) | 0.14 % | 0.02 % |
+| `scKeyAtService` | 0.04 % | 0.04 % |
+| `parseScKey` | 0.04 % | 0.06 % |
+| `goalInfo` (memoised ladder info) | 0.09 % | 0.21 % |
+| **Sum (listed functions)** | **0.34 %** | **0.41 %** |
+
+The listed functions are the ones the entry names; their own callees (the slice-key and period parsers, the classifier
+on a cache miss) add at most ~0.1 pp each. Even the broadest set stays under 1 %, so **no plan fields were added**: the
+lookups are far below the bar, and a bigger `LparPlan` would only add invalidation risk.
+
+What did land is the test gap: `tests/sim/plan.test.ts` runs `SET_PRICING` in its no-plan-input loop and `RESTART_JOB`
+in its own test on an abended job; neither replaces or edits a key object, and the loop now reads those objects before
+the command (with a copy) so an in-place edit fails. Bench hashes are unchanged by the doc/test change: Midwest
+`ff6e21b2171a2586`, Harbourline `ad8889b13fe355cd`, Revenue `59a35d5be8f3e367`; `npm run compare -- --base origin/dev`
+reports no differences.
+
 ## Reproduction
 
 ```sh

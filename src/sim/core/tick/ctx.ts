@@ -10,7 +10,6 @@ import type { LparPlan } from './plan';
 import type { CpcConfig, EnvState, LparPoolRuntime, LparRuntime, CicsStorageTick, LparTick, SimState, WorkloadTick } from '../types';
 
 export const WLM_LOG_MAX = 400;
-export const DEFAULT_EFF_RATIO = 0.93;
 export const DEFAULT_IO: Record<IoClass, IoService> = {
   RANDOM: { rtSec: 0.0003, delaySec: 0.00005 },
   SEQ: { rtSec: 0.0004, delaySec: 0.00005 },
@@ -26,7 +25,7 @@ export function servers(rt: LparPoolRuntime | undefined, logical: number, hiperD
 }
 
 // Whether a workload calls Db2, memoised per definition object (asked per slice per tick).
-export const usesDb2Cache = new WeakMap<WorkloadDef, boolean>();
+const usesDb2Cache = new WeakMap<WorkloadDef, boolean>();
 export function usesDb2(w: WorkloadDef): boolean {
   let v = usesDb2Cache.get(w);
   if (v === undefined) usesDb2Cache.set(w, (v = w.servers.some((s) => s.role.startsWith('DB2.'))));
@@ -89,6 +88,8 @@ export interface TickCtx {
   onlineDb2Rate: number;
   /** Transactions queued for a task slot (MXT, MAXDBAT) per `lparId:kind`. */
   slotQueue: Record<string, number>;
+  /** DBAT requests that waited for a slot this tick, per LPAR (reporting: QUEDBAT/IFCID 73). */
+  dbatWaitedByLpar: Record<string, number>;
   /** CICS region storage per LPAR (reporting only). */
   cicsStorageBy: Record<string, CicsStorageTick[]>;
 }

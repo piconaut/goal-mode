@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+import { addedLines, checkDiff, checkLine } from '../../tools/ci/citations';
+
+describe('citation gate: checkLine', () => {
+  it('flags a bare page citation', () => {
+    expect(checkLine('// capped share (RMF Report Analysis p.401).')).toHaveLength(1);
+    expect(checkLine('see SG24-6472-03 p. 183')).toHaveLength(1);
+    expect(checkLine('SG24-7621 printed p.81 §3.5')).toHaveLength(1);
+  });
+
+  it('passes a labelled citation with its printed page', () => {
+    expect(checkLine('// capped share (RMF Report Analysis PDF p.401 (printed 361)).')).toEqual([]);
+    expect(checkLine('SG24-6472-03 PDF p.201 (printed p.183)')).toEqual([]);
+  });
+
+  it.each([
+    'WLM Planning PDF p.99 (printed 79); RMF printed p.5',
+    'WLM Planning PDF p.99 printed p.5',
+    'WLM Planning PDF p.99 (printed 79) (printed p.5)',
+    'WLM Planning PDF p.99 (see printed p.5)',
+  ])('does not lend a PDF label to an unrelated printed citation: %s', (text) => {
+    expect(checkLine(text)).toEqual(['bare "p.5": write "PDF p.5 (printed …)"']);
+  });
+
+  it('scopes a wrapped printed citation to the directly preceding PDF page run', () => {
+    expect(checkLine('RMF printed p.5', 'a.md', 'WLM Planning PDF p.99 (printed 79);')).toHaveLength(1);
+    expect(checkLine('(printed p.5)', 'a.md', 'WLM Planning PDF p.99; RMF')).toHaveLength(1);
+    expect(checkLine('(printed p.79)', 'a.md', 'WLM Planning PDF p.99')).toEqual([]);
+    expect(checkLine('// (printed pp.125, 128–129)', 'a.ts', '// WLM Services PDF p.145, p.148–149')).toEqual([]);
+  });
+
+  it('treats a range or list after one PDF label as labelled', () => {
+    expect(checkLine('WLM Services PDF p.145, p.148–149 (printed 125, 128–129)')).toEqual([]);
+    expect(checkLine('PDF pp.62–63')).toEqual([]);
+    expect(checkLine('WLM Planning pp.62–63')).toHaveLength(1);
+    expect(checkLine('WLM Planning p.120, p.122-123')).toHaveLength(1);
+  });
+
+  it('flags "page N" prose but not pdf_find.py flags or link anchors', () => {
+    expect(checkLine('described on page 83 of the book')).toHaveLength(1);
+    expect(checkLine('Page 83 of the book')).toHaveLength(1);
+    expect(checkLine('see pages 12–13')).toHaveLength(1);
+    expect(checkLine('the patent, PDF pages 18–20')).toEqual([]);
+    expect(checkLine('pdf_find.py BOOK --page 3 shows it')).toEqual([]);
+    expect(checkLine('[RMF PDF p.540](https://x/erbb500.pdf#page=540)')).toEqual([]);
+  });
+
+  it('flags a link whose label is bare or names another page than it opens', () => {
+    expect(checkLine('[RMF p.540](https://x/erbb500.pdf#page=540)')).toHaveLength(1);
+    expect(checkLine('[RMF PDF p.534 (printed 494)](https://x/erbb500.pdf#page=540)')).toEqual([
+      'link label says PDF p.534 but opens #page=540',
+    ]);
+    expect(checkLine('[WLM Planning PDF pp.121–122](https://x/ieaw100.pdf#page=122)')).toEqual([]);
+  });
+
+  it('reads a PDF label wrapped onto the line above', () => {
+    // docs/rt-16-design.md in #446: "… SC34-2665-60 PDF" / "p.540 (printed 500); …" failed the gate.
+    expect(checkLine('  p.540 (printed 500); docs/research.md row', 'a.md', '  (RMF Report Analysis SC34-2665-60 PDF')).toEqual([]);
+    expect(checkLine('// p.540 (printed 500).', 'a.ts', '// CAP is not CPU delay: SC34-2665-60 PDF')).toEqual([]);
+    expect(checkLine(' * p.540 (printed 500).', 'a.ts', ' * RMF Report Analysis PDF')).toEqual([]);
+    expect(checkLine('(printed p.183)', 'a.md', 'SG24-6472-03 PDF p.201')).toEqual([]);
+  });
+
+  it('still flags a bare citation under a line that does not end in a label', () => {
+    expect(checkLine('  p.540 (printed 500)', 'a.md', '  RMF Report Analysis SC34-2665-60')).toHaveLength(1);
+    expect(checkLine('see also p.12', 'a.md', 'SG24-6472-03 PDF')).toHaveLength(1);
+    expect(checkLine('  p.540', 'a.md')).toHaveLength(1);
+    // "printed" carries over only from a PDF-labelled page, not from any "PDF" word on the line above.
+    expect(checkLine('printed p.183 here', 'a.md', 'The PDF version differs.')).toHaveLength(1);
+  });
+
+  it('ignores things that are not page citations', () => {
+    expect(checkLine('const step = 0.5; app.1x')).toEqual([]);
+    expect(checkLine('a p95 response time and pp2 output')).toEqual([]);
+    expect(checkLine('home page')).toEqual([]);
+  });
+
+  it('skips Markdown code spans but not TypeScript strings', () => {
+    expect(checkLine('never write a bare `p.401`', 'CLAUDE.md')).toEqual([]);
+    expect(checkLine("source: 'RMF Report Analysis p.422'", 'src/content/x.ts')).toHaveLength(1);
+  });
+});
+
+describe('citation gate: diff', () => {
+  const diff = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    '--- a/src/a.ts',
+    '+++ b/src/a.ts',
+    '@@ -10,0 +11,2 @@',
+    '+// WLM% (RMF Report Analysis p.401)',
+    '+// WLM% (RMF Report Analysis PDF p.401 (printed 361))',
+    '@@ -20 +22 @@',
+    '-// old bare p.12',
+    '+// unchanged meaning, no citation',
+    'diff --git a/data.json b/data.json',
+    '--- a/data.json',
+    '+++ b/data.json',
+    '@@ -1 +1 @@',
+    '+{"note": "p.5"}',
+  ].join('\n');
+
+  it('numbers added lines from the hunk header and ignores removed ones', () => {
+    expect(addedLines(diff).map((l) => `${l.file}:${l.line}`)).toEqual(['src/a.ts:11', 'src/a.ts:12', 'src/a.ts:22', 'data.json:1']);
+  });
+
+  it('reports only bare citations on added lines of checked files', () => {
+    const findings = checkDiff(diff);
+    expect(findings.map((f) => `${f.file}:${f.line}`)).toEqual(['src/a.ts:11']);
+  });
+
+  it('reads an added line that starts with "++" as content, not a file header', () => {
+    const md = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -0,0 +1,2 @@\n+++ counter (p.3)\n+RMF p.4';
+    expect(checkDiff(md).map((f) => `${f.file}:${f.line}`)).toEqual(['a.md:1', 'a.md:2']);
+  });
+
+  it('joins a wrapped label across consecutive added lines, or the head line above when given', () => {
+    const wrapped = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -4,0 +5,2 @@\n+RMF SC34-2665-60 PDF\n+p.540 (printed 500).';
+    expect(checkDiff(wrapped)).toEqual([]);
+    const underOld = 'diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -5,0 +6 @@\n+p.540 (printed 500).';
+    expect(checkDiff(underOld).map((f) => `${f.file}:${f.line}`)).toEqual(['a.md:6']);
+    expect(checkDiff(underOld, (file, line) => (file === 'a.md' && line === 5 ? 'RMF SC34-2665-60 PDF' : undefined))).toEqual([]);
+  });
+
+  it('skips a deleted file', () => {
+    expect(checkDiff('--- a/src/a.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-// p.3')).toEqual([]);
+  });
+});

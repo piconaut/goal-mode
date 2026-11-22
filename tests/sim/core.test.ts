@@ -1,4 +1,4 @@
-import { clockAt, formatClock } from '../../src/sim/core/clock';
+import { clockAt, formatClock, hhmm, instanceClock, pad2 } from '../../src/sim/core/clock';
 import { Rng, seedRng } from '../../src/sim/core/rng';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 
@@ -42,6 +42,27 @@ describe('clock', () => {
     expect(c.day).toBe(0);
     expect(c.calendarDay).toBe(1);
     expect(c.hourOfDay).toBeCloseTo(5 + 59 / 60 + 50 / 3600);
+  });
+
+  it('has one two-digit pad and one HH:MM formatter', () => {
+    expect(pad2(7)).toBe('07');
+    expect(pad2(10)).toBe('10');
+    expect(pad2(100)).toBe('100');
+    // The chart and log labels used to be formatClock(…).slice(-8, -3); the helper is the same text.
+    for (let tick = 0; tick < 3 * TICKS_PER_DAY; tick += 777) expect(hhmm(tick)).toBe(formatClock(tick).slice(-8, -3));
+    expect(hhmm(0)).toBe('06:00');
+    // A tick is in the minute it is in: the old rounded UI label said 06:00 at 06:59:50 and 07:01 at 07:00:30.
+    expect(hhmm(359)).toBe('06:59');
+    expect(hhmm(363)).toBe('07:00');
+    expect(hhmm(TICKS_PER_DAY - 1)).toBe('05:59');
+  });
+
+  it('instanceClock reads a deadline within the played day, +1 after midnight', () => {
+    expect(instanceClock(0)).toBe('06:00');
+    expect(instanceClock(1.5 * 3600)).toBe('07:30');
+    expect(instanceClock(18 * 3600 - 600)).toBe('23:50');
+    expect(instanceClock(18 * 3600)).toBe('00:00+1');
+    expect(instanceClock(19 * 3600)).toBe('01:00+1');
   });
 });
 

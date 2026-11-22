@@ -1,16 +1,17 @@
 // Performance index and response-time distribution buckets (SG24-7621 §3.10–3.11).
 
 import { lognormCdf, lognormQuantile, normCdf } from '../core/math';
+import { VELOCITY_FLOOR } from '../../content/wlm/tuning';
 import type { Goal, PeriodDef } from './types';
 
 /** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open (SG24-7621 §3.10). */
 export const BUCKET_BOUNDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0, 4.0, Infinity] as const;
 export const BUCKETS = BUCKET_BOUNDS.length;
-export const DISCRETIONARY_PI = 0.81;
-export const PI_MIN_PERCENTILE = 0.5;
+const DISCRETIONARY_PI = 0.81;
+const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
-/** The existing velocity floor: keeps zero-service projections finite (0.1 %). */
-export const VELOCITY_FLOOR = 0.1;
+// Velocity floor lives in content tuning (`src/content/wlm/tuning.ts`, `VELOCITY_FLOOR`): it keeps
+// zero-service projections finite (0.1 %).
 
 // Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
 export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -108,7 +109,8 @@ export function velocityOf(usingSamples: number, delaySamples: number): number |
 }
 
 /** PI for a goal; null when there is no activity to judge. Projections pass Infinity for the velocity ceiling;
- * reported/management PIs keep 99. The existing 0.1% velocity floor keeps zero-service projections finite. */
+ * reported/management PIs keep 99. The velocity floor (`VELOCITY_FLOOR` in `src/content/wlm/tuning.ts`) keeps
+ * zero-service projections finite. */
 export function performanceIndex(goal: Goal, x: PiInputs, velocityPiMax = 99): number | null {
   switch (goal.kind) {
     case 'DISC':

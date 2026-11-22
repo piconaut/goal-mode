@@ -3,7 +3,7 @@
 
 import { hostImages } from './footprint';
 import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric, type PinRelation } from '../content/evidence';
-import { clockAt, formatClock } from '../sim/core/clock';
+import { clockAt, formatClock, hhmm } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
@@ -12,7 +12,7 @@ import { buildMon3 } from './mon3';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
 import type { NightSummary } from '../sim/subsys/batch';
-import { cicsMonitoring, cicsStorageStats, db2Accounting } from './smf';
+import { cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics } from './smf';
 import type { CpuRecord, WlmRecord } from '../sim/measure/rmf';
 import type { Incident, IncidentSubjects, RunState } from './types';
 import { allWorkloads } from './workloads';
@@ -40,7 +40,7 @@ export interface EvidencePin {
    * A recipe can read it, so one row shows "more work at the same cost" or "the same work costing more". */
   rate?: { value: number; baseline?: number };
   /** A PROCU job's service class, as the row shows it, so a recipe can ask whether the job was displaceable. Absent on
-   * other pins and on PROCU pins from saves written before it. */
+   * pins of any other source. */
   serviceClass?: string;
   text: string;
 }
@@ -66,6 +66,9 @@ export type PinRequest =
    * `index`, the latest interval. */
   | { source: 'DASD'; lcuId: string; metric: DasdMetric; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
+  /** Db2 statistics (DISPLAY DDF): the cumulative count of DBAT requests that waited for a slot during the hour,
+   * subject the Db2 member's LPAR. `hour` is an SMF hour key or `current` for the open hour. */
+  | { source: 'DB2_STATS'; hour: string; lparId: string; metric: EvidenceMetric }
   /** SMF 110 region storage (RT-11): an AOR's minutes short on storage in that hour, subject the region. */
   | { source: 'CICS_STORAGE'; hour: string; region: string }
   /** Monitor III PROCU (RT-11): one address space's EAppl CPU, subject the jobname. A past `tick` needs a view
@@ -139,6 +142,40 @@ function cpuMetric(r: CpuRecord, metric: EvidenceMetric): number | null {
 /** A service class the definition knows: used to tell "another class" from "not a class at all" (RT-12). */
 const knownClass = (run: RunState, c: string): boolean =>
   c === 'SYSTEM' || c === 'SYSSTC' || c === 'SYSOTHER' || run.sim.wlm.definition.classes.some((x) => x.id === c);
+
+/** Shared reader for hourly Db2 101 / DB2_STATS / CICS 110 evidence rows: resolves the hour, reads the row,
+ * computes the baseline window and rate, and returns the located evidence or an error message. */
+function hourlyEvidence(
+  run: RunState,
+  req: { hour: string; metric: EvidenceMetric },
+  subject: string,
+  read: (key: string) => Partial<Record<EvidenceMetric, number | null>> | null,
+  missing: string,
+  notFound: string,
+  source: string,
+  /** CPU_VS_BASE's normal is 1 (a ratio, not a median). DBAT_QUEUE has no such special case. */
+  cpuBaselineIsOne = false,
+): Located | string {
+  const tick = hourEndTick(run, req.hour);
+  if (tick === null) return 'No such hour';
+  const row = read(req.hour);
+  if (!row) return missing;
+  const value = row[req.metric];
+  if (value === undefined || value === null) return notFound;
+  const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
+  const upto = i < 0 ? run.smfHours.length : i;
+  // The open hour ('current') is not in the list yet: it is the clock's hour of the played day.
+  const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
+  // The six closed hours before, or for a slot metric the same hour on earlier days (§4.4's slot baseline, RT-13).
+  const hoursFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
+    ? (pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [])
+    : run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
+  const earlierOf = (m: EvidenceMetric) => median(hoursFor(m).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
+  const baseline = cpuBaselineIsOne && req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
+  // The cost row's transaction rate, read beside it (RT-13).
+  const rate = cpuBaselineIsOne && req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE) ? { rate: withBaseline(row.ENDED_RATE, earlierOf('ENDED_RATE')) } : {};
+  return { source, metric: req.metric, subject, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
+}
 
 function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
@@ -275,38 +312,26 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
       return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
     }
-    case 'DB2':
-    case 'CICS': {
-      const tick = hourEndTick(run, req.hour);
-      if (tick === null) return 'No such hour';
-      // The same row read from any closed hour: the pinned one and the earlier ones a baseline is the median of.
+    case 'DB2': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
-        if (req.source === 'DB2') {
-          const r = db2Accounting(run, scenario, key).find((x) => x.workloadId === req.workloadId);
-          return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, DBAT_QUEUE: r.dbatQueueMs, ENDED_RATE: r.txnPerSec } : null;
-        }
+        const r = db2Accounting(run, scenario, key).find((x) => x.workloadId === req.workloadId);
+        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec } : null;
+      };
+      return hourlyEvidence(run, req, req.workloadId, read, 'No such package row', 'That metric is not in Db2 accounting', 'Db2 101', true);
+    }
+    case 'DB2_STATS': {
+      const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
+        const r = db2Statistics(run, scenario, key).find((x) => x.lparId === req.lparId);
+        return r ? { DBAT_QUEUE: r.dbatQueued } : null;
+      };
+      return hourlyEvidence(run, req, req.lparId, read, 'No such Db2 member row', 'That metric is not in Db2 statistics', 'Db2 statistics');
+    }
+    case 'CICS': {
+      const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = cicsMonitoring(run, scenario, key).find((x) => x.workloadId === req.workloadId);
         return r ? { CPU_VS_BASE: r.cpuVsBaseline, QR_WAIT: r.qrWaitMs, MXT_WAIT: r.mxtWaitMs, FAIL_PCT: r.failedPct, ENDED_RATE: r.txnPerSec } : null;
       };
-      const row = read(req.hour);
-      const missing = req.source === 'DB2' ? 'No such package row' : 'No such transaction row';
-      if (!row) return missing;
-      const value = row[req.metric];
-      if (value === undefined || value === null)
-        return req.source === 'DB2' ? 'That metric is not in Db2 accounting' : 'That metric is not in CICS monitoring';
-      const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
-      const upto = i < 0 ? run.smfHours.length : i;
-      // As for Workload Activity rows: the six closed hours before, or for a slot metric the same hour on earlier days.
-      // The open hour ('current') is not in the list yet: it is the clock's hour of the played day.
-      const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
-      const hoursFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
-        ? (pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [])
-        : run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
-      const earlierOf = (m: EvidenceMetric) => median(hoursFor(m).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
-      const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
-      // The cost row's transaction rate, read beside it (RT-13).
-      const rate = req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE) ? { rate: withBaseline(row.ENDED_RATE, earlierOf('ENDED_RATE')) } : {};
-      return { source: req.source === 'DB2' ? 'Db2 101' : 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
+      return hourlyEvidence(run, req, req.workloadId, read, 'No such transaction row', 'That metric is not in CICS monitoring', 'CICS 110', true);
     }
     case 'CICS_STORAGE': {
       const tick = hourEndTick(run, req.hour);
@@ -368,6 +393,7 @@ export function incidentSubjects(
       lpars,
       hosts: [...lpars],
       servers: [],
+      serverClasses: [],
     };
   }
   const w = allWorkloads(scenario, run).find((x) => x.id === workloadId);
@@ -387,7 +413,7 @@ export function incidentSubjects(
     if (sc && !classes.includes(sc)) classes.push(sc);
     if (sc && !serverClasses.includes(sc)) serverClasses.push(sc);
   }
-  return { classes, lpars, hosts, servers, ...(serverClasses.length > 0 ? { serverClasses } : {}) };
+  return { classes, lpars, hosts, servers, serverClasses };
 }
 
 function hourEndTick(run: RunState, key: string): number | null {
@@ -422,15 +448,20 @@ const fmtValue = (m: EvidenceMetric, v: number) => {
   return d.unit === '×' ? `×${v.toFixed(2)}` : `${v >= 100 ? v.toFixed(0) : v.toFixed(1)}${d.unit ? ` ${d.unit}` : ''}`.replace(' %', '%');
 };
 
-// Db2 101 and CICS 110 pins sit at their SMF hour's end tick; label the hour itself (10:00–11:00).
-const pinWhen = (p: Located): string =>
-  p.source === 'Db2 101' || p.source === 'CICS 110'
-    ? `${formatClock(p.tick - TICKS_PER_HOUR).slice(0, -3)}–${formatClock(p.tick).slice(-8, -3)}`
-    : formatClock(p.tick).slice(0, -3);
+// Closed SMF hours end on the boundary; a current-hour pin covers only :00 through now.
+function pinWhen(p: Located, req: PinRequest): string {
+  if (p.source === 'Db2 101' || p.source === 'CICS 110' || p.source === 'Db2 statistics') {
+    const startTick = 'hour' in req && req.hour === 'current'
+      ? Math.floor(p.tick / TICKS_PER_HOUR) * TICKS_PER_HOUR
+      : p.tick - TICKS_PER_HOUR;
+    return `${formatClock(startTick).slice(0, -3)}–${hhmm(p.tick)}`;
+  }
+  return formatClock(p.tick).slice(0, -3);
+}
 
-export function pinText(p: Located): string {
+function pinText(p: Located, req: PinRequest): string {
   const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
-  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
+  return `${p.source} ${pinWhen(p, req)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
 }
 
 /** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */
@@ -439,11 +470,12 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest, histo
   if (typeof loc === 'string') return { run, ok: false, message: loc };
   const pins = run.pins ?? [];
   if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
-  const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc) };
-  // Oldest pins fall off the board.
-  const kept = [...pins, pin].slice(-EVIDENCE.maxPins);
-  return { run: { ...run, pins: kept, nextId: run.nextId + 1 }, ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
+  const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc, req) };
+  return { run: placePin(run, pin), ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
 }
+
+/** Put a located pin (id `run.nextId`) on the board; the oldest pins fall off it. */
+export const placePin = (run: RunState, pin: EvidencePin): RunState => ({ ...run, pins: [...(run.pins ?? []), pin].slice(-EVIDENCE.maxPins), nextId: run.nextId + 1 });
 
 export const removePin = (run: RunState, id: number): RunState => ({ ...run, pins: (run.pins ?? []).filter((p) => p.id !== id) });
 
@@ -482,6 +514,9 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
     case 'Db2 101':
     case 'SMF 30':
       return p.subject === inc.workloadId ? 'self' : null;
+    // Db2 statistics names the member's LPAR; the queue is the work's own when the work runs on that image.
+    case 'Db2 statistics':
+      return s.hosts.includes(p.subject) ? 'self' : null;
     // A PROCU job row is the work's own region when it serves it, otherwise a specific competitor on that image.
     case 'PROCU':
       return s.servers.some((a) => a.jobname === p.subject && a.lparId === p.system)
@@ -505,9 +540,9 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
       // The work's own rows and its regions' may come from the sysplex roll-up (the report views' default filter);
       // a competitor's must name a host image, because the roll-up cannot say where that class ran.
       const onHost = s.hosts.includes(p.system);
-      if (p.subject === inc.workloadId || (s.classes.includes(cls) && !(s.serverClasses ?? []).includes(cls)))
+      if (p.subject === inc.workloadId || (s.classes.includes(cls) && !s.serverClasses.includes(cls)))
         return onHost || p.system === '*PLEX' ? 'self' : null;
-      if ((s.serverClasses ?? []).includes(cls)) return onHost || p.system === '*PLEX' ? 'server' : null;
+      if (s.serverClasses.includes(cls)) return onHost || p.system === '*PLEX' ? 'server' : null;
       // Any other class row is a competitor, whether or not today's definition still has the class: judging it from
       // the live policy would let an `ACTIVATE_POLICY` change a frozen row's verdict (A10).
       return (p.subject.includes('#') || knownClass(run, cls)) && onHost ? 'competitor' : null;
@@ -526,8 +561,8 @@ function notRelatedWhy(run: RunState, inc: Incident, p: EvidencePin, s: Incident
 
 function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): RankedVerdict[] {
   // Judged against what the incident recorded when it opened (RT-04), so a reclassification or rerouting after the
-  // fact keeps the verdicts a player would have got at the time; incidents from old saves derive them now.
-  const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
+  // fact keeps the verdicts a player would have got at the time.
+  const subjects = inc.subjects;
   const { lo, hi } = incidentWindow(run, inc);
   return pins.map((p) => {
     const d = EVIDENCE_METRICS[p.metric];

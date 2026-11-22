@@ -3,6 +3,9 @@
 import type { Command } from '../sim/core/commands';
 import type { CpcConfig, SimState } from '../sim/core/types';
 
+// FICTIONAL: early CoD deactivation takes a short operator task (engineer-hours, SPEC §6).
+export const COD_DEACTIVATE_HOURS = 0.5;
+
 export interface HardwareItem {
   id: string;
   name: string;
@@ -21,7 +24,7 @@ export interface HardwareItem {
 }
 
 /** The target CPC of a per-CPC item: the named one, else the first. */
-export const cpcFor = (s: SimState, cpcId?: string): CpcConfig => s.config.cpcs.find((c) => c.id === cpcId) ?? s.config.cpcs[0]!;
+const cpcFor = (s: SimState, cpcId?: string): CpcConfig => s.config.cpcs.find((c) => c.id === cpcId) ?? s.config.cpcs[0]!;
 const cpc = cpcFor;
 
 export const HARDWARE: HardwareItem[] = [

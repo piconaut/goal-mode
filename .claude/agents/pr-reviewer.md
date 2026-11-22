@@ -110,12 +110,19 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
     Anything else is a blocking finding titled **backlog rule**: no `Backlog:` line, an unknown or non-ready entry,
     an entry another open PR already claims, or scope well beyond the entry. The `dev-loop` skill closes a PR held
     on this finding, so name the exact reason. Other PRs are not subject to this rule.
+11. **Dependants unblocked (any PR whose `Backlog:` line names an entry it deletes).** Every entry in
+    `git show origin/<base>:BACKLOG.md` that is `blocked: after` that entry must, at the head, be `status: ready` if
+    the deleted entry was its only `after` ID (and nothing else in its status is still open), or have the ID removed
+    from its `after` list otherwise. A partial fix (entry rewritten, not deleted) unblocks nothing. A miss is a
+    blocking finding titled **dependants**, naming each entry and the status it should have. It is mechanical
+    (a BACKLOG.md status edit), not a backlog rule finding.
 
 Keep long outputs out of your reply and the comment: grep or tail logs, quote exact lines and numbers.
 
 ## Post the review on the PR
 
-Write the report below to `<dir>/review.md`, ending with the footer, and post it:
+Write the report below to `<dir>/review.md`, ending with the footer, and post it. In **full review mode** skip the
+posting steps and return the report: the caller carries it into its own comment.
 
 ```
 gh api repos/piconaut/goal-mode/issues/<n>/comments -F body=@<dir>/review.md --jq .html_url
@@ -126,7 +133,7 @@ GitHub approval)".
 
 If posting fails, say so in your reply and include the comment text so the caller can post it.
 
-## Report (posted, and returned to the caller; under 45 lines)
+## Report (returned to the caller; posted only by a hand-run review; under 45 lines)
 
 ```
 PR #<n> <title>
@@ -140,37 +147,21 @@ Includes (milestone): <one line per merged PR>
 Claims: <claim> - verified / read only / false (evidence)
 Problems: <file:line - issue - suggested fix>   (blocking first; "none" if none)
 Notes: <non-blocking nits, unmentioned changes, untested edge cases>
-Comment: <url> | not posted (error)
+Comment: <url> | not posted (error; or full review mode, where the caller posts it)
 ```
 
-## Review-loop mode
+## Full review mode
 
-When the brief says "review-loop mode" (the hourly `pr-review-loop` skill), also:
+When the brief says "full review mode" (the `pr-fix-loop` skill, when its fixes grew past its estimate), also:
 
 - Give every finding an ID and a class. **Blocking** (`B1`, `B2`, …) is anything that earns DON'T MERGE below,
   including a merge conflict with the base. **Non-blocking** (`N1`, `N2`, …) is every other problem or note that
   asks for a change (nits, missing tests, wording, edge cases). Observations that need no change are not findings.
-- On a follow-up pass the brief gives the previous lists. Report each previous ID as fixed / not fixed with
-  evidence, then list new findings with new IDs (continue the numbering, don't reuse).
 - Put the findings in the "Problems" and "Notes" lines as usual, prefixed with their IDs.
-- End the posted comment with this marker, after the footer, so the next tick can read it:
-
-```
-<!-- pr-review-loop
-head: <full head SHA you reviewed>
-pass: first | followup
-outcome: MERGE | HOLD
-blocking:
-- B1: <one line, open items only>
-nonblocking:
-- N1: <one line, open items only>
--->
-```
-
-  `outcome` follows the loop's policy, not your verdict line. **First pass:** MERGE only with no open findings
-  at all. **Follow-up:** MERGE when every previous item is fixed and there is no new blocking finding; new
-  non-blocking findings are allowed. On a follow-up MERGE, list the new non-blocking items under `nonblocking`
-  so the caller can log them. Write `- none` under an empty list.
+- Don't post on the PR: return the report. The caller carries its lines into its own fix-check comment and reads
+  your `Verdict:` line, so `MERGE` is a pass and any other verdict is a fail. Because any non-MERGE verdict fails
+  the check, a nit-only review still says DON'T MERGE here; the caller carries its non-blocking items into the
+  fix-check comment and the next `pr-fixer` brief.
 
 Pick DON'T MERGE for a red or missing required check, failing check, a non-deterministic hash, an
 unexplained hash change, a perf PR that changes a hash, a broken rule, a false claim, or a blocking

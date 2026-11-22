@@ -16,7 +16,7 @@ import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
-import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
+import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Db2StatRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
 import type { GoalIssue, WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
@@ -39,10 +39,11 @@ export interface PendingPolicyView {
   goalIssues: GoalIssue[];
 }
 
-export type SmfKind = 'DB2' | 'CICS' | 'BATCH' | 'SMF113';
+export type SmfKind = 'DB2' | 'DB2_STATS' | 'CICS' | 'BATCH' | 'SMF113';
 
 export type SmfData =
   | { kind: 'DB2'; hour: string; rows: Db2AcctRow[] }
+  | { kind: 'DB2_STATS'; hour: string; rows: Db2StatRow[] }
   | { kind: 'CICS'; hour: string; rows: CicsTxnRow[]; storage: CicsStorageRow[] }
   | { kind: 'BATCH'; night: BatchNight | null }
   | { kind: 'SMF113'; rows: Smf113Row[] };
@@ -86,6 +87,7 @@ export type ToWorker =
   /** Stage the advisor's suggestion for one workload (or all) into the pending policy. */
   | { type: 'RC_ADVICE_APPLY'; workloadId: string | null }
   | { type: 'CANCEL_CHANGE'; changeId: number }
+  | { type: 'DEACTIVATE_COD'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'GET_FINANCE' }
   | { type: 'ASK_AROUND'; topic: InquiryKind; workloadId: string | null }
@@ -101,6 +103,8 @@ export type ToWorker =
   | { type: 'AUTO_ADD'; rule: Omit<AutoRule, 'id'> }
   | { type: 'AUTO_REMOVE'; id: number }
   | { type: 'SAVE_POLICY'; name: string }
+  | { type: 'ACTIVATE_SAVED_POLICY'; name: string }
+  | { type: 'LOAD_SAVED_POLICY'; name: string }
   | { type: 'DELETE_POLICY'; name: string }
   | { type: 'SET_POLICY_SCHEDULE'; schedule: ScheduleEntry[] }
   | { type: 'BUY_TOOL'; toolId: string }

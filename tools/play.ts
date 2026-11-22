@@ -5,13 +5,13 @@
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
-//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | restart <JOB>
+//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | cod-deactivate CHG<n> | restart <JOB>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
 //   npm run play -- runs/a.json pin CICS <hour> <AOR region> SOS_MIN   (SMF 110 region storage) | pin PROCU <system> <jobname> [--at "D2 10:40"]   (Monitor III job rows; no --at = now)
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
-//   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
+//   npm run play -- runs/a.json activate | discard | policy-activate <name> | policy-load <name> | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
 //   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
@@ -21,7 +21,6 @@ import { parseIdText } from '../src/game/ids';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
 import { SCENARIOS } from '../src/content/scenarios';
-import { canonicalTrigger } from '../src/content/rca';
 import type { Mechanism, Trigger } from '../src/game/types';
 import type { CfMetric, CpcMetric, DasdMetric, PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
@@ -30,7 +29,8 @@ import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
-import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
+import { SAVE_VERSION } from '../src/game/runFile';
+import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -89,9 +89,12 @@ function pinRequest(a: string[]): PinRequest {
     if (String(a[3] ?? '').toUpperCase() === 'SOS_MIN') return { source: 'CICS_STORAGE', hour: a[1] ?? '', region: a[2] ?? '' };
     return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
   }
+  if (src === 'DB2_STATS') {
+    return { source: 'DB2_STATS', hour: a[1] ?? '', lparId: a[2] ?? '', metric: a[3] as EvidenceMetric };
+  }
   if (src === 'PROCU') return { source: 'PROCU', system: a[1] ?? '', jobname: a[2] ?? '' };
   if (src === 'BATCH') return { source: 'BATCH', day: Number(String(a[1] ?? '').replace(/^D/i, '')) - 1, metric: a[2] as EvidenceMetric };
-  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | PROCU | BATCH');
+  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | DB2_STATS | PROCU | BATCH');
 }
 
 /** wlmlog [system] [--grep text] */
@@ -128,8 +131,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };
     case 'rca': {
       const ev = rest.indexOf('--evidence');
-      // Older play files and habits name the pre-RT-09 trigger id; it maps to CHANGE_REGRESSION.
-      const trigger = canonicalTrigger(rest[2] ?? '') ?? (rest[2] as Trigger);
+      const trigger = (rest[2] ?? '') as Trigger;
       return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
     }
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
@@ -137,9 +139,12 @@ function parse(): PlayCommand | ReadOnly {
     case 'unpin': return { cmd: 'unpin', id: parseIdText('pin', rest[0] ?? '') };
     case 'restart': return { cmd: 'restart', name: rest[0] ?? '' };
     case 'cancel': return { cmd: 'cancel', changeId: parseIdText('change', rest[0] ?? '') };
+    case 'cod-deactivate': return { cmd: 'cod-deactivate', changeId: parseIdText('change', rest[0] ?? '') };
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
+    case 'policy-activate': return { cmd: 'policy-activate', name: rest[0] ?? '' };
+    case 'policy-load': return { cmd: 'policy-load', name: rest[0] ?? '' };
     case 'rcadvice': return { cmd: 'rcadvice', workloadId: rest[0] ?? null };
     case 'discard': return { cmd: 'discard' };
     case 'tfp': return { cmd: 'tfp', accept: rest[0] === 'yes' };
@@ -159,7 +164,14 @@ try {
 const isNew = typeof c === 'object' && c.cmd === 'new';
 if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
 const mon3Path = path.replace(/\.json$/, '') + '.mon3.json';
-let file = isNew ? null : openPlayFile(readFileSync(path, 'utf8'));
+let file: PlayFile | null;
+try {
+  file = isNew ? null : openPlayFile(readFileSync(path, 'utf8'));
+} catch (e) {
+  // A file of another save version (or damaged JSON): one line, not a stack trace.
+  console.log(`REFUSED: ${(e as Error).message}`);
+  process.exit(2);
+}
 const mon3Loaded = file && existsSync(mon3Path) ? decodeRunJson<Mon3PinHistory>(readFileSync(mon3Path, 'utf8')) : undefined;
 if (file && mon3Loaded) file = { ...file, mon3: mon3Loaded };
 if (typeof c === 'string') {
@@ -176,7 +188,7 @@ if (typeof c === 'string') {
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];
-  let res = { file: file ?? ({ version: 1, log: [] } as never), ok: true, text: '' };
+  let res = { file: file ?? ({ version: SAVE_VERSION, log: [] } as never), ok: true, text: '' };
   for (const [i, step] of steps.entries()) {
     if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok || res.text.includes('\nSTOPPED:'))) break;
     if (i > 0) await new Promise((r) => setTimeout(r, paceMs));

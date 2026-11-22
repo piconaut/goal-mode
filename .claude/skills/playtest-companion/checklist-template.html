@@ -1,0 +1,319 @@
+<title>Playtest Round 3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column; a sticky run strip (build, seed, progress) over sectioned checklists. */
+:root {
+  --bg: #f4f6f4;
+  --surface: #ffffff;
+  --ink: #18211d;
+  --muted: #5b6a63;
+  --line: #d6ddd9;
+  --accent: #0d6b5b;
+  --accent-soft: #dcefe9;
+  --tag: #8a5200;
+  --tag-soft: #f6ead6;
+  --done: #7c8a84;
+  --warn: #a8321f;
+  --f-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111614; --surface: #19201d; --ink: #e2e9e5; --muted: #95a39c; --line: #2c3632;
+    --accent: #55c7ac; --accent-soft: #1d3530; --tag: #e3a656; --tag-soft: #3a2c18; --done: #6f7d77; --warn: #f08a76;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111614; --surface: #19201d; --ink: #e2e9e5; --muted: #95a39c; --line: #2c3632;
+  --accent: #55c7ac; --accent-soft: #1d3530; --tag: #e3a656; --tag-soft: #3a2c18; --done: #6f7d77; --warn: #f08a76;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-sans); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+code { font-family: var(--f-mono); font-size: 0.88em; background: var(--accent-soft); padding: 0 4px; border-radius: 3px; }
+header.top { padding-top: 28px; display: flex; flex-direction: column; gap: 6px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+h1 { font-family: var(--f-mono); font-weight: 600; font-size: 26px; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { color: var(--muted); margin: 0; max-width: 62ch; }
+
+.strip {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  border-bottom: 1px solid var(--line); padding-block: 10px; display: flex; flex-direction: column; gap: 10px;
+}
+.run { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.run label { display: flex; flex-direction: column; gap: 2px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+.run input {
+  font: 500 14px var(--f-mono); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 4px; padding: 5px 7px; width: 100%; min-width: 0; text-transform: none; letter-spacing: 0;
+}
+.bar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bar { flex: 1 1 200px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.count { font: 500 13px var(--f-mono); font-variant-numeric: tabular-nums; }
+.filters { display: flex; gap: 4px; }
+.filters button {
+  font: 500 12px var(--f-mono); color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 999px; padding: 3px 10px; cursor: pointer;
+}
+.filters button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.status { font: 12px var(--f-mono); color: var(--muted); }
+.status.err { color: var(--warn); }
+
+section { display: flex; flex-direction: column; gap: 10px; }
+section > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 4px; }
+h2 { font-family: var(--f-mono); font-size: 16px; font-weight: 600; margin: 0; text-wrap: balance; }
+h2 .k { color: var(--accent); margin-right: 8px; }
+.sec-count { font: 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.intro { color: var(--muted); font-size: 14px; margin: 0; }
+ul.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+li.item { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+li.item[hidden] { display: none !important; }
+li.item input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); cursor: pointer; }
+.body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.text { cursor: pointer; }
+li.item.is-done .text { color: var(--done); }
+.meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tag { font: 500 11px var(--f-mono); color: var(--tag); background: var(--tag-soft); border-radius: 3px; padding: 1px 6px; }
+.note-btn { font: 12px var(--f-mono); color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+textarea {
+  font: 14px/1.45 var(--f-sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 4px; padding: 7px 9px; width: 100%; min-height: 64px; resize: vertical;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.freeform textarea { min-height: 120px; }
+@media (max-width: 560px) { .run { grid-template-columns: repeat(2, minmax(0, 1fr)); } h1 { font-size: 22px; } }
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">GOAL MODE · human playtest</div>
+    <h1>Playtest Round 3: RCA truth and WLM</h1>
+    <p class="lede">Tick items as you go and jot notes with the sim clock (<code>D4 23:10</code>). Claude reads this page's saved state, so a note here is enough. Export the save when something surprises you.</p>
+  </header>
+
+  <div class="strip" role="region" aria-label="Run and progress">
+    <div class="run">
+      <label for="f-build">Build<input id="f-build" data-run="build" placeholder="3da33f5" autocomplete="off"></label>
+      <label for="f-scenario">Scenario<input id="f-scenario" data-run="scenario" placeholder="Midwest" autocomplete="off"></label>
+      <label for="f-seed">Seed<input id="f-seed" data-run="seed" placeholder="467203" autocomplete="off"></label>
+      <label for="f-clock">Sim clock<input id="f-clock" data-run="clock" placeholder="D1 06:00" autocomplete="off"></label>
+    </div>
+    <div class="bar-row">
+      <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+      <span class="count" id="count">0 / 0</span>
+      <div class="filters" role="group" aria-label="Show">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="open" aria-pressed="false">Open</button>
+        <button type="button" data-filter="notes" aria-pressed="false">Notes</button>
+      </div>
+      <span class="status" id="status" aria-live="polite">Connecting…</span>
+    </div>
+  </div>
+
+  <div id="sections"></div>
+
+  <section class="freeform">
+    <header><h2><span class="k">∗</span>Running notes</h2></header>
+    <p class="intro">Anything that doesn't fit an item: questions for Claude, moments of confusion, ideas.</p>
+    <textarea id="f-notes" data-run="notes" aria-label="Running notes" placeholder="D3 10:40 PROD2 CPU at 100%, nothing in the WLM log…"></textarea>
+  </section>
+</div>
+
+<script>
+// Round 3 (2026-11-16) as the worked example. For a new round, edit only: <title>, the h1, the lede, the Build
+// placeholder and SECTIONS. Item ids are the db document ids (items/<id>): never reuse one for a different item
+// within an artifact; a new round gets a new artifact. The store layout (items/<id>, run/info) is what the skill reads.
+const SECTIONS = [
+  { k: "0", title: "Setup", intro: "Same seed as round 2, so INC19 (D4 23:02) and the D12 power cap compare directly.", items: [
+    ["s1", "Build SHA written in the strip above (preview <code>dev 3da33f5</code> or release <code>main 4a3a590</code>, the same game; both include the RCA work)."],
+    ["s2", "Midwest, Normal, seed 467203 started."],
+    ["s3", "Optional second run: Revenue, Normal, days 1–5 (probes flaw G1).", "RT-16"],
+  ]},
+  { k: "A", title: "RCA verdicts", intro: "For every RCA you file. Note what you filed and the score.", items: [
+    ["a1", "Mechanism and trigger you filed, and the score you got."],
+    ["a2", "The reply names a primary and lists “also accepted: …”. Was your answer accepted when you thought it should be? Was any accepted answer indefensible?", "RT-07"],
+    ["a3", "The “also accepted” reasoning lines: did they teach you something, or read like noise?", "RT-07"],
+    ["a4", "One cause, one truth: when one event hurt several workloads, did they get consistent truths? (Round 2 D12: RBANK and CARDAUTH got different triggers.)", "RT-14"],
+    ["a5", "Power cap, if it comes: file what you believe. Is the verdict fair now? Does “buy CoD to survive a power cap” still feel odd?", "RT-14"],
+    ["a6", "Grouping: incidents from the same card group across the day; without a card only within two hours. Anything grouped that shouldn't be, or split that was one cause?", "RT-15"],
+    ["a7", "Change regression (the renamed trigger, e.g. a REBIND regression): does the name match what you'd call it?", "RT-09"],
+  ]},
+  { k: "B", title: "Evidence pins", items: [
+    ["b1", "Could you pin the fact that actually proved your case? (CPC busy, a capacity change, CP vs zIIP split, CF or DASD rows, region storage, job or work-manager rows, flat CPU per transaction.)", "RT-05 · RT-10 · RT-11"],
+    ["b2", "Any pin you thought decisive marked unremarkable, or “not about X”?", "RT-12"],
+    ["b3", "Remediate before filing at least once: are your pins still judged against the incident, not the fixed state?", "RT-04"],
+    ["b4", "Pins on the wrong class or system rejected; the right ones marked “points at the cause”?", "RT-12"],
+    ["b5", "Strong evidence: did you earn it? Did it feel out of reach with three pins (runaway work, power cap, CF link need four facts)?", "RT-27"],
+  ]},
+  { k: "C", title: "WLM behaviour", items: [
+    ["c1", "WLM log: when a class stayed red, was the reason line enough? (“harms ONLHI#1, more important”, “already recovering”, “mostly waiting … not WLM-fixable”, “next look hh:mm”.)"],
+    ["c2", "Server periods: the log shows <code>RCVR=ONLMED#1 (regions …)</code>. Is the free ride (one critical class lifts its regions) understandable?"],
+    ["c3", "Round 2's INC19 setup if you're willing: card authorisation in ONLCARD, importance 2, 99% < 0.1 s. Does the game now explain why the regions run at the served class's DP?"],
+    ["c4", "Donors: did the class WLM took from make sense? (The happiest period at or above the receiver donates first, even a more important one, down to its goal.)"],
+    ["c5", "Levers: did each have a visible cost? Importance, goal value, CPU Critical, a resource-group minimum on discretionary work, a response-time goal on batch."],
+    ["c6", "Resource-group maximum (round 2 D9: PROD2 at 100% while PROCU summed under one engine). Still like that? Is the cause readable now?"],
+    ["c7", "Discretionary runaway (round 2 D8 DDFADHOC): did discretionary work hurt anything, and was the explanation visible?"],
+    ["c8", "Morning ramp: did a ladder left by overnight batch hurt 06:00–08:00 online work? (Known gap: no tuning of periods that meet their goals.)"],
+    ["c9", "Any WLM move a real z/OS person would call wrong. Note the clock time for a wlm-why replay."],
+  ]},
+  { k: "D", title: "Questions for the parked entries", intro: "Each answer decides an entry that waits on this playtest. Say what you saw.", items: [
+    ["d1", "CPU split: an incident judged CPU_CAPACITY where the policy could have protected the work, or the reverse? Did the reply name the host you'd judge? On Revenue: is G1 judged capacity?", "RT-16 · Q7"],
+    ["d2", "Baselines: SMF “vs base” figures that look wrong because of time of day (e.g. lock contention blamed in the 20:00 hour)?", "RT-17 · Q6"],
+    ["d3", "Fallback triggers: an incident within 24 h of your own change, did the reply name it? A payday, month-end or deadline-week surge with no card, what was it judged?", "RT-18"],
+    ["d4", "MAXDBAT or thread-limit queueing, or CICS regions short of CPU: was the mechanism right?", "RT-19"],
+    ["d5", "Incidents of failed transactions only, with PI fine: was the cause judged sensibly?", "RT-20"],
+    ["d6", "A batch-window miss: was the verdict fair (job failure vs DASD or capping in the night)?", "RT-21"],
+    ["d7", "Something you diagnosed with no incident to file it on (REORG overrun, zIIP loss, SMF audit, a quiet-day regression)? Would you want a problem record?", "RT-22 · Q8a"],
+    ["d8", "Could you tell a retry storm from a campaign? What would you look at on a real system?", "RT-23 · Q9"],
+    ["d9", "Would you accept fixes being locked until you file proof? Which ones?", "RT-24 · Q8b"],
+  ]},
+  { k: "E", title: "Round-2 leftovers", items: [
+    ["e1", "Subtle events still given away by “EVENT start” in the Operations Log (round 2 D13)?"],
+    ["e2", "Does a REBIND fix now show clearly in Accounting?"],
+    ["e3", "Did the native-SQL redeploy fix the zIIP loss (round 2 D11–D15)?"],
+  ]},
+  { k: "W", title: "Wrap-up", intro: "A sentence each.", items: [
+    ["w1", "RCA scores fair overall? Fewer gotchas than round 2?"],
+    ["w2", "One verdict you'd overturn, and why."],
+    ["w3", "Does the WLM log make WLM feel predictable or arbitrary?"],
+    ["w4", "Final save exported and sent to Claude."],
+  ]},
+];
+
+const state = {};            // id -> { done, note }
+const run = {};              // build, scenario, seed, clock, notes
+let filter = "all";
+let db = null;
+const statusEl = document.getElementById("status");
+const setStatus = (t, err) => { statusEl.textContent = t; statusEl.classList.toggle("err", !!err); };
+
+function render() {
+  const root = document.getElementById("sections");
+  for (const s of SECTIONS) {
+    const sec = document.createElement("section");
+    sec.innerHTML = `<header><h2><span class="k">${s.k}</span>${s.title}</h2><span class="sec-count" data-sec="${s.k}"></span></header>` +
+      (s.intro ? `<p class="intro">${s.intro}</p>` : "");
+    const ul = document.createElement("ul"); ul.className = "items";
+    for (const [id, text, tag] of s.items) {
+      const li = document.createElement("li"); li.className = "item"; li.dataset.id = id;
+      li.innerHTML = `<input type="checkbox" id="cb-${id}" aria-labelledby="t-${id}">
+        <div class="body">
+          <label class="text" id="t-${id}" for="cb-${id}">${text}</label>
+          <div class="meta">${tag ? `<span class="tag">${tag}</span>` : ""}<button type="button" class="note-btn" id="nb-${id}">Add note</button></div>
+          <textarea id="n-${id}" aria-label="Note" placeholder="D4 23:10 …" hidden></textarea>
+        </div>`;
+      ul.appendChild(li);
+    }
+    sec.appendChild(ul); root.appendChild(sec);
+  }
+}
+
+function paint() {
+  let total = 0, done = 0;
+  for (const s of SECTIONS) {
+    let sd = 0;
+    for (const [id] of s.items) {
+      const st = state[id] || {};
+      const li = document.querySelector(`li.item[data-id="${id}"]`);
+      const cb = li.querySelector("input"), ta = li.querySelector("textarea"), nb = li.querySelector(".note-btn");
+      cb.checked = !!st.done;
+      li.classList.toggle("is-done", !!st.done);
+      if (document.activeElement !== ta) ta.value = st.note || "";
+      const hasNote = !!(st.note && st.note.trim());
+      if (hasNote) ta.hidden = false;
+      nb.textContent = ta.hidden ? "Add note" : (hasNote ? "Note" : "Hide note");
+      li.hidden = (filter === "open" && st.done) || (filter === "notes" && !hasNote);
+      total++; if (st.done) { done++; sd++; }
+    }
+    document.querySelector(`[data-sec="${s.k}"]`).textContent = `${sd} / ${s.items.length}`;
+  }
+  document.getElementById("count").textContent = `${done} / ${total}`;
+  document.getElementById("bar").style.width = total ? (100 * done / total) + "%" : "0";
+  for (const inp of document.querySelectorAll("[data-run]")) {
+    if (document.activeElement !== inp) inp.value = run[inp.dataset.run] || "";
+  }
+}
+
+// One write at a time per document; coalesce bursts.
+const chains = {}, timers = {};
+function write(path, body) {
+  if (!db) { setStatus("Not saved: storage unavailable in this view", true); return; }
+  setStatus("Saving…");
+  chains[path] = (chains[path] || Promise.resolve()).then(() => db.doc(path).set(body))
+    .then(() => setStatus("Saved"))
+    .catch(e => setStatus(e && e.code === "invalid_argument" ? "Read-only: you can't edit this checklist" : "Couldn't save. Try again in a moment.", true));
+}
+function writeItem(id) {
+  const st = state[id] || {};
+  write(`items/${id}`, { done: !!st.done, note: st.note || "", updatedAt: new Date().toISOString() });
+}
+function writeRun() { write("run/info", { ...run, updatedAt: new Date().toISOString() }); }
+function debounce(key, fn, ms = 700) { clearTimeout(timers[key]); timers[key] = setTimeout(fn, ms); }
+function flush(key, fn) { if (timers[key]) { clearTimeout(timers[key]); delete timers[key]; fn(); } }
+
+function wire() {
+  document.getElementById("sections").addEventListener("change", e => {
+    if (e.target.type !== "checkbox") return;
+    const id = e.target.closest("li").dataset.id;
+    state[id] = { ...(state[id] || {}), done: e.target.checked };
+    paint(); writeItem(id);
+  });
+  document.getElementById("sections").addEventListener("input", e => {
+    if (e.target.tagName !== "TEXTAREA") return;
+    const id = e.target.closest("li").dataset.id;
+    state[id] = { ...(state[id] || {}), note: e.target.value };
+    debounce(id, () => { delete timers[id]; writeItem(id); paint(); });
+  });
+  document.getElementById("sections").addEventListener("focusout", e => {
+    if (e.target.tagName !== "TEXTAREA") return;
+    const id = e.target.closest("li").dataset.id;
+    flush(id, () => writeItem(id)); paint();
+  });
+  document.getElementById("sections").addEventListener("click", e => {
+    if (!e.target.classList.contains("note-btn")) return;
+    const li = e.target.closest("li"), ta = li.querySelector("textarea");
+    const hasNote = !!ta.value.trim();
+    if (ta.hidden) { ta.hidden = false; ta.focus(); } else if (!hasNote) { ta.hidden = true; } else { ta.focus(); }
+    paint();
+  });
+  for (const inp of document.querySelectorAll("[data-run]")) {
+    inp.addEventListener("input", () => { run[inp.dataset.run] = inp.value; debounce("run", () => { delete timers.run; writeRun(); }); });
+    inp.addEventListener("blur", () => flush("run", writeRun));
+  }
+  for (const b of document.querySelectorAll("[data-filter]")) {
+    b.addEventListener("click", () => {
+      filter = b.dataset.filter;
+      for (const o of document.querySelectorAll("[data-filter]")) o.setAttribute("aria-pressed", String(o === b));
+      paint();
+    });
+  }
+}
+
+render(); wire(); paint();
+
+(async () => {
+  db = window.claude && window.claude.use ? await window.claude.use("db") : null;
+  if (!db) { setStatus("Not saved: storage unavailable in this view", true); return; }
+  let loaded = false;
+  const t = setTimeout(() => { if (!loaded) setStatus("Can't reach saved data yet", true); }, 10000);
+  db.collection("items").onSnapshot(snap => {
+    for (const d of snap.docs) { const v = d.data() || {}; if (!timers[d.id]) state[d.id] = { done: !!v.done, note: v.note || "" }; }
+    if (!snap.metadata.fromCache) { loaded = true; clearTimeout(t); if (!snap.metadata.hasPendingWrites) setStatus("Saved"); }
+    paint();
+  }, () => { clearTimeout(t); setStatus("Lost connection to saved data. Reload to reconnect.", true); });
+  db.doc("run/info").onSnapshot(snap => {
+    if (snap.exists && !timers.run) { const v = snap.data(); for (const k of ["build","scenario","seed","clock","notes"]) run[k] = v[k] || ""; }
+    paint();
+  }, () => {});
+})();
+</script>

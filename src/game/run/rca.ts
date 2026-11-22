@@ -3,7 +3,7 @@ import type { Scenario } from '../../sim/core/scenario';
 import { judgeGroupEvidence } from '../evidence';
 import { judgeProof } from '../proof';
 import { mechanismExplanation } from '../rcaExplain';
-import { acceptedOf, scoreAccepted } from '../sla';
+import { scoreAccepted } from '../sla';
 import {
   type Incident,
   type Mechanism,
@@ -35,7 +35,7 @@ export function groupAcceptedOf(group: readonly Incident[]): { mechanisms: Mecha
   const triggers: Trigger[] = [];
   const notes: Record<string, string> = {};
   for (const inc of group) {
-    const accepted = acceptedOf(inc.truth);
+    const accepted = inc.truth.accepted;
     for (const m of accepted.mechanisms) if (!mechanisms.includes(m)) mechanisms.push(m);
     for (const t of accepted.triggers) if (!triggers.includes(t)) triggers.push(t);
     // The first reason offered for an answer is the one shown, and the lead's comes first.

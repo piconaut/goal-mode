@@ -24,40 +24,24 @@ keep SLAs green and software cost down while workload grows and events pile up.
   BACKLOG entry. The PR that fixes an entry names it (`Backlog: PT-07`) and deletes it. New findings go into
   BACKLOG.md as entries (rules at its top).
 
-## Stack (planned; see SPEC §15)
+## Stack and commands
 
-TypeScript (strict) · Vite · React + Zustand · uPlot · Vitest · sim in a Web Worker · Node
-headless runner for balancing.
+TypeScript (strict) · Vite · React (hooks; SVG charts) · Vitest · sim in a Web Worker · Node
+headless runner for balancing. SPEC §15 has the architecture.
 
-Commands, once scaffolded (keep this list accurate):
+Everyday commands (the full list, including every investigation and CI tool, is in
+[`docs/tools.md`](docs/tools.md)):
 ```
 npm install
-npm run dev          # Vite dev server
-npm test             # Vitest (unit + realism + golden)
-npm run typecheck    # tsc --noEmit
-npm run check        # typecheck + tests (no lint script yet)
+npm run dev            # Vite dev server
+npm test               # Vitest (unit + realism + golden)
+npm run typecheck      # tsc --noEmit
+npm run check          # typecheck + tests
 npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
-npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
-npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by side per RMF interval (format in tools/lab.ts)
-npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard|ironman] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
-npm run bot -- --bot expert --scenario harbourline --seed 9 --days 29 [--changes] [--trace-day 29] [--dump 'PRDA D29 10:0'] [--tune rejectedSkipTicks=0]   # investigations: the bot's changes; one day's WLM an hour at a time (moves, outcomes, SLA, DPs); every candidate and trial of matching adjustments; POLICY_ADJUST overrides (tools/tune.ts; not balance)
-npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader] [--tune k=v,...]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
-npm run sweep:remote -- --bots donothing,textbook,expert --seeds 1-20 [--scenario harbourline] [--difficulty hard] [--tune k=v,...] [--shards 4] [--no-wait]   # same sweep on GitHub Actions, sharded by seed, on committed HEAD (no PR); waits, then runs/remote/<sha7>/summary.md + sweep.csv; --fetch <sha> collects a --no-wait run
-npm run test:remote -- [--suite golden,game,sim,tools,ui | --filter <text>] [--no-wait]   # vitest (`npm test`) on GitHub Actions in one job, on committed HEAD (no PR); waits, then runs/remote-tests/<sha7>/summary.md; --fetch <sha> collects a --no-wait run
-npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
-npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor III now or past: SYSINFO, CPC, DELAY, PROCU, ENCLAVE, SYSWKM, WFEX (text or --json); use it instead of ad-hoc scripts
-npm run play -- runs/a.json finance | capacity | batch   # bill and TFP pace per product (overage $/MSU-hour by LPAR); CPC MSU, LPARs, initiators, capacity changes; last batch night by stream
-npm run inspect -- runs/a.json dp PROD1 [--class ONL] [--from 'D19 20:00'] [--to 'D20 06:00']   # sim internals the player can't see (DPs per RMF interval): investigations only, never in player agents
-npm run inspect -- runs/a.json wlm PROD1 --at 'D19 22:00' [--ticks 6] [--class ONL]   # why WLM did or didn't move DPs: receivers in order, each trial and its verdict (play-CLI files replay to any past time; browser saves trace forward)
-npm run inspect -- runs/a.json blame [--json] [--incident N] [--floor <pp>]   # counterfactual validator (RT-06, RT-25): replay each online incident's opening hour once per card active in it, with the card ended at the hour start; report each card's attainment gain against a noise floor measured from red-herring cards, and the RT-06 verdict (removal met the SLA) beside it. Offline only (an hour of sim per card per incident); needs a play-CLI file
-npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--moves] [--json]   # policy adjustment statistics over a range (WT-01, the 2026-11 WLM audit's S-table, docs/archive/wlm-audit-2026-11.md §1): adjustments, candidates by outcome, trials by verdict, accepted and reversed moves, receivers assessed 30 adjustments without a move, and the DP ladder at a clock time; --by-class per period, --episodes lists the 30-assessment runs, --moves every accepted move. Needs a play-CLI file
-npm run repro -- runs/s2.json S-2 | --scenario midwest --days 8 [--seed 42] [--difficulty normal]   # hands-off play-CLI file (start, advance 24 to day end, draft none): S-1 Midwest 2 days, S-2 Revenue 3, S-3 Harbourline 3, for inspect wlm / wlm-stats / blame
-npm run compare -- [--base origin/dev] [--head <ref>] [--scenarios a,b] [--drop k1,k2]   # behaviour diff vs base: sim state (reporting excluded), game state, log, RMF report text/records, Monitor III views; exit 1 on any difference
-npx vite build && npx vite preview --port 4173 &                  # then:
-node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
-npx tsx tools/ci/behaviourNote.ts origin/dev     # CI gate: goldens changed ⇒ PR body needs "## Behaviour change" (PR_BODY env)
-npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot sweep inside balance bands (victories as a share of runs) (see .github/workflows/ci.yml)
-# In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).
+npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI (docs/agents.md)
+npm run compare -- --base origin/dev   # behaviour diff vs base; exit 1 on any difference
+npm run sweep:remote -- --bots donothing,textbook --seeds 1-20   # bot sweep on GitHub Actions
+npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
 ```
 
 ## Architecture rules (non-negotiable)
@@ -99,6 +83,11 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   RMF/SMF/Monitor III report content (sim mechanics, report fields, Codex text, event clues). Cite book and page.
   Agents and subagents included: briefs for such work must say so. If the books aren't available, mark the claim
   unverified; don't guess.
+- **Page citations** (user decision 2026-11-20): cite the PDF page index, labelled, with the printed page number in
+  parentheses and the book's edition: `SG24-6472-03 PDF p.201 (printed 183)`; links use the same index
+  (`#page=201`). The PDF index is what `#page=` links, `pdf_find.py --page` and viewers open; printed numbers differ
+  from it by a per-book offset and can repeat. Never write a bare `p.N`. Older citations mix both conventions, so an
+  existing one is wrong only when neither reading supports it; relabel it when you touch it.
 - The *mechanics* should behave like real z/OS. The *numbers* are fictional but plausible.
 - When modelling a behaviour, cite the source (IBM doc, Redbook, or expert publication) in a
   comment or in SPEC §18. Prefer IBM docs, then established practitioners (Watson & Walker
@@ -173,7 +162,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
   before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
   vetting and balance calls stay on the main agent.
-  Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
+- Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
   agent and the model it is itself running as, read from its own system prompt or environment. Never copy a trailer
   from a coordinator's brief or reminder, and if the agent can't tell which model it is, it omits the model name
   rather than guessing. For Claude sessions the line is `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
@@ -183,8 +172,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   own `Co-Authored-By` line.
 - Loops (each tick of a scheduled task runs one skill, with its state in PR comment markers):
   - Review: `pr-fix-loop` (the Opus `pr-fixer` reviews each PR, fixes up to 5 mechanical findings itself or holds the
-    PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges), or the older
-    `pr-review-loop` (holds a PR on any finding, merges after a follow-up review shows them fixed).
+    PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges).
   - Author: `dev-loop` implements the next ready entry of the named BACKLOG.md lists, answers a HOLD on its open PR,
     or skips.
 - Review comments: every review report an agent posts on a PR (any agent or vendor, any tool, a subagent or a

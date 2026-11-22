@@ -146,8 +146,11 @@ export interface LparPoolRuntime {
   mvsBusyFrac: number;
   /** Share of demand a binding cap (soft, absolute or initial) removed; PR/SM contention excluded. */
   cappedFrac: number;
-  /** The part of cappedFrac due to WLM soft capping (Partition Data WLM%). */
+  /** The part of cappedFrac due to WLM soft capping: the share of demand the soft cap removed. */
   softCappedFrac: number;
+  /** WLM considers to cap this pool (defined capacity or capacity group in force), whether or not the cap bound;
+   *  Partition Data WLM% is the share of ticks this is true (SMF70NSW ÷ SMF70DSA, MVS SMF p.603). */
+  softCapInForce: boolean;
 }
 
 export interface LparRuntime {
@@ -169,6 +172,22 @@ export interface WorkloadRuntime {
   burst?: BurstState;
 }
 
+/** Reporting-only completion-weighted wait seconds and completed transaction count. */
+export interface CpuWait {
+  cp: number;
+  ziip: number;
+  backlog: number;
+  completions: number;
+}
+
+/** Granted engines; CP-pool use is cp + iipcp, native zIIP-pool use is ziip. */
+export interface CpuGrant {
+  cp: number;
+  ziip: number;
+  /** Missing in earlier RT-16 save rows; contributes zero when summed, without backfill. */
+  iipcp: number;
+}
+
 export interface WorkloadTick {
   id: string;
   arrivalRate: number;
@@ -178,6 +197,8 @@ export interface WorkloadTick {
   rtSumSec: number;
   /** Completion-weighted sums of response-time components (seconds × completions). */
   parts: Record<string, number>;
+  /** Reporting only, by image. Absent in old saves and when no transactions completed. */
+  cpuWaitByLpar?: Record<string, CpuWait>;
   /** Messages waiting on the workload's MQ queue, per queue manager (LPAR). */
   queueDepth?: Record<string, number>;
 }
@@ -192,6 +213,10 @@ export interface CicsStorageTick {
 export interface LparTick {
   lparId: string;
   scps: ScpTick[];
+  /** Reporting only: address-space grants by server role; absent without role slices or in old saves. */
+  cpByRole?: Record<string, CpuGrant>;
+  /** Reporting only: transaction grants by workload; absent without transaction slices or in old saves. */
+  cpByWorkload?: Record<string, CpuGrant>;
   rcs?: ReportClassTick[];
   /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
   cics?: CicsTargets;
@@ -200,7 +225,11 @@ export interface LparTick {
   iipcpReported?: boolean;
   /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
   cicsStorage?: CicsStorageTick[];
-  roleHealth: Record<string, { health: number; queueRatio: number }>;
+  /** DBAT requests that waited for a slot this tick (reporting: QUEDBAT/IFCID 73). */
+  dbatWaited?: number;
+  /** `capped`: this role's CPU was withheld by a resource-group or discretionary cap (RF-09); absent on ticks and
+   * saves from before RF-09, which keeps the bounded-delay form. */
+  roleHealth: Record<string, { health: number; queueRatio: number; capped?: boolean }>;
 }
 
 /** Cross-tick environment carried forward to break circular dependencies (prev-tick values). */
@@ -258,8 +287,8 @@ export interface SimState {
   workloads: WorkloadRuntime[];
   /** Backlogged work per slice key, engine-seconds. */
   backlog: Record<string, number>;
-  /** zIIP-eligible part of backlog per slice key, engine-seconds (absent in saves from before it was tracked). */
-  ziipBacklog?: Record<string, number>;
+  /** zIIP-eligible part of backlog per slice key, engine-seconds. */
+  ziipBacklog: Record<string, number>;
   last: { lpars: LparTick[]; workloads: WorkloadTick[] };
   env: EnvState;
   batch: BatchState;

@@ -2,7 +2,7 @@
 // schedule that switches between them (V WLM,POLICY=name issued by operations automation).
 
 import { POLICY_SCHEDULE } from '../content/alerts';
-import { clockAt } from '../sim/core/clock';
+import { clockAt, pad2 } from '../sim/core/clock';
 import type { Command } from '../sim/core/commands';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -52,6 +52,10 @@ export function savePolicy(run: RunState, def: ServiceDefinition): Out {
   return { run: { ...run, policies: { ...book, saved } }, ok: true, message: `Policy ${def.policyName} saved` };
 }
 
+/** A saved policy by name, or null. */
+export const savedPolicy = (run: RunState, name: string): ServiceDefinition | null =>
+  run.policies?.saved.find((p) => p.policyName === name) ?? null;
+
 export function deletePolicy(run: RunState, name: string): Out {
   const book = run.policies ?? emptyPolicyBook();
   if (book.schedule.some((e) => e.policyName === name)) return { run, ok: false, message: `${name} is in the schedule; remove it there first` };
@@ -72,14 +76,14 @@ export function setSchedule(run: RunState, schedule: ScheduleEntry[]): Out {
   if (run.hoursLeft < POLICY_SCHEDULE.editHours) return { run, ok: false, message: `Needs ${POLICY_SCHEDULE.editHours}h` };
   const sorted = [...schedule].sort((a, b) => a.hour - b.hour);
   return {
-    run: { ...run, hoursLeft: run.hoursLeft - POLICY_SCHEDULE.editHours, policies: { ...book, schedule: sorted }, log: [...run.log, `Policy schedule: ${sorted.map((e) => `${String(e.hour).padStart(2, '0')}:00 ${e.policyName}`).join(', ') || 'none'}`] },
+    run: { ...run, hoursLeft: run.hoursLeft - POLICY_SCHEDULE.editHours, policies: { ...book, schedule: sorted }, log: [...run.log, `Policy schedule: ${sorted.map((e) => `${pad2(e.hour)}:00 ${e.policyName}`).join(', ') || 'none'}`] },
     ok: true,
     message: `Schedule updated (${POLICY_SCHEDULE.editHours}h)`,
   };
 }
 
 /** Activation command due at this tick (on the hour), if the schedule has one and it differs from the active policy. */
-export function scheduledActivation(run: RunState): Command | null {
+export function scheduledActivation(run: RunState): Extract<Command, { kind: 'ACTIVATE_POLICY' }> | null {
   const book = run.policies;
   if (!book || book.schedule.length === 0 || run.sim.tick % TICKS_PER_HOUR !== 0) return null;
   const hour = Math.round(clockAt(run.sim.tick).hourOfDay) % 24;

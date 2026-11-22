@@ -21,9 +21,9 @@ import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
 import { hintLevelFor, morningHints } from './hints';
 import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
-import { emptyPolicyBook, scheduledActivation } from './policies';
+import { emptyPolicyBook, savedPolicy, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { ARMED, failRisk, NO_TARGET, requestChange } from './run/changes';
+import { ARMED, failRisk, NO_TARGET, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
 import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
@@ -32,7 +32,8 @@ import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
 import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
-import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, nightStartTick, workScopeOf } from './sla';
+import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
+import { nightStartTick } from './night';
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
@@ -45,6 +46,7 @@ import {
   type PlannedChange,
   type RunState
 } from './types';
+import { SAVE_VERSION } from './runFile';
 import { allWorkloads } from './workloads';
 import { hourUnion, resolveReach, type ReachWorld } from './footprint';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
@@ -52,12 +54,19 @@ import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/hel
 export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
 
+/** Activate a saved policy now: an ordinary Change Desk activation (emergency when the day is live). */
+export function activateSavedPolicy(run: RunState, content: GameContent, name: string): { run: RunState; ok: boolean; message: string } {
+  const def = savedPolicy(run, name);
+  if (!def) return { run, ok: false, message: `No saved policy ${name}` };
+  return requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: structuredClone(def) }] });
+}
+
 export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);
   const scenario = scenarioFor(baseScenario, difficulty);
   const trust = Object.fromEntries((content.facets?.map((f) => f.id) ?? FACETS).map((f) => [f, diff.startTrust])) as Record<Facet, number>;
   let run: RunState = {
-    version: 1,
+    version: SAVE_VERSION,
     scenarioId: scenario.id,
     difficulty,
     seed,
@@ -116,6 +125,9 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
   return storyFor(run, content, 0);
 }
 
+const FAILED_TAIL = ' Hours were spent; try again tomorrow.';
+const POLICY_RETRY_TAIL = ' Its edits go back to the pending policy (unless newer edits are pending or a later activation succeeds); activate to reschedule.';
+
 /** BRIEFING → LIVE: activate planned changes due today (with failure risk). */
 export function startDay(run: RunState, content: GameContent): RunState {
   if (run.phase !== 'BRIEFING') return run;
@@ -127,12 +139,12 @@ export function startDay(run: RunState, content: GameContent): RunState {
       const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
       if (failed) {
         changes.push({ ...c, status: 'FAILED' });
-        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending or a later activation succeeds); activate to reschedule.' : '';
+        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? POLICY_RETRY_TAIL : '';
         r = msg(
           r,
           'Change board',
           `Change failed: ${c.label}`,
-          `Implementation backed out (risk was ${Math.round(failRisk(r) * 100)} %; tired teams and rushed changes fail more often). Hours were spent; try again tomorrow.${policy}`,
+          `Implementation backed out (risk was ${Math.round(failRisk(r) * 100)} %; tired teams and rushed changes fail more often).${FAILED_TAIL}${policy}`,
         );
         continue;
       }
@@ -152,8 +164,27 @@ export function startDay(run: RunState, content: GameContent): RunState {
     }
   }
   r = { ...r, changes, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
+  // A failed policy activation followed by a later install today: the failure mail was written before the later
+  // change was known to succeed, so correct it. Only claim the edits are live when the later policy carries them.
+  const laterInstalls = policyFailuresWithLaterToday(r);
+  if (laterInstalls.length > 0) {
+    const todo = [...laterInstalls];
+    r = {
+      ...r,
+      inbox: r.inbox.map((m) => {
+        if (m.day !== r.day) return m;
+        const k = todo.findIndex((x) => m.subject === `Change failed: ${x.failed.label}` && m.body.includes(FAILED_TAIL + POLICY_RETRY_TAIL));
+        if (k < 0) return m;
+        const [hit] = todo.splice(k, 1);
+        const outcome = hit!.editsLive
+          ? ` Later activation ${hit!.laterName} went live with the edits this request made, so there is nothing to reschedule.`
+          : ` Later activation ${hit!.laterName} also went live today, but it did not carry this request's edits, and they are not pending again: make them again and activate.`;
+        return { ...m, body: m.body.replace(FAILED_TAIL + POLICY_RETRY_TAIL, outcome) };
+      }),
+    };
+  }
   // Today's chart history starts at 06:00 and shows the planned changes just applied.
-  if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length } };
+  if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length, lastLogLine: run.log.at(-1) ?? null } };
   return r;
 }
 
@@ -166,12 +197,19 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   let r = run;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
-    const cmds: Command[] = [...r.pendingCommands];
+    // The hour's scheduled switch is issued before the tick's queued commands (PR-01): a queued activation is the
+    // later act, so it wins the tick and the editor's "Queued for next tick" is what the player gets. A scheduled
+    // switch that the queue overrides still shows in the log, so it never disappears silently.
     const switchTo = scheduledActivation(r);
+    const cmds: Command[] = [];
     if (switchTo) {
+      const name = switchTo.definition.policyName;
       cmds.push(switchTo);
-      r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
+      const queued = [...r.pendingCommands].reverse().find((c) => c.kind === 'ACTIVATE_POLICY');
+      const overridden = queued !== undefined && queued.definition.policyName !== name;
+      r = logLine(r, `V WLM,POLICY=${name} (scheduled)${overridden ? `, then the queued activation ${queued.definition.policyName}` : ''}`);
     }
+    cmds.push(...r.pendingCommands);
     let events = r.events;
     // Fixes applied earlier today whose forewarned card had not started yet: they end the card when it starts.
     const armed = new Map<string, string>();
@@ -457,7 +495,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
-  const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst ?? {});
+  const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst);
   const strained = strainedClasses(r, scenario, dayIncidents, worstPiOfDay(r.sim.rmf.intervals, day, STRAIN.minEnded), r.reports.at(-2)?.piWorst);
   for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null, hid, strained))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
@@ -584,8 +622,10 @@ export { requestChange } from './run/changes';
 export { dryRunRefusal } from './run/changes';
 
 export { cancelChange } from './run/changes';
+export { deactivateCod } from './run/changes';
+export { codDeactivatable } from './run/changes';
 
-export { failedPolicyToday } from './run/changes';
+export { failedPolicyToday, policyFailuresWithLaterToday } from './run/changes';
 
 export { wlmHidSlides } from './run/diagnostics';
 

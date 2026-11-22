@@ -1,6 +1,6 @@
 ---
 name: dev-loop
-description: One tick of the GOAL MODE development loop (user request 2026-11-09), the author-side counterpart of pr-fix-loop / pr-review-loop - with no dev-loop PR waiting, implement the next ready entry from the named BACKLOG.md list(s) and open a PR; when the review loop has held that PR, address its findings; otherwise skip the tick. Stops the scheduled task when the lists are finished, and does nothing when the lists are missing or not BACKLOG.md lists. Usage - /dev-loop <list>[,<list>…], e.g. /dev-loop playtest-fixes (fired by a scheduled task).
+description: One tick of the GOAL MODE development loop (user request 2026-11-09), the author-side counterpart of pr-fix-loop - with no dev-loop PR waiting, implement the next ready entry from the named BACKLOG.md list(s) and open a PR; when the review loop has held that PR, address its findings; otherwise skip the tick. Stops the scheduled task when the lists are finished, and does nothing when the lists are missing or not BACKLOG.md lists. Usage - /dev-loop <list>[,<list>…], e.g. /dev-loop playtest-fixes (fired by a scheduled task).
 ---
 
 # Dev loop (one tick)
@@ -9,9 +9,8 @@ You do at most one unit of author work in `piconaut/goal-mode`, then stop. Each 
 everything about earlier ticks is in GitHub (PRs labelled `dev-loop`, their remote branches and comments). Never rely
 on memory of an earlier tick.
 
-You are the author. The review loop (`pr-fix-loop`, or `pr-review-loop` if the scheduled task runs that instead)
-reviews and merges. The two take turns through the review loop's markers, so only one of you ever pushes to a PR
-branch at a time (step 2).
+You are the author. The review loop (`pr-fix-loop`) reviews and merges. The two take turns through the review
+loop's markers, so only one of you ever pushes to a PR branch at a time (step 2).
 
 **Never merge, never enable auto-merge, and don't subscribe to PR activity**: the review loop merges, and the next
 tick is your follow-up. This skill authorises you
@@ -45,8 +44,8 @@ PRs labelled `needs-user` wait for a user decision, but the review loop still re
 (user request 2026-11-13). Classify them with the table like the others, and answer their holds. They don't block a
 new pick. At most one other `dev-loop` PR is open at a time.
 
-For each open `dev-loop` PR, find the **latest review marker**: the newest comment containing `<!-- pr-fix-loop`
-or `<!-- pr-review-loop`, and any later `<!-- pr-fix-loop-check` or `<!-- pr-fix-loop-note` comments. Find your
+For each open `dev-loop` PR, find the **latest review marker**: the newest comment containing `<!-- pr-fix-loop`,
+and any later `<!-- pr-fix-loop-check` or `<!-- pr-fix-loop-note` comments. Find your
 **latest response**: the newest comment containing `<!-- dev-loop-response`.
 
 | Case | Condition | Action |
@@ -64,8 +63,7 @@ Then do one thing:
 
 ## 3. Address a hold
 
-1. Read the hold report and its marker: `open:` (pr-fix-loop) or `blocking:` + `nonblocking:` (pr-review-loop),
-   and the `Hold reason:` line.
+1. Read the hold report and its marker: the `open:` list and the `Hold reason:` line.
 2. **Backlog rule finding**: close the PR with a comment saying why (the entry was blocked, removed or claimed on
    `dev` since you picked it, or you picked wrongly), delete its branch, and stop. The next tick picks again.
 3. **A finding that needs the user** (a design or balance call, NEEDS USER, a change to what the entry asks for):
@@ -128,6 +126,9 @@ PR other than `needs-user` ones: the lists are finished.
    You may hand well-scoped content, test or small UI parts to the `implementer` subagent (review its diff). Keep
    `sim` work, balance calls and cross-layer work yourself.
    - In the same PR, delete the entry from BACKLOG.md; a partial fix rewrites it to what remains.
+   - In the same PR, unblock its dependants (BACKLOG.md Rules): every entry that is `blocked: after` only this entry
+     goes to `status: ready`; an entry whose `after` list names others too loses this ID from the list. A partial fix
+     unblocks nothing. List each status change in the PR body.
    - Record durable facts in SPEC §17/§18, docs/research.md, or a PROGRESS.md decision.
    - A **status mark** you set in a doc is a claim. That includes a finding marked fixed, partial or open (e.g. a
      finding marked fixed in a design doc) and a ledger row set to modelled. List each mark in the PR body, with the finding's own

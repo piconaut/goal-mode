@@ -1,5 +1,6 @@
-# PR-only gates that depend on the PR's body, title or labels, so they re-run when those are edited without
-# re-running the full CI. Required status checks: `behaviour-note` and `perf-hash`.
+# PR-only gates. `behaviour-note` and `perf-hash` depend on the PR's body, title or labels, so they re-run when those
+# are edited without re-running the full CI; `citations` reads only the PR's diff. Required status checks:
+# `behaviour-note` and `perf-hash` (`citations` blocks merges once it is added to branch protection).
 name: PR gates
 
 on:
@@ -31,6 +32,26 @@ jobs:
       - run: npx tsx tools/ci/behaviourNote.ts "origin/${{ github.base_ref }}"
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+
+  # Page citations on added lines must give the labelled PDF page index (CLAUDE.md "Realism policy"). The dev → main
+  # milestone PR passes at once (user decision 2026-11-22): each of its lines was gated on its own PR into dev, or
+  # predates the rule (#439) and is relabelled when touched; diffing against main would re-flag those older lines.
+  citations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: github.head_ref == 'dev' && github.base_ref == 'main'
+        run: echo "dev -> main milestone PR, citations were gated on their PRs into dev."
+      - if: github.head_ref != 'dev' || github.base_ref != 'main'
+        run: npx tsx tools/ci/citations.ts "origin/${{ github.base_ref }}"
 
   # A PR labelled `perf` (or titled "perf…") claims to be an optimisation: the end-of-day state hash must match the
   # base branch's. Passes at once for other PRs.

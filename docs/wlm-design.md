@@ -203,7 +203,10 @@ given with its tier.
   transactions in the same regions get a free ride ([SG24-6472 p.62–63][r62]).
 - "The external service class of a server is ignored" unless the region is managed to its own goal by its
   classification rule, or is serving no transactions ([SG24-6472 p.89][r89]; [WLM Planning p.122][wp122]).
-- Enclaves are managed as work of their own class; no topology ([SG24-6472 p.86][r86]).
+- Enclaves are managed as work of their own class, and their server address spaces (DDF, CB, IWEB, NETV) also get a
+  dynamic internal service class period (`$SRMSnnn`) — the enclave server topology ([SG24-6472 PDF p.82–83
+  (printed 64–65)][r82]). APPROX: the sim manages a DDF enclave to its own class but models no enclave server
+  period.
 
 ### 3.12 CPU protection
 
@@ -256,7 +259,8 @@ One loop, the same shape as IBM's (§3), sized for the sim:
   - projection re-runs the sim's own dispatcher model at sustained demand (§5.4), where WLM uses learned plots;
   - the coefficients IBM does not publish are invented (§5.10).
 
-Code: `src/sim/wlm/adjust.ts` (the loop), `plan.ts` (plans), `ladder.ts`, `holders.ts`, `projection.ts`,
+Code: `src/sim/wlm/adjust.ts` (the loop) and `adjust/` (per-call context, trial assessment, candidate and donor
+selection, delay shares, CPU protection, trace types), `plan.ts` (plans), `ladder.ts`, `holders.ts`, `projection.ts`,
 `batchRt.ts`, `goals.ts` and `runtime.ts` (PIs and accumulators), `src/sim/zos/dispatcher.ts`. The coefficients
 are `POLICY_ADJUST` in `src/content/wlm/tuning.ts`.
 
@@ -498,6 +502,15 @@ donorOrder(r, b, L, info, C):
   return the first C.donorsPerReceiver
 ```
 
+**Why the worse of the two PIs.** WLM Services p.138 makes the sysplex PI the primary criterion for selecting
+receivers and donors, and the receiver list uses it first indeed. Donor happiness and order use the worse of the
+local and sysplex PI instead. SG24-6472-03 (March 2008) p.54–55: both PIs are used for adjusting resources, "the local
+PI is always used and not overruled by the sysplex PI", and a period whose sysplex PI is below 1 but local PI above 1
+is a receiver, so it is not a happy donor here. A donation is also judged on this image's projected harm. A
+plex-first revision tried for PR-19 (local PI as the tie-break) gave two DDFPRD#1 reversals within two minutes on the
+Midwest one-day run, where the RF-03 invariant allows one (`tests/sim/wlm-realism.test.ts`); without the tie-break it
+gave one, as the worse-of does, so the run alone does not decide the choice (2026-11-17).
+
 **The pool is holders.** A server period's entry (`holderDonorInfo`) combines the classes it serves:
 - **importance:** the most important of them;
 - **PI:** the worst of their PIs;
@@ -531,6 +544,13 @@ a period seen for the first time: the level of the lowest period of its importan
 - **Placement of new work.** New periods are placed on the holder ladder:
   - a new served class takes its server's DP;
   - a new server period is placed by its most important class.
+- **A policy edit.** DPs are carried by period key across an activation (the ladder belongs to the image, not the
+  policy), so an activation reconciles what the edit changed: a period now defined as discretionary returns to the
+  fixed 196 (real WLM runs discretionary work at 192–201, below the 203–247 goal range: [SG24-6472 p.66](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66)), and a period now goal-managed whose carried DP is off the managed ladder (it was discretionary) is
+  placed as new. A CICS transaction period keeps following its holder even when its own goal becomes discretionary —
+  the one place a discretionary period does not run at 196, because the sim dispatches a region's transactions at the
+  holder's DP (§5.8) — and a goal whose kind changes while staying managed keeps its level: placement depends on
+  importance, not on the kind of goal (PR-15).
 - **Reserved range.** A goal member's resource-group minimum runs at `DP.RG_MINIMUM` (249), and blocked-workload
   promotion at 253. Both are in the reserved range, above all goal work (APPROX: IBM doesn't say where they run).
   A discretionary member's minimum runs at 249 while no outside goal period has local PI > 1; otherwise at 202,
@@ -606,7 +626,8 @@ The terms:
 How it behaves:
 - **Velocities.** Both leave out server and queue-delay samples, and the 0.1 % floor applies. The queue time is
   already in Q̄, and queued WLM-initiator jobs add `delayQueue` to measured ticks only.
-- **Only Ē changes.** A DP move can't shorten the JES initiator wait (SG24-6472 p.222).
+- **Only Ē changes.** A DP move can't shorten the JES initiator wait: "WLM cannot do anything to help a job waiting
+  for an initiator", though the wait is part of batch response time (SG24-6472 PDF p.221–222 (printed 203–204)).
 - **RECOVERING keeps its meaning.** The base uses `v'` at the current DPs, so a period is recovering when
   sustained-demand speed already meets the goal.
 - **Null means no move.** The PI is null with no unexpired completion or no running job of the period: no DP
@@ -642,19 +663,19 @@ Each invariant is a named test in one of these files:
 | I6 | **Equal-importance convergence.** When an accepted plan harms an equally important period, the two projected PIs are closer than before and the receiver gains more than the sum of such harms | Property. Realism: two equal classes on a saturated image end within 0.3 PI of each other and stop moving |
 | I7 | **Donor order.** The n-th donor tried is the n-th of `donorOrder`; a happy holder is tried before any unhappy one; a zIIP bottleneck never selects a donor with no zIIP use | Property on the trace; unit test |
 | I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1` |
-| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism: Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels, and nothing is at `MANAGED_MAX` |
+| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change once set (a period edited to discretionary is set back to 196) | Property. Realism: Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels, and nothing is at `MANAGED_MAX` |
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Unit and realism tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit (`tests/sim/wlm-servers.test.ts`) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget |
 | I13 | **Settles.** With constant demand, DP changes stop. In a run, no period's move is undone by its next move within two minutes, unless another receiver's accepted plan in between projected the period past its goal (conditions changed; user decision 2026-11-12). A slower alternation, a starving period getting a turn every few minutes under comfortable more important work, is WLM doing its job and is not counted | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes. `inspect … wlm-stats` counts reversals within two minutes (and those after another plan apart). The 2026-11 target of an 80 % fall was met on Midwest and Revenue; Harbourline's 19 → 8 was accepted by the user on 2026-11-13 |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: "Db2 MSTR starvation raises DDF response without DDF CPU delay" logs the waiting note |
-| I15 | **Minimum above goal work.** A resource-group minimum's share for a goal member is dispatched above every goal period | Unit on the dispatch demands |
+| I15 | **Minimum placement.** A goal member's resource-group minimum is dispatched above every goal period (249). A discretionary member's minimum is dispatched above discretionary work and below every goal period while an outside goal period misses its goal (202); otherwise it runs at 249 as well | Unit on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on changes that touch it |
 | I17 | **Projection is honest at rest.** With `f = 1` for every period and no backlog, `base` equals this tick's PIs | Unit |
 
 ### 5.10 Coefficients and approximations
 
-Every number is in `src/content/wlm/tuning.ts` `POLICY_ADJUST`, with a `// FICTIONAL:` note on the shape it should
+Every number is in `src/content/wlm/tuning.ts` (`POLICY_ADJUST` or a standalone export), with a `// FICTIONAL:` note on the shape it should
 produce. IBM publishes none of them, so the "Origin" column says where a value came from, not that IBM uses it.
 
 | Name | Value | Shape | Origin |
@@ -675,6 +696,7 @@ produce. IBM publishes none of them, so the "Origin" column says where a value c
 | `demandUpliftMax` | 2 | a quiet tick is lifted to at most twice its demand | invented |
 | `backlogBoostFrac` | 0.5 | work that fell behind wants up to 1.5 × its rate | invented |
 | `projectionTrustMax` | 4 | a receiver whose backlog the bound cut and that is measured over 4 × its `base` is not raised (§5.4) | invented |
+| `VELOCITY_FLOOR` | 0.1 | velocity PI capped at 10 × goal (goal.velocity ÷ max(velocity, 0.1)); percentile projections extrapolate past 4.0 from the mean RT — which outweighs the other depends on starvation, no fixed ordering | invented; no near-zero bound documented in the WLM books checked (RF-04) |
 
 Don't tune a coefficient to move a balance band. Balance is tuned through scenario pressure in the `balance` list
 (user decision 2026-11-10).
@@ -772,6 +794,9 @@ Real WLM behaviour the sim doesn't model, each documented as an approximation (S
   adjustment action in the sim (approximation 5).
 - **Started tasks** report no transaction completions, so a response-time goal on one has no PI.
 - **REGION/BOTH region management** keeps a DP per served class (§5.8).
+- **Enclave server periods** (§3.11). Real WLM puts enclave server address spaces (DDF, CB, IWEB, NETV) in a
+  `$SRMSnnn` period managed toward the enclaves' goals. The sim manages DDF enclaves to their own class and builds
+  server periods for CICS TRANSACTION regions only (`src/sim/wlm/holders.ts`).
 
 Open questions:
 - Whether zIIP service is normalised to CP speed for period durations: not found (§3.1).
@@ -816,6 +841,7 @@ Open questions:
 [r66]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66
 [r67]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=67
 [r68]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=68
+[r82]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=82
 [r86]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=86
 [r89]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=89
 [r190]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=190

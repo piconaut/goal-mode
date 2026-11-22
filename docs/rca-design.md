@@ -79,9 +79,10 @@ separate two causes at all); **n/a** (the card never opens an incident).
 - WLMGL CAP delay is resource-group capping and discretionary goal management, not LPAR capping, and is not part of
   CPU delay ([RMF Report Analysis p.540](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=540));
   LPAR capping is Partition Data WLM% ([p.401](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=401)).
-- CICS 110 separates QR TCB wait (QRMODDLY) from first-dispatch delay by MXT (MXTDELAY)
-  ([CICS Monitoring p.251–254](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=253)),
-  and a short-on-storage region defers new task attaches ([CICS Performance p.76](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/performance_pdf.pdf#page=76)).
+- CICS 110 separates QR TCB wait (QRMODDLY, field 249) from first-dispatch delay by MXT (MXTDELAY, field 127)
+  ([CICS Monitoring PDF p.290 (printed 282)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=290),
+  [PDF p.295 (printed 287)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=295)),
+  and a short-on-storage region defers new task attaches ([CICS Performance PDF p.76 (printed 68)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/performance_pdf.pdf#page=76)).
 - Db2 accounting class 3 holds lock/latch and I/O suspensions ([Db2 13 Managing Performance p.709](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=709)).
 
 Game truth is from the code; **(R-n)** marks rows confirmed by a replay. "Collateral" means a workload the card
@@ -368,9 +369,11 @@ clue. A competitor's row must also name a host image, so a `*PLEX` roll-up is re
 show which image the class ran on"). `LOCK_WAIT` and `CF_WAIT` are only ever pinned from Db2 101, whose subject is the
 workload itself, so their relation is always `self`.
 
-What remains open is the *combination*: two `DELAY_ZIIP` rows of the work's own class still reach "strong evidence"
-(relevance ≥ 2, +5 Insight) for any CPU or dependency incident, because nothing checks that the pins, taken together,
-separate the cause from its look-alikes. That is RT-13's proof recipes.
+What remains open is the *combination*: two notable `DELAY_CPU` rows of the work's own class (10 % or more) still
+reach "strong evidence" (relevance ≥ 2, +5 Insight) for a `CPU_CAPACITY`, `CPU_PRIORITY` or `DEPENDENCY` incident,
+because nothing checks that the pins, taken together, separate the cause from its look-alikes. That is RT-13's proof
+recipes. (`DELAY_CPU` is accepted for those three mechanisms; `DELAY_ZIIP`, which the example used, only for the two
+CPU mechanisms in its metric definition.)
 
 The reverse also holds: a ruling-out pin cannot count. "CPU per transaction unchanged" is the discriminator for a
 surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.4 for bots) is below `notableAt`.
@@ -388,10 +391,11 @@ R-16, same pins, after three remediations a player would plausibly make before t
 
 All three punished the player for fixing the incident before the review. RT-04 stores the incident's classes, hosts
 (and the positive-weight hosts the relation test needs) and serving regions when it opens, and judges against that
-snapshot; incidents from old saves still derive them from the present. RT-12 added the serving regions' classes
+snapshot, and a file from another build is refused rather than judged against the present (CL-20). RT-12 added the
+serving regions' classes
 (`serverClasses`), so a region's row is a `server` relation rather than the work's own. `tests/game/evidence.test.ts`
 pins a class row, reclassifies the workload and reroutes it, and gets the pre-edit verdicts from the recorded
-subjects (and the old defect from the live values). The snapshot is taken at the hour's close, so a change made
+subjects (and the defect an empty subject list gives). The snapshot is taken at the hour's close, so a change made
 during the breaching hour is already in it, and rows from a later hour of a still-open incident sit under the new
 class and no longer match — the price of a stable subject for the hour that opened the incident.
 
@@ -517,6 +521,27 @@ Sources of accepted answers:
 
 ### 4.3 The CPU split
 
+**Built in RT-32:** host excess is `max(0, cp + ziip + backlog − workload CPU baseline × completions)`;
+largest wins (image-id ties). Co-host share ≥ ⅓ adds its verdict; ≥ ⅔ imbalance with another host busy < 85 % on
+the judged pool (CP, or zIIP when zIIP wait dominates) adds ROUTING. zIIP wait > CP + backlog selects zIIP busy/use. Blocked overflow (system or class setting) with image
+CP busy < 85 % forces CPU_PRIORITY and accepts POLICY (SA23-1380-60 PDF p.430 (printed 394); class Honor Priority
+SC34-2662-60 PDF p.121 (printed 101)). Image capping is only
+tested on the judged host; resource-group and server CAPPING are RT-33's (below, built).
+
+Displaceable pool use includes CP + IIPCP on CP, native zIIP on zIIP, and excludes system work, own transactions by
+workload, completion-proportioned shared region base CPU, dependency roles and other SLA work at risk. The PCT
+threshold is target + ¼ of the remaining headroom (points); the AVG limit is 0.8 × RT target; during the batch
+window, running critical jobs are protected
+when `sim.batch.projectedCriticalEndSec` (the batch view forecast) is within `CPU_SPLIT.atRiskMargin` of the night
+window before the deadline (03:00 for the default 06:00 deadline), not of the absolute deadline.
+`CPU_SPLIT.coHostFrac = ⅓`, `atRiskMargin = ¼`; primary lines remain 90/95 % busy and < 10 % displaceable, RT-07
+bands remain 85/95 % and < 5 %. These are FICTIONAL game rules; period/region apportionment and counting whole happy
+consumers are APPROX. Truth and proof read the same frozen `subjects.cpu` exclusions. Top consumers are eligible
+classes named with workload ids, with their full WLMGL APPL pool shares; mixed rows are scaled to the eligible
+subset for proof. Old hours without wait ledgers retain the legacy host/donor rule, old bases read `donorPct`, and
+old proofs conservatively exclude own/server/system classes when no consumer snapshot exists. Partial loaded
+hours use only RT-16 observations without backfill. Batch-night judging remains the old rule pending RT-21.
+
 For a CPU-family primary, or a `serverCpu` dependency:
 
 1. **Host.** Record CPU wait per workload per LPAR (reporting-only; `failByWorkloadLpar` is the precedent). Judge on
@@ -525,10 +550,19 @@ For a CPU-family primary, or a `serverCpu` dependency:
 2. **Pool.** If the excess is zIIP queueing, measure busy and displaceable use on the zIIP pool, and treat "zIIP work
    may not overflow" (IIPHONORPRIORITY=NO, Init & Tuning p.430) as a policy cause.
 3. **Capping** when the host was capped for at least 5 % of the hour's ticks (time, not the worst tick), by defined
-   capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add: CAPPING also
-   when the hurt class or its server was held by a resource-group
-   maximum (WLMGL CAP delay, RMF Report Analysis p.540), with trigger POLICY. The form's help for CAPPING changes
-   from "the image" to "the image or the class".
+   capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add (RT-33): CAPPING
+   also when the hurt class or its server was held by a resource-group maximum (WLMGL CAP delay, z/OS 3.1 RMF Report Analysis
+   SC34-2665-60 PDF p.540 (printed 500)), with trigger POLICY. The form's help for CAPPING changes from "the image" to "the image or the class".
+   **As built (RT-33):** `game/sla.ts` `cappingOf` tests, on the judged host only, (a) the image's own cap, (b) a
+   period of the hurt work, or the `$SRMS001` server period holding its regions, at CAP delay ≥ `CAPPING.capDelayFrac`
+   (5 %) of its WLMGL samples, and (c) a server role the work depends on (`w.servers`, `w.hostRole`) with
+   `roleCappedTicks` ≥ `minHourShare` of the ticks. Both new triggers are fallback POLICY unless a card is blamed, and
+   the basis records `capBy` IMAGE/GROUP/SERVER with the capped class's `resourceGroup`; the cause is
+   `none:CAPPING:<host>:rg:<group>`, so a group cap does not group with an image cap on the same image. Discretionary
+   goal management caps only work that overachieves, so no special case. The CAPPING recipe's symptom predicate also
+   reads CAP delay ≥ 10 %: a resource-group cap's wait is CAP delay, not CPU delay (SC34-2665-60 PDF p.540 (printed 500)), so a `DELAY_CAP` row is
+   both the symptom and the proof. An hour with no judged host (a night, a loaded partial hour) keeps the old any-host
+  image rule; RT-21 owns the night.
 4. **Capacity or priority by displaceable CPU.** Replace "CP used by lower importance" with **displaceable CP**: CP
    on that image used by work that is not system work (SYSTEM, SYSSTC), not a server or region of the hurt workload,
    and not work whose own SLA was at risk that hour. The WLM importance of the consumer does not enter. A looping
@@ -553,10 +587,12 @@ For a CPU-family primary, or a `serverCpu` dependency:
    learned, always adds CPU_CAPACITY to the accepted set. The numbers are FICTIONAL and belong in
    `content/incidents.ts`.
 
-Expected on the repros (the model is not implemented, so these are not runs): R-7 MOBILE → primary CPU_PRIORITY or
-CPU_CAPACITY by the displaceable share once Db2 is excluded, with both accepted (band, and the card reduces capacity); CARDAUTH → DEPENDENCY with CPU_CAPACITY and
-CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores 5 on both. R-13 → CPU_PRIORITY/POLICY
-(batch is displaceable). R-2 → CPU_CAPACITY primary at CPC 99 % with Db2 excluded, priority accepted in the band.
+Built on the repros (RT-32): R-13 is `CPU_PRIORITY/POLICY` on days 0, 5 and 8, with 83.1, 79.5 and 80.4 % of the
+judged pool displaceable (overnight batch and happy CICS work). R-2 judges PROD2 (PROD1 carries none of the excess);
+priority is primary and capacity is accepted in the band, because excluding Db2 still leaves the same-class ad-hoc
+query and the happy CICS regions displaceable (32.6 %). R-7 was not replayed: its 12 % donor reading included Db2, so
+the displaceable share depends on what else was happy that hour. CARDAUTH → DEPENDENCY with CPU_CAPACITY and
+CPU_PRIORITY accepted, both in one group (§4.5); the player's D12 answer scores 5 on both.
 
 ### 4.4 Triggers
 
@@ -586,8 +622,8 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
    - Otherwise `GROWTH` and `POLICY` are **both accepted**; the primary is as today. "Growth crossed the headroom"
      and "the configuration has no headroom" describe the same state, and no visible data separates them.
 5. **Vocabulary** (RT-09: labels, help text, and one rename):
-   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`, which saves, play files and the CLI still accept as an
-     alias) is shown as **Change regression**: "a software or configuration change made the same work cost more or
+   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`; a file that still says the old id is from an older
+     save version and no longer loads, CL-20) is shown as **Change regression**: "a software or configuration change made the same work cost more or
      behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate". The old id was a misnomer once the
      cards below moved. ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it, so their
      incidents carry that trigger (goldens unchanged — the scripted windows do not fire these cards — and a
@@ -624,8 +660,7 @@ is held to it. No group crosses the 06:00 roll, where an open incident is closed
 written up on its own (the review files one RCA per played day). `game/run/grouping.ts` decides it at incident
 creation; `addGroupedIncident` is the only writer of `rcaGroup` and an inherited `rca`, and a retrospective
 incident that spans two unfiled episodes of one cause (the batch night) coalesces them. The union is a product: a mechanism
-accepted for one victim and a trigger accepted for another is a full answer. A save written before RT-07 has no cause
-and keeps the labels' grouping.
+accepted for one victim and a trigger accepted for another is a full answer.
 
 ### 4.6 What "evidence for a mechanism" means
 
@@ -637,7 +672,7 @@ out) the discriminator. Recipes live in `content/evidence.ts` beside the metrics
 |---|---|---|
 | CPU_PRIORITY | CPU delay ≥ 10 % on the hurt class, its regions or its server, on the judged host | a displaceable consumer on that host: APPL of another class ≥ 10 % of the image |
 | CPU_CAPACITY | as above | CPC or image busy ≥ 90 %, or a capacity adjustment below 100 |
-| CAPPING | as above | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
+| CAPPING | as above, or CAP delay ≥ 10 % (a group cap's delay is CAP, not CPU) | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
 | DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or velocity under goal) | the hurt class's own CPU delay low (< 10 %), or its work-manager state "waiting" |
 | THREAD_LIMIT | MXT wait or queued-DBAT count up | CPU per transaction and QR wait normal (a ruling-out pin) |
 | DEMAND_SURGE | ended rate ≥ 1.25 × baseline on the surging workload | its CPU per transaction within ±15 % of baseline |
@@ -703,9 +738,8 @@ claim. Where the build differs from the table:
   [p.530](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530) END/S,
   [p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534) APPL% CP with IIPCP as its subset),
   refused on a CICS transaction row, which reports no service consumption
-  ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). Batch rows have none: the sim
-  counts a job end only for a period with a response-time goal (RF-07), and every shipped batch class has a velocity or
-  discretionary goal, so their END/S is 0 and the pin is refused there.
+  ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). Batch rows report END/S too since
+  RF-07 (every job end is an ended transaction, whatever the goal), so the pin reads their CP per ended job.
 - **An ended rate's baseline is the slot baseline** (§4.4): the same interval or SMF hour on earlier days the report
   still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.7×
   surge (measured: MOBILE on PROD2 at noon on day 1, seed 7: 145 against 84 ended/s). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.
@@ -898,9 +932,10 @@ cannot pick an entry before its prerequisites are merged.
    RT-09 and RT-14 move truth labels and need sweeps. RF-02 stays in `realism-fixes`.
 2. **Human playtest** on the result, when `dev-loop rca-truth` reports the list finished (only blocked entries left).
    Footprints come before it because most "one cause, several truths" complaints are collateral blame (§3 A2).
-3. **Parked until that playtest (RT-16 … RT-21):** the CPU split (RT-16, first in line: Revenue G1 is still judged
-   capacity and bots buy CPs on it), hour-of-day baselines (RT-17, deferred), fallback triggers (RT-18), server CPU
-   and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
+3. **Unblocked after the agent playtest (2026-11-21; §7 Q6, Q7):** the CPU split (RT-16, first in line: Revenue G1
+   is still judged capacity and bots buy CPs on it), then hour-of-day baselines (RT-17); the playtest's findings
+   RT-28 … RT-31 follow them. **Still parked until the human playtest (RT-18 … RT-21):** fallback triggers (RT-18),
+   server CPU and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
 4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and Q9, and PT-20's design call.
 
 D1 depends on RT-05, RT-07, RT-12, RT-13 and RT-14. It does not depend on RT-16 … RT-21, because unlocking is
@@ -915,8 +950,8 @@ judged against accepted sets and recipes, not against the primary label.
 | Q3 | §4.6: evidence as two-predicate recipes, pin relations instead of `anySubject`? | Yes | Yes, and every common recipe needs a tier-0/1 path (2026-11-10) | RT-12, RT-13 |
 | Q4 | §4.5: group by cause identity; stop silent inheritance across different causes? | Yes | Yes, with two refinements: card causes group across the played day (the two-hour window applies only to non-card causes), and RT-15 lands after RT-14 (2026-11-10) | RT-15 |
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
-| Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10) | RT-17, RT-19, RT-20 |
-| Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Open; after the playtest | RT-16 |
+| Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
+| Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21); build detail and Q7a … Q7e (accepted as recommended, 2026-11-21) in [rt-16-design.md](rt-16-design.md) | RT-16, RT-32, RT-33 |
 | Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately; open | RT-22, RT-24 |
 | Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Open | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |

@@ -6,7 +6,7 @@ import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
-import { ACC_DECAY, decayInto, emptyAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { ACC_DECAY, decayInto, emptyAcc, sumAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 
 // RPT job shapes and prior pacing from the saved D5 22:23 CP-only trial.
 const savedJobs = [
@@ -58,7 +58,7 @@ describe('policy adjustment', () => {
     scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
   };
 
-  it('helps the important unhappy class by moving it above the less important one', () => {
+  it("helps the important unhappy class by joining the less important one's level", () => {
     const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
     expect(out.log).toContain('RCVR=ONLHI#1');
     // One step: alone below batch, it joins batch's level (WLM Services p.707, code 620).
@@ -697,13 +697,11 @@ describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
     // A capped server's capping delay is its own: the other members' CPU delay still counts.
     const capped = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
     expect(managedDelayFrac(capped)).toBeCloseTo(1 / 10, 12);
-    // A save from before srvDelayCap: the server history is there without it. Taking the server's capping off twice
-    // (inside srvDelay and again from delayCap) would leave no managed delay at all (#296 review B3).
-    const { srvDelayCap: _gone, ...legacy } = capped;
-    expect(managedDelayFrac(legacy)).toBeCloseTo(1 / 10, 12);
-    const next = decayInto(legacy, { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
-    expect(next.srvDelayCap).toBeCloseTo(10 * (1 + ACC_DECAY), 12);
-    expect(managedDelayFrac(next)).toBeCloseTo(1 / 10, 12);
+    // The server's capping delay travels with its other samples through decay and sum: a producer that set srvUsing
+    // without it would stop subtracting capping from the managed delay (#296 B3).
+    expect(capped.srvDelayCap).toBeCloseTo(10, 12);
+    expect(decayInto(capped, { ...emptyScpTick('MIXED#1', 0xe0), srvUsing: 5, srvDelay: 10, srvDelayCap: 10 }).srvDelayCap).toBeCloseTo(10 * (1 + ACC_DECAY), 12);
+    expect(sumAcc([capped, capped]).srvDelayCap).toBeCloseTo(20, 12);
     // Only server regions: nothing left to manage.
     expect(managedDelayFrac(decayInto(emptyAcc(), { ...emptyScpTick('TOR#1', 0xe0), usingCpu: 1, delayCpu: 1, srvUsing: 1, srvDelay: 1, srvDelayCap: 0 }))).toBe(0);
   });
@@ -911,6 +909,18 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(donorOrder('R', 'CPU', { R: 242, HAPPY: 246, STRUGGLING: 244 }, info)).toEqual(['HAPPY', 'STRUGGLING']);
   });
 
+  it('two images: a donor must meet its goal locally and across the plex (the worse of the two)', () => {
+    // WLM Services p.138 makes the sysplex PI the primary criterion for selecting donors, but the local PI is never
+    // overruled by it: a period happy across the plex and missing locally is a receiver (SG24-6472-03 p.54–55). With
+    // the plex PI alone PLEX_GOOD (missing here, 1.4, but happy across the plex, 0.5) would be offered first. So a
+    // donor must be happy on both (docs/wlm-design.md §5.5).
+    const info = { R: atRest(3, 2), PLEX_GOOD: atRest(5, 1.4, 0.5), LOCAL_GOOD: atRest(5, 0.8, 1.2) };
+    const dps = { R: 240, PLEX_GOOD: 246, LOCAL_GOOD: 242 };
+    expect(donorOrder('R', 'CPU', dps, info, all)).toEqual(['LOCAL_GOOD', 'PLEX_GOOD']);
+    // Still excluded as more important and missing its goal on either image: happy across the plex but missing here.
+    expect(donorOrder('R', 'CPU', { ...dps, IMPORTANT: 246 }, { ...info, IMPORTANT: atRest(1, 1.2, 0.8) }, all)).toEqual(['LOCAL_GOOD', 'PLEX_GOOD']);
+  });
+
   it('orders happy periods by the worse local/sysplex PI, ignoring importance and CPU size', () => {
     const info = { R: atRest(2, 2), A: atRest(1, .2, .8, .1), B: atRest(5, .6, .3, 2), C: atRest(3, .1, .9, 4) };
     expect(donorOrder('R', 'CPU', { R: 240, A: 246, B: 244, C: 242 }, info)).toEqual(['B', 'A', 'C']);
@@ -979,10 +989,11 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(fixableBottlenecks(acc(0.1, 0.05, 0.85))).toEqual([]);
     // Waits take no part: the share is of the managed delay, not of all samples.
     expect(fixableBottlenecks(acc(0.2, 0, 0.1, 10))).toEqual(['CPU']);
-    // Storage and queue delay are managed delays; an old save without them has storage inside `delay`.
-    expect(fixableBottlenecks({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toEqual([]);
-    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toBe('STORAGE');
     expect(fixableBottlenecks(acc(0, 0, 0))).toEqual([]);
+    // Storage and queue delay are managed delays of their own: the largest is found from the recorded component, not
+    // derived from the part of `delay` nothing else explains.
+    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: 1, delayQueue: 0 })).toBe('STORAGE');
+    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: 0, delayQueue: 1 })).toBe('QUEUE');
     // A decayed history (an idle period after 142 quiet ticks) holds its whole delay below any fixed floor: still IO.
     const idle = { ...emptyAcc(), using: 9.49e-11, delay: 8.55e-10, delayIo: 8.55e-10, delayStorage: 0, delayQueue: 0 };
     expect(managedDelayFrac(idle)).toBeGreaterThan(0.85);

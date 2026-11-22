@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { openPlayFile, applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, openPlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { OLD_SAVE_MESSAGE, SAVE_VERSION } from '../../src/game/runFile';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { startTfp } from '../../src/sim/cost/mlc';
 import { quoteTfp } from '../../src/game/tfp';
@@ -17,38 +18,77 @@ function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   return file;
 }
 
-describe('RT-09 trigger alias in play files', () => {
-  /** A capture of an old file: the incident and its AIOps hypothesis name the retired trigger id. */
-  const oldFile = (): PlayFile => {
-    const base = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
-    const incident: PlayFile['run']['incidents'][number] = {
-      id: 999, workloadId: 'RBANK', day: 0, startTick: 0, endTick: 360, hours: 1, worstAttainmentPct: 80,
-      truth: { mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, accepted: { mechanisms: ['CPU_CAPACITY'], triggers: ['ACCESS_PATH_REGRESSION' as never] } },
-      aiops: [{ mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, confidence: 0.6 }],
-      rca: null, trustLost: 0,
-    };
-    return { ...base, run: { ...base.run, incidents: [incident] }, log: [] };
-  };
+// A played start state costs a sim hour per 360 ticks, and most tests below only read one. Build each
+// distinct start once, then hand out decoded copies, so a test that edits its file cannot affect another
+// (a reload between commands is what the persistence tests already do).
+const startedCache = new Map<string, PlayFile>();
+function started(hours: number, scenario = 'midwest'): PlayFile {
+  if (hours < 1) throw new Error('started() is for played starts; build a start-only file directly');
+  const key = `${scenario}:${hours}`;
+  let base = startedCache.get(key);
+  if (!base) {
+    base = run(newPlayFile(7, 'NORMAL', scenario), [{ cmd: 'start' }, { cmd: 'advance', hours }]);
+    startedCache.set(key, base);
+  }
+  return decodePlayFile(encodePlayFile(base));
+}
 
-  it('loads an old file with its ids mapped, so a replay scores the answer right, not wrong', () => {
-    // The CLI's own load path (playCore.openPlayFile), not a hand-rolled normalize.
-    const loaded = openPlayFile(encodePlayFile(oldFile()));
-    const inc = loaded.run.incidents[0]!;
-    expect(inc.truth.trigger).toBe('CHANGE_REGRESSION');
-    expect(inc.truth.accepted!.triggers).toEqual(['CHANGE_REGRESSION']);
-    expect(inc.aiops![0]!.trigger).toBe('CHANGE_REGRESSION');
-    const filed = applyPlayCommand(loaded, { cmd: 'rca', incidentId: 999, mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never });
-    expect(filed.ok, filed.text).toBe(true);
-    expect(filed.text).not.toMatch(/trigger wrong/);
-    expect(filed.file.run.incidents[0]!.rca!.trigger).toBe('CHANGE_REGRESSION');
-    // The replayed log records the canonical id, so the file no longer carries the retired one.
-    expect(filed.file.log.at(-1)).toMatchObject({ cmd: 'rca', incidentId: 999, trigger: 'CHANGE_REGRESSION' });
-    expect(encodePlayFile(filed.file)).not.toContain('ACCESS_PATH_REGRESSION');
+/** A played file with Monitor III owned: buy it if the scenario doesn't start with it. */
+function withMon3(base: PlayFile): PlayFile {
+  const f = { ...base, run: { ...base.run, insight: Math.max(base.run.insight, 50) } };
+  const buy = applyPlayCommand(f, { cmd: 'buy', toolId: 'RMF_MON3' });
+  return buy.ok ? buy.file : f;
+}
+
+describe('On/Off CoD deactivation', () => {
+  it('moves an active lease to tomorrow', () => {
+    let f = started(1);
+    const day = f.run.day;
+    f = {
+      ...f,
+      run: {
+        ...f.run,
+        changes: [{
+          id: 99, label: 'CPM: On/Off CoD +1 CP', commands: [], hours: 0, capex: 0, opexPerDay: 9000,
+          activateDay: day, plannedDay: day, emergency: false, status: 'APPLIED', revertDay: day + 3,
+          revertCommands: [{ kind: 'ADD_CPC_ENGINES', cpcId: f.run.sim.config.cpcs[0]!.id, pool: 'CP', delta: -1 }], endsEvent: null,
+        }],
+      },
+    };
+    f = run(f, [{ cmd: 'cod-deactivate', changeId: 99 }]);
+    expect(f.run.changes[0]!.revertDay).toBe(day + 1);
+  });
+});
+
+describe('saved policy actions', () => {
+  it('loads a saved policy into the editor and activates it now', () => {
+    let f = started(1);
+    const def = { ...f.run.sim.wlm.definition, policyName: 'NIGHTPOL' };
+    f = { ...f, run: { ...f.run, policies: { saved: [def], schedule: [] } } };
+    f = run(f, [{ cmd: 'policy-load', name: 'nightpol' }]);
+    expect(f.pendingPolicy?.policyName).toBe('NIGHTPOL');
+    f = run(f, [{ cmd: 'policy-activate', name: 'NIGHTPOL' }]);
+    expect(f.pendingPolicy).toBeNull();
+    f = run(f, [{ cmd: 'advance', hours: 1 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('NIGHTPOL');
+  });
+});
+
+describe('save version', () => {
+  it('refuses a play file from an older build with one message, not a partial load', () => {
+    const old = { ...newPlayFile(7), version: 1 } as unknown as PlayFile;
+    const text = encodePlayFile(old);
+    for (const load of [openPlayFile, decodePlayFile]) expect(() => load(text)).toThrow(OLD_SAVE_MESSAGE);
+  });
+
+  it('loads a current play file', () => {
+    expect(openPlayFile(encodePlayFile(newPlayFile(7))).version).toBe(2);
   });
 });
 
 describe('headless play interface', () => {
   it('a run file round-trips bit-identically, Infinity included, and keeps the command log', () => {
+    // Built in memory on purpose: this is the guard that the encode/decode behind `started()` is lossless.
     const a = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
     const b = decodePlayFile(encodePlayFile(a));
     const next = (f: PlayFile) => encodePlayFile(run(f, [{ cmd: 'advance', hours: 1 }]));
@@ -57,7 +97,7 @@ describe('headless play interface', () => {
   });
 
   it('new starts a run from an empty play file, as the CLI does, and refuses an unknown scenario', () => {
-    const empty = { version: 1, log: [] } as unknown as PlayFile;
+    const empty = { version: SAVE_VERSION, log: [] } as unknown as PlayFile;
     const r = applyPlayCommand(empty, { cmd: 'new', seed: 3, difficulty: 'NORMAL', scenario: 'harbourline' });
     expect(r.ok).toBe(true);
     expect(r.file.run.scenarioId).toBe('harbourline');
@@ -79,7 +119,7 @@ describe('headless play interface', () => {
   });
 
   it('wlmlog shows the Monitor WLM activity log, live only with Monitor III', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    let f = started(1);
     expect(wlmLogText(f)).toContain('needs the RMF_MON3 tool');
     f = { ...f, run: { ...f.run, sim: { ...f.run.sim, wlm: { ...f.run.sim.wlm, log: ['D1 06:10:00 PRDA RCVR=ONLHI#1 PI=1.20 BTLNK=CPU ONLHI#1 DP F4→F6', 'D1 06:10:00 PRDB ONLHI#1 PI=1.20 BTLNK=CPU no action with net value'] } } } };
     f = { ...f, run: { ...f.run, insight: 50 } };
@@ -92,7 +132,7 @@ describe('headless play interface', () => {
   });
 
   it('finance shows the sub-capacity bill, then TFP pace and overage price per LPAR', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    let f = started(2);
     expect(financeText(f)).toMatch(/pricing SUBCAP[\s\S]*peakR4haMsu/);
     const terms = quoteTfp(f.run, scenarioFor(packOf('midwest').scenario, f.run.difficulty)).terms;
     f = { ...f, run: { ...f.run, sim: { ...f.run.sim, cost: startTfp(f.run.sim.cost, terms, f.run.sim.tick) } } };
@@ -103,6 +143,26 @@ describe('headless play interface', () => {
     // PROD1 carries all four Midwest products, SYSP only z/OS.
     const per = Object.fromEntries([...t.matchAll(/(PROD1|SYSP) (\d+\.\d+)/g)].map((m) => [m[1], Number(m[2])]));
     expect(per.PROD1).toBeGreaterThan(per.SYSP! * 2);
+  });
+
+  it('finance lists the TFP offer per product and its run-rate projection', () => {
+    let f = started(2);
+    const offer = quoteTfp(f.run, scenarioFor(packOf('midwest').scenario, f.run.difficulty));
+    f = { ...f, run: { ...f.run, tfpOffer: offer } };
+    const t = financeText(f);
+    expect(t).toContain('TFP offer OFFERED');
+    expect(t).toMatch(/quoted day \d+ \d\d:\d\d/);
+    expect(t).toMatch(/peak [\d,]+ MSU, sub-capacity \$[\d,.]+\/month \(\$\d+\/MSU\)/);
+    expect(t).toMatch(/baseline [\d,]+ MSU-hours at \$[\d.]+\/MSU-hour; used [\d,]+ MSU-hours/);
+    expect(t).not.toContain('estimated from R4HA samples');
+    expect(t).toMatch(/run rate: [\d,]+ MSU-hours against a [\d,]+ baseline/);
+    // A pace above the baseline shows the saving as a cost, not a negative "lower".
+    const scenario = scenarioFor(packOf('midwest').scenario, f.run.difficulty);
+    const usage = Object.fromEntries(Object.keys(f.run.sim.cost.usage!).map((k) => [k, 1e9]));
+    const busy = { ...f.run, sim: { ...f.run.sim, cost: { ...f.run.sim.cost, usage } } };
+    const over = financeText({ ...f, run: { ...busy, tfpOffer: quoteTfp(busy, scenario) } });
+    expect(over).toMatch(/\$[\d,.]+ higher\)/);
+    expect(over).not.toContain('-$');
   });
 
   it('status and finance show the same combined software/CoD estimate and unrounded limit warning', () => {
@@ -137,7 +197,7 @@ describe('headless play interface', () => {
   });
 
   it('inspect dp lists dispatching priorities per RMF interval, highest first', () => {
-    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const f = started(1);
     const t = dpText(encodePlayFile(f), 'PROD1', { cls: 'SYS' });
     const line = t.split('\n')[1]!;
     expect(line).toMatch(/SYSTEM#1=FF SYSSTC#1=FE/);
@@ -145,7 +205,7 @@ describe('headless play interface', () => {
   });
 
   it('inspect wlm replays a play log to a past time and traces each policy adjustment there', () => {
-    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const f = started(2);
     const t = wlmText(encodePlayFile(f), 'PROD1', { at: 'D1 06:30', ticks: 2 }).split('\n');
     expect(t[0]).toContain('replayed from seed + log');
     expect(t.filter((l) => /^D1 06:30:(00|10) PROD1  → /.test(l))).toHaveLength(2);
@@ -174,13 +234,113 @@ describe('headless play interface', () => {
     expect(delayCols).not.toMatch(/\bCAP\b|delay\.cap|delay\.ziip/);
   });
 
+  it('mon3 CPC table prints the browser columns with *CP/*ICF group rows and the capacity-adjusted line', () => {
+    const f = run(withMon3(started(1)), [{ cmd: 'advance', hours: 1 }]);
+    const section = (t: string) => {
+      const lines = t.split('\n');
+      const i = lines.indexOf('CPC');
+      return lines.slice(i, lines.indexOf('', i));
+    };
+    const s = section(mon3Text(f));
+    // RMF's two-level header: the partition table's grouped columns, and no weight/polarity/busy table.
+    const leaf = s.find((l) => l.startsWith('Partition '))!;
+    expect(leaf).toMatch(/^Partition\s+Def\s+Act\s+Proc Num\s+Effect\s+Total\s+LPAR\s+Effect\s+Total\s+PR\/SM delay %\s+capped %$/);
+    const group = s[s.indexOf(leaf) - 1]!;
+    expect(group.trim()).toMatch(/^MSU\s+Logical Util %\s+Physical Util %$/);
+    // Each group label starts over its first sub-column, not merely somewhere on the line.
+    expect(group.indexOf('MSU')).toBe(leaf.indexOf('Def'));
+    expect(group.indexOf('Logical Util %')).toBe(leaf.indexOf('Effect'));
+    expect(group.indexOf('Physical Util %')).toBe(leaf.indexOf('LPAR'));
+    // A group row sums the partitions of its processor type, in the browser's column order.
+    const rows = mon3Text(f, { json: true })
+      .split('\n')
+      .filter((l) => l.startsWith('{') && l.includes('"lparId"'))
+      .map((l) => JSON.parse(l) as Record<string, number | string>);
+    const sums = (kind: string) => {
+      const part = rows.filter((r) => r.kind === kind);
+      const sum = (k: string) => part.reduce((a, r) => a + (r[k] as number), 0).toFixed(1);
+      return [sum('procNum'), sum('physLparPct'), sum('physEffectPct'), sum('physTotalPct')];
+    };
+    for (const [kind, label] of [['ZOS', '*CP'], ['CF', '*ICF']] as const) {
+      const line = s.find((l) => l.startsWith(label + ' '))!;
+      expect(line.trim().split(/\s+/), label).toEqual([label, ...sums(kind)]);
+    }
+    // *IIP lists the images with zIIPs online, and every group closes with its PHYSICAL line.
+    const iip = rows.filter((r) => r.iip !== undefined).map((r) => r.iip as unknown as Record<string, number>);
+    expect(iip.length).toBeGreaterThan(0);
+    const iipSums = (k: string) => iip.reduce((a, r) => a + (r[k] as number), 0).toFixed(1);
+    expect(s.find((l) => l.startsWith('*IIP '))!.trim().split(/\s+/)).toEqual(['*IIP', iipSums('procNum'), iipSums('physLparPct'), iipSums('physEffectPct'), iipSums('physTotalPct')]);
+    const physical = mon3Text(f, { json: true })
+      .split('\n')
+      .filter((l) => l.startsWith('CPC_PHYSICAL '))
+      .map((l) => JSON.parse(l.slice('CPC_PHYSICAL '.length)) as { cpcId: string; kind: string; physPct: number });
+    const labels = ['*CP', '*IIP', '*ICF'];
+    const physLines = s.filter((l) => l.startsWith('PHYSICAL '));
+    expect(physLines, 'one PHYSICAL line per group').toHaveLength(labels.length);
+    for (const [i, label] of labels.entries()) {
+      const at = s.findIndex((l) => l.startsWith(label + ' '));
+      const end = labels.slice(i + 1).map((x) => s.findIndex((l) => l.startsWith(x + ' '))).filter((x) => x > at)[0] ?? s.length;
+      const line = s.slice(at + 1, end).find((l) => l.startsWith('PHYSICAL '))!;
+      // PHYSICAL: no unattributed physical busy time is modelled, so LPAR = Effect = Total = 0.
+      expect(physical.find((x) => x.kind === label.slice(1))!.physPct, label).toBe(0);
+      expect(line.trim().split(/\s+/), label).toEqual(['PHYSICAL', '0.0', '0.0', '0.0']);
+    }
+    // The capacity-adjusted line appears once per CPC and names the pin that reads it.
+    const adj = s.filter((l) => l.includes('capacity adjusted'));
+    expect(adj).toHaveLength(1);
+    expect(adj[0]).toMatch(/^CPC \S+: capacity adjusted \d+\.\d % \(pin CPC \S+ CAPACITY_ADJ\)$/);
+    // A system filter selects the CPC that system runs on and prints the whole of it, as the browser does, so the
+    // group rows stay the CPC's totals (what CPC_BUSY reads); --json keeps only the partition asked for.
+    for (const system of ['PROD1', 'CF01']) {
+      const filtered = section(mon3Text(f, { system }));
+      expect(filtered.includes(s.find((l) => l.startsWith('*CP '))!), system).toBe(true);
+      expect(filtered.includes(s.find((l) => l.startsWith('*ICF '))!), system).toBe(true);
+      expect(mon3Text(f, { system, json: true }).split('\n').filter((l) => l.includes('"lparId"')), system).toHaveLength(1);
+    }
+    // --json keeps the whole view model: agents and pins read busyPct there, and weight/polarity stay readable.
+    expect(rows[0]).toMatchObject({ busyPct: expect.any(Number), weight: expect.any(Number), polarity: expect.any(String) });
+  });
+
+  it('mon3 CPC table labels each CPC and keeps its group rows and capacity line on its own partitions', () => {
+    const f = run(withMon3(started(1, 'harbourline')), [{ cmd: 'advance', hours: 1 }]);
+    const lines = mon3Text(f).split('\n');
+    const i = lines.indexOf('CPC');
+    const s = lines.slice(i, lines.indexOf('', i));
+    const labels = s.filter((l) => /^CPC \S+$/.test(l));
+    expect(labels).toHaveLength(2);
+    const rows = mon3Text(f, { json: true })
+      .split('\n')
+      .filter((l) => l.startsWith('{') && l.includes('"lparId"'))
+      .map((l) => JSON.parse(l) as Record<string, number | string>);
+    for (const [k, label] of labels.entries()) {
+      const id = label.slice(4);
+      const block = s.slice(s.indexOf(label) + 1, k + 1 < labels.length ? s.indexOf(labels[k + 1]!) : s.length);
+      const of = rows.filter((r) => r.cpcId === id);
+      const zos = of.filter((r) => r.kind === 'ZOS');
+      const sum = (key: string) => zos.reduce((a, r) => a + (r[key] as number), 0).toFixed(1);
+      expect(block.find((l) => l.startsWith('*CP '))!.trim().split(/\s+/), id).toEqual(['*CP', sum('procNum'), sum('physLparPct'), sum('physEffectPct'), sum('physTotalPct')]);
+      // The capacity line names a partition of this CPC, not the other CPC's first partition.
+      const cap = block.find((l) => l.includes('capacity adjusted'))!;
+      expect(of.map((r) => r.lparId), id).toContain(cap.match(/pin CPC (\S+) CAPACITY_ADJ/)![1]);
+    }
+    // A filter naming a partition of one CPC prints that CPC whole and leaves the other out.
+    const firstId = labels[0]!.slice(4);
+    const firstLpar = rows.find((r) => r.cpcId === firstId)!.lparId as string;
+    const oneLines = mon3Text(f, { system: firstLpar }).split('\n');
+    const one = oneLines.slice(oneLines.indexOf('CPC'), oneLines.indexOf('', oneLines.indexOf('CPC')));
+    expect(one.filter((l) => /^CPC \S+$/.test(l))).toHaveLength(0);
+    expect(one.filter((l) => l.includes('capacity adjusted'))).toHaveLength(1);
+    expect(one.find((l) => l.startsWith('*CP '))).toBe(s.find((l) => l.startsWith('*CP ')));
+    expect(one.some((l) => l.includes('CPC ' + labels[1]!.slice(4)))).toBe(false);
+  });
+
   it('clock text names the weekday: the small hours still belong to the played day that began at 06:00', () => {
     expect(clockText(0)).toBe('D1 Mon 06:00');
     expect(clockText(18.5 * TICKS_PER_HOUR)).toBe('D1 Tue 00:30');
   });
 
   it('RMF intervals have stable ids for report and pin; a bare class name means period 1', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    let f = started(2);
     expect(applyPlayCommand(f, { cmd: 'report', kind: 'WLM_SUMMARY' }).ok, 'today is hidden without Monitor III').toBe(false);
     f = run(f, [{ cmd: 'advance', hours: 24 }]);
     const iv = f.run.sim.rmf.intervals[0]!;
@@ -263,6 +423,19 @@ describe('headless play interface', () => {
     }
   });
 
+  it('the day-start text says a failed activation went live through the later one', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    // Seed 43 fails BASEPOL2 at 06:00; BASEPOL3, drafted on its planned policy, installs with the copied edit.
+    const f = run(newPlayFile(43), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }]);
+    const out = applyPlayCommand(f, { cmd: 'start' });
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain('later activation BASEPOL3 went live with its edits');
+    expect(out.text).not.toContain('edits are pending again');
+    expect(out.file.pendingPolicy).toBeNull();
+  });
+
   it('does not restore a failed earlier install over a later successful policy', () => {
     const edit = (classId: string, rtSec: number): PlayCommand => ({
       cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
@@ -295,6 +468,28 @@ describe('headless play interface', () => {
     for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6], ['TSO', 3]] as const) {
       expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
     }
+  });
+
+  it('cancelling the later and then the earlier install leaves the edits pending', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    let f = run(newPlayFile(7), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }]);
+    // B was drafted on A's planned policy, so its definition carries A's edit too.
+    const cancelB = applyPlayCommand(f, { cmd: 'cancel', changeId: f.run.changes[1]!.id });
+    expect(cancelB.ok).toBe(true);
+    expect(cancelB.text).toContain('Its edits go back to the pending policy');
+    expect(cancelB.text).not.toContain('pending again');
+    f = cancelB.file;
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6]] as const) {
+      expect(f.pendingPolicy!.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+    const cancelA = applyPlayCommand(f, { cmd: 'cancel', changeId: f.run.changes[0]!.id });
+    expect(cancelA.ok).toBe(true);
+    expect(cancelA.text).toContain('Its edits go back to the pending policy');
+    f = cancelA.file;
+    // A's own request is gone, but its edit is still staged in the pending policy.
+    expect(f.pendingPolicy!.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.4 });
   });
 
   it('policy shows the service definition, its rules and the processors it runs on', () => {
@@ -362,13 +557,13 @@ describe('headless play interface', () => {
   });
 
   it('pins region SOS minutes and a PROCU job row now, and refuses a past job row from the trimmed history', () => {
-    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const f = started(2);
     const sos = run(f, [{ cmd: 'pin', req: { source: 'CICS_STORAGE', hour: '7', region: 'CICSAOR1' } }]);
     expect(sos.run.pins.at(-1)!.text).toMatch(/^CICS 110 D1 \d\d:00–\d\d:00 CICSAOR1 SOS minutes/);
     const job = run(f, [{ cmd: 'pin', req: { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' } }]);
     expect(job.run.pins.at(-1)!.text).toMatch(/^PROCU D1 \d\d:\d\d PROD1 CICSAOR1 job EAppl CPU/);
     // The CLI's history keeps no job rows (like SYSWKM), so a past PROCU pin needs the browser.
-    const h = run(newPlayFile(7, 'NORMAL', 'harbourline'), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const h = started(2, 'harbourline');
     const past = applyPlayCommand(h, { cmd: 'pin', req: { source: 'PROCU', system: 'PRDA', jobname: 'CICSAOR1' }, at: 'D1 07:00' });
     expect(past.ok).toBe(false);
     expect(past.text).toContain('no job rows');

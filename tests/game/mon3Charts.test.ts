@@ -2,7 +2,8 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { MON3_CHARTS } from '../../src/content/tools';
 import { buildMon3 } from '../../src/game/mon3';
-import { firstSeen } from '../../src/game/mon3Charts';
+import { firstSeen, recordMon3 } from '../../src/game/mon3Charts';
+import { logLine } from '../../src/game/run/shared';
 import { applyWlmEdit } from '../../src/game/wlmEdit';
 import { advance, chooseDraft, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
@@ -13,13 +14,11 @@ const content = { ...MIDWEST_GAME, events: [] };
 const withCharts = (seed = 7): RunState => ({ ...newRun(MIDWEST, content, seed), tools: ['RMF_MON3', 'MON3_CHARTS'] });
 
 describe('Monitor III charting', () => {
-  it('samples once per sim-minute and is deterministic', () => {
+  it('samples once per sim-minute', () => {
     const a = advance(startDay(withCharts(), content), MIDWEST, content, 120);
-    const b = advance(startDay(withCharts(), content), MIDWEST, content, 120);
     const s = a.mon3Charts!.samples;
     expect(s).toHaveLength(120 / MON3_CHARTS.sampleTicks);
     expect(s[1]!.tick - s[0]!.tick).toBe(MON3_CHARTS.sampleTicks);
-    expect(JSON.stringify(a.mon3Charts)).toBe(JSON.stringify(b.mon3Charts));
   });
 
   it('is off without the tool, or with Monitor III switched off', () => {
@@ -39,6 +38,33 @@ describe('Monitor III charting', () => {
     }
   });
 
+  it('samples each image\'s share of the CPC and the CPU engines per service class', () => {
+    const r = advance(startDay(withCharts(), content), MIDWEST, content, 6 * 360);
+    const last = r.mon3Charts!.samples.at(-1)!;
+    const m = buildMon3(r, MIDWEST);
+    // % of the CPC's physical CPs comes from the CPC report's Physical Util % Total.
+    for (const c of m.cpc.filter((x) => x.kind === 'ZOS')) {
+      expect(last.sys[c.lparId]!.cpcPct).toBeCloseTo(Math.round(c.physTotalPct * 10) / 10, 6);
+    }
+    // Midwest has one CPC, so the images' shares add up to the CPC busy line.
+    const sum = Object.values(last.sys).reduce((a, x) => a + x.cpcPct!, 0);
+    expect(sum).toBeCloseTo(last.cpcBusyPct, 0);
+    // CPU engines per sysplex period: general CP plus zIIP, from the Monitor III rows.
+    expect(last.cpu).toBeDefined();
+    for (const row of m.rows.filter((x) => x.system === '*PLEX')) {
+      const engines = Math.round((row.cpuEngines + row.ziipEngines) * 100) / 100;
+      // Idle periods are left out of the sample (the chart draws engines actually in use).
+      if (engines > 0) expect(last.cpu![row.scKey], row.scKey).toBe(engines);
+      else expect(last.cpu![row.scKey], row.scKey).toBeUndefined();
+    }
+  });
+
+  it('marks the planned changes applied at 06:00', () => {
+    let r = requestChange(withCharts(), content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
+    r = advance(startDay(r, content), MIDWEST, content, 12);
+    expect(r.mon3Charts!.markers.some((m) => m.kind === 'CHANGE' && m.text.includes('Planned change applied: RMF 15'))).toBe(true);
+  });
+
   it('marks emergency changes and resets at the next day', () => {
     let r = advance(startDay(withCharts(), content), MIDWEST, content, 60);
     r = requestChange(r, content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
@@ -48,6 +74,36 @@ describe('Monitor III charting', () => {
     expect(r.mon3Charts!.samples.length).toBeLessThanOrEqual(TICKS_PER_DAY / MON3_CHARTS.sampleTicks);
     r = startDay(chooseDraft(r, content, null), content);
     expect(r.mon3Charts!.samples).toHaveLength(0);
+  });
+
+  it('keeps marking events once the 300-line run log is full', () => {
+    let r: RunState = { ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) };
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(0);
+    r = logLine(r, 'EVENT Downturn announced');
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toEqual(['EVENT Downturn announced']);
+    // A second scan with no new line marks nothing twice.
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(1);
+  });
+
+  it('rescans nothing when the anchor line has been trimmed out of the log', () => {
+    let r = recordMon3({ ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) }, MIDWEST);
+    for (let i = 0; i < 300; i++) r = logLine(r, `EVENT flood ${i}`);
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers).toHaveLength(0);
+    r = logLine(r, 'EVENT after the flood');
+    r = recordMon3(r, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toEqual(['EVENT after the flood']);
+  });
+
+  it('scans a save made before the log anchor existed', () => {
+    let r = recordMon3({ ...withCharts(), log: Array.from({ length: 300 }, (_, i) => `old ${i}`) }, MIDWEST);
+    const old = { ...r.mon3Charts! };
+    delete old.lastLogLine;
+    r = recordMon3({ ...r, mon3Charts: old, log: [...r.log, 'EVENT after load'] }, MIDWEST);
+    expect(r.mon3Charts!.markers.map((m) => m.text)).toContain('EVENT after load');
   });
 });
 

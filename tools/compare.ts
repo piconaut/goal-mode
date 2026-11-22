@@ -8,16 +8,11 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
-
-const argv = process.argv.slice(2);
-const arg = (name: string, dflt: string) => {
-  const i = argv.indexOf(`--${name}`);
-  return i >= 0 && argv[i + 1] ? argv[i + 1]! : dflt;
-};
+import { arg, flag } from './args';
 const root = resolve(import.meta.dirname, '..');
 const git = (...a: string[]) => execFileSync('git', a, { cwd: root, encoding: 'utf8' }).trim();
 const tol = Number(arg('tol', '1e-9'));
-const dumpArgs = ['scenarios', 'seed', 'days', 'every', 'drop'].flatMap((k) => (argv.includes(`--${k}`) ? [`--${k}`, arg(k, '')] : []));
+const dumpArgs = ['scenarios', 'seed', 'days', 'every', 'drop'].flatMap((k) => (flag(k) ? [`--${k}`, arg(k, '')] : []));
 const tmp = resolve(root, 'runs/tmp/compare');
 mkdirSync(tmp, { recursive: true });
 
@@ -79,7 +74,7 @@ function firstTextDiff(a: { tick: number; text: string }[], b: { tick: number; t
   return null;
 }
 
-const headRef = argv.includes('--head') ? arg('head', 'HEAD') : null;
+const headRef = flag('head') ? arg('head', 'HEAD') : null;
 const base = tree(arg('base', 'origin/dev'));
 const head = tree(headRef);
 const outA = resolve(tmp, 'base.json'), outB = resolve(tmp, 'head.json');
@@ -109,6 +104,6 @@ for (const id of Object.keys(A)) {
     for (const p of d.paths) console.log(`      ${p}`);
   }
 }
-for (const t of [base, head]) if (t.temp && !argv.includes('--keep')) git('worktree', 'remove', '--force', t.dir);
+for (const t of [base, head]) if (t.temp && !flag('keep')) git('worktree', 'remove', '--force', t.dir);
 console.log(same ? '\nNo differences.' : '\nDifferences found.');
 process.exit(same ? 0 : 1);

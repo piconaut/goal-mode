@@ -363,7 +363,7 @@ DPs are a function of it. Level *i* from the top is dispatched at `MANAGED_MAX �
 unoccupied priority lies between occupied ones and `MANAGED_MAX` (247) is never occupied: "after a dispatching
 priority change, service class periods may be remapped … such that there is an unoccupied priority between each
 occupied priority" (WLM Services p.139, priority unbunching). Policy adjustment ends every interval with the ladder
-renumbered this way (an old save's on its first interval, order kept). A period seen for the first time joins the
+renumbered this way (a run saved mid-interval keeps the order it was saved with). A period seen for the first time joins the
 level of the lowest period of its importance, else a new level directly below the lowest level that holds a more
 important period (the top if there is none); a new image's first ladder is one level per importance present. APPROX:
 more than 22 levels (no shipped policy has 22 active goal periods on an image) merge from the bottom.
@@ -452,8 +452,8 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   wait for TRANSACTION regions counts as its CPU delay, so a starved region makes its transaction class a CPU
   receiver (SG24-7621 p.81, p.126); a wait for REGION/BOTH regions stays a dependency (OTHER) delay.
   **Not a player lever** (user decision 2026-11-05, game simplicity): the sim models all three, but the policy
-  editor and play CLI refuse setting a rule's mode (clearing one back to the default is allowed, for old saves);
-  every scenario ships with all regions at TRANSACTION. The realism lab and tests still drive REGION/BOTH.
+  editor and play CLI refuse setting a rule's mode (clearing one back to the default is allowed, since TRANSACTION is
+  the only mode a player can reach); every scenario ships with all regions at TRANSACTION. The realism lab and tests still drive REGION/BOTH.
 - CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
   response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
   WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
@@ -526,12 +526,23 @@ Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Two kinds of PI, each w
 
 | PI | Computed from | Used for |
 |---|---|---|
-| management PI: local | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, "missing its goal", resource-group minimum, discretionary capping |
+| management PI: local | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list (second), donor "happy" test (the worse of local and plex, §5.5.4 "Donor order"), "missing its goal", resource-group minimum, discretionary capping |
 | management PI: sysplex | all images' accumulators summed, then one PI (`sysplexPis`) | receiver list (first), "missing its goal", the WLM Activity log's `PI=` |
-| projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT), velocity before the reporting ceiling of 99 (WT-16; existing 0.1% velocity floor retained): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
+| projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT), velocity capped at 10 × goal by the content coefficient `VELOCITY_FLOOR` (`src/content/wlm/tuning.ts`): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
 
 No test mixes them. A candidate whose `base` is already ≤ 1 (or unknown) is recovering by itself: it is traced
-`RECOVERING`, gets no trials and uses no projection budget. Real WLM uses the sysplex PI as the primary criterion
+`RECOVERING`, gets no trials and uses no projection budget.
+
+**Counting checks (PR-20, reporting only).** A candidate checked on an adjustment without a trial search is a
+candidate check, not an assessment: `NOT_FIXABLE` (no CPU or zIIP delay reaches the bottleneck fraction) and
+`RECOVERING` both set no skip clock and run no projections. `inspect … wlm-stats --streaks` reports runs of 30+
+consecutive such checks on one period of one image, with the bottleneck, first/last check and count; the outcome and
+bottleneck must stay the same and the period must be present in each image's adjustment. These streaks are separate
+from the 30-assessment episodes, which count only trial-search assessments. A skip-clock retry is an adjustment where
+the candidate is listed but not assessed; the player's no-action note every 30 ticks is one log entry, not one check
+or a deduplication. None of this changes skip clocks or bottleneck selection.
+
+Real WLM uses the sysplex PI as the primary criterion
 for receivers, donors and assessing a change ([`docs/research.md`](docs/research.md) "The sysplex PI is the primary
 criterion…"); the sim chooses receivers on it and judges a change on projections, as WLM Services p.144 describes.
 
@@ -628,10 +639,15 @@ for importance in 1..5:
   Ties use the period key; at most `donorsPerReceiver` (3) are tried. A happy more important donor still must pass
   CPU protection and the projected harm check. Discretionary work is below the managed ladder and cannot donate
   through a DP move. Sources: WLM Services p.138 and p.147, SG24-6472-03 (March 2008) p.59–60; resource use,
-  SG24-7621 p.105. APPROX: the worse local/sysplex PI, exponential use history, threshold and donor limit; a
-  period with no PI yet counts as missing its goal (last at its importance, never when more important; one rule,
-  `managementWorstPi`, also used below). The pool is holders: a server period (WT-09) is one donor for the CICS
-  classes it serves, judged by the worst of their PIs and the most important of them.
+  SG24-7621 p.105. APPROX: exponential use history, threshold and donor limit; a period with no PI yet counts as
+  missing its goal (last at its importance, never when more important; one rule, `managementWorstPi`, also used
+  below). Happiness takes the worse of the local and sysplex PI although IBM names the sysplex PI the primary
+  criterion (WLM Services p.138): the local PI "is always used and not overruled by the sysplex PI", and a period
+  happy across the plex but missing locally is a receiver (SG24-6472-03 p.54–55), so it is not a happy donor; a
+  donation is also judged on this image's projection. A plex-first revision tried for PR-19 (local PI as the
+  tie-break) gave two DDFPRD#1 reversals within two minutes on the Midwest one-day run, where RF-03 allows one
+  (`tests/sim/wlm-realism.test.ts`; without the tie-break it gave one, as the worse-of does; 2026-11-17). The pool is holders: a server period (WT-09) is one donor for the CICS classes it serves,
+  judged by the worst of their PIs and the most important of them.
 - **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
   missing its goal (or has no PI yet) and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the
   floor of the queueing model shows no further projected harm (the 1994 patent p.19, FIG. 8; Enrico slide 52;
@@ -714,6 +730,27 @@ depDelay = Σ_over_servers  baseLatency_s × ( 1/max(health_s, ε) − 1 ) × cr
 
 The delay shows in RMF as *unknown/other* delay or elongated queue time, not as CPU delay
 of the transaction class. That makes it hard to spot and very realistic.
+
+Below a starvation threshold the form above stops applying, because the delay is no longer the whole story: a
+server whose own cap withheld its CPU and which was granted a tiny share of its demand is not merely slow, it
+carries almost nothing. With any of a workload's server roles capped (`sliceCut` > 0) and below
+`SERVER_STARVATION.healthBelow` (a content coefficient, FICTIONAL) on the previous tick, the workload completes at
+that role's granted share:
+
+```
+share = min( health_s ) over its server roles below the threshold
+completions = share × arrivals          // the rest times out in the dependent's own limits (MXT, DBAT, slot queues)
+CPU demand  = share × the offered cost  // their CPU follows completions: a timed-out request does not run
+```
+
+APPROX: the dependent's queue is fluid, so the waiting part is a timeout fraction rather than a per-request queue,
+and a timed-out request's CPU is not charged; only roles recorded on the dependent's own image are seen, so work
+served from another image keeps the latency form. An image-wide CP shortage is not a capped role and keeps the bounded
+delay, because it takes the dependents' own CPU with it, and neither is a role starved only by a lowered importance or
+by competition: the rule models a server whose own cap (resource group, discretionary cap) withheld its CPU. Only the
+CPU demand follows completions: I/O, the Db2 rate and the MXT/DBAT slot queues still see the arrivals, so the surviving
+fraction's response time is dominated by the queue it piles up in (the entry's "times out there") rather than by the
+bounded dependency delay, and RMF still reports the arrivals' I/O. Above the threshold the bounded delay is unchanged.
 
 **Dependency graph (starting scenario):**
 
@@ -930,12 +967,16 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   × 1.03, priced at 97% of the sub-capacity bill at the current peak; growth above it at 50% of
   the price; unused baseline is lost (APPROX: real contracts roll it over). The rest of the
   signing month stays sub-capacity, prorated (`content/pricing.ts` TFP_OFFER, `game/tfp.ts`).
+  The offer shows, per product, the peak and its sub-capacity $/MSU, the baseline MSU-hours and
+  $/MSU-hour, and the month's **actually consumed** MSU-hours (CP MSU integrated over time, not
+  the DC-limited R4HA samples), with a run-rate projection; those numbers are the quote snapshot
+  and the terms never move after it.
 
 #### 5.11.3 Hardware economics (fictional prices)
 
 | Item | Lead time | Cost model |
 |---|---|---|
-| **On/Off CoD** temporary CP/zIIP | immediate (activation in minutes) | per engine-day, plus its MLC impact |
+| **On/Off CoD** temporary CP/zIIP | immediate (activation in minutes); early deactivation at the next 06:00 (APPROX) | per engine-day, plus its MLC impact |
 | **CBU** (capacity backup) | immediate, disaster events only | test/activation limited per year |
 | Permanent upgrade (**MCU**: add engines or raise capacity setting) | 3–5 days | capex |
 | Add zIIPs / ICFs | 3–5 days | capex (zIIPs cheap relative to CPs) |
@@ -949,6 +990,11 @@ than one; default the first). A capacity step at setting 7 or a new generation o
 Rule from IBM: capacity provisioning should not be used with hard-capped LPARs
 ([IBM z/OS Capacity Provisioning](https://www-03.ibm.com/systems/z/os/zos/features/cpm)).
 
+Real On/Off CoD capacity stays active until it is deactivated, exhausted or the record expires, and is charged on a
+24-hour basis; manual deactivation removes the processors (SG24-8579-00, July 2025, PDF p.370, p.372). The game's
+lease is a fixed three days and early deactivation takes effect at the next 06:00 — both APPROX versus real
+operator-controlled deactivation.
+
 ### 5.12 Measurement: SMF/RMF data generation
 
 Each RMF interval writes a snapshot of interval accumulators. Record families (names are real;
@@ -956,7 +1002,7 @@ contents simplified):
 
 | Record | Report | Content in game |
 |---|---|---|
-| SMF 70.1 | CPU Activity, **Partition Data** | Per-LPAR physical busy, LPAR BUSY and MVS BUSY, weights, LCPs, polarity, effective/total dispatch, LPAR mgmt overhead, capping %, R4HA |
+| SMF 70.1 | **CPU Activity** (CHANGE REASON), Partition Data | Per-LPAR physical busy, LPAR BUSY and MVS BUSY, weights, LCPs, polarity, effective/total dispatch, LPAR mgmt overhead, capping %, R4HA |
 | SMF 72.3 | **Workload Activity (WLMGL)** | Per service/report class period: transactions (AVG, MPL, ENDED, END/S), ACTUAL/EXECUTION/QUEUED time, APPL% CP/IIPCP/IIP, service units, using/delay %, EX VEL, PI, RT distribution buckets, PROMOTED (BLK/ENQ/LCK) |
 | SMF 74.1 | DASD Activity | Per volume/LCU: rate, IOSQ/PEND/DISC/CONN, alias use |
 | SMF 74.4 | **CF Activity** | CF util, per-structure rates, sync/async service times, conversion %, contention |
@@ -1022,7 +1068,7 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | PR/SM | Logical CPs (online/reserved) | dynamic if reserved defined, else next IPL | 1 | |
 | PR/SM | Capping: initial/absolute cap, defined capacity, group capacity | dynamic | 0.5 | |
 | PR/SM | Memory (reserved → online) | dynamic if reserved, else IPL | 1 | |
-| Hardware | On/Off CoD activate/deactivate | ~immediate | 0.5 | Daily cost |
+| Hardware | On/Off CoD activate; deactivate at the next 06:00 (APPROX timing; manual deactivation: SG24-8579-00 PDF p.372) | activation ~immediate; deactivation next 06:00 | 0.5 | Daily cost |
 | Hardware | Order permanent upgrade / new CPC | lead time | 2 | Capex approval may be needed |
 | Subsystem | CICS: add/remove AOR, MXT, EDSALIM, routing algorithm | next day (region restart) | 2 | Needs memory |
 | Subsystem | Db2: BP sizes, MAXDBAT/CONDBAT, REBIND (revert access path) | dynamic / next day | 1–2 | |
@@ -1032,19 +1078,31 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | Analytics | Buy/enable tools (§8) | varies | varies | |
 | Ops | Take an IPL (in a change window) | weekend/night | 2 | Needed for some changes; brief LPAR outage |
 
+Saved policies offer **Activate now** and **Load into editor** in the browser and play CLI.
+Activation uses the ordinary install-and-activate Change Desk path (1.5h before perks): planned
+for 06:00 during briefing, or an emergency queued for the next live tick with the usual trust
+cost and failure risk. Loading copies the saved definition into pending edits without installing
+it or spending hours. Real `V WLM,POLICY=name` activates a policy already installed on the WLM
+couple data set; the game's combined installation and activation is a simplification
+([MVS System Commands 3.1, PDF p.945](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=945)).
+
 During the briefing, further WLM edits build on the latest planned policy activation due at that day's
 06:00, so installing a second edit retains the first. The editor names and previews that planned policy;
 the live policy and its reports change only when the activation executes. Uninstalled pending edits take
 precedence over the planned policy as the editing base. After Start day and between live ticks, edits and
 previews use the latest activation in the pending command queue until it executes. The editor labels it
-"Queued for next tick"; this also preserves consecutive live installs while paused.
+"Queued for next tick"; this also preserves consecutive live installs while paused. A scheduled switch due
+at that tick is issued before the queue, so the queued activation is the later act and wins the tick, and
+the log names the switch it overrode (PR-01).
 Failed activations return their definition to pending edits only when no later policy activation that day
 succeeded. Cancelling an earlier activation does not restore its older definition over a later retained
 activation for the same day; the notice explains that edits already copied into the later policy remain.
 The last failed or cancelled activation can still return its edits, and uninstalled player edits take precedence.
 
 **Change windows & CAB.** Planned changes submitted in the morning briefing are normal changes
-and cost no trust. Changes during the live day are **emergency changes**: they cost
+and cost no trust. Hardware orders with a lead time also remain planned when submitted during
+the live day: they cost hours and capex, arrive at 06:00 on their activation day and carry the normal
+planned failure roll, with no emergency trust cost. Same-day changes during the live day are **emergency changes**: they cost
 Trust ×(1 if an incident is active, ×3 otherwise). Every change has a small **failure risk**
 (scaled by complexity and by "Team Fatigue"): a mistyped classification rule, a policy
 that doesn't validate, a weight change that fails on the HMC. A **validation** tool (unlock)
@@ -1127,13 +1185,21 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
   Columns and formulas follow RMF Report Analysis ch. 2 (§18): DELAY splits active samples into USG/DLY/UKN
   (server and subsystem waits are UKN, not delay); SYSINFO shows the LPAR and MVS views of CPU (MVS above LPAR
   is the short-engine clue); PROCU's Time on CP % IIP is zIIP-eligible work run on CPs.
+  PROCU's optional service-class summary is a game view: EAppl % CP once, its IIPCP % subset and EAppl % IIP;
+  the job view retains the distinct Time on CP % Total and EAppl % CP columns
+  (RMF Report Analysis 3.1, SC34-2665, PDF pp.188–189 (printed 148–149)).
   Enables the WLM Activity log.
 - **Partition Data report** (PR/SM view, polarity, overhead).
 - **Report class design tool**: suggests report classes for granularity.
 
 **Tier 2:**
 - **Monitor III charting** (requires Monitor III): today's PI, busy, delay breakdown, PR/SM delay,
-  capping and DDF over time at 1-minute resolution, with WLM decisions and changes marked.
+  capping, DDF engines and CPU engines per service class over time at 1-minute resolution, with WLM
+  decisions and changes marked. The player picks which charts to show (kept per viewer; the
+  service-class CPU chart starts hidden), and CP busy plots each image's share of its logical CPs or,
+  with one option, of its CPC's physical CPs (RMF Report Analysis 3.1 p.99). On multi-CPC runs,
+  the aggregate line uses physical CPs across all CPCs. The service-class CPU chart sums CP and
+  zIIP occupancy in engines, with zIIP-eligible work on CPs already counted in CP (p.534).
 - **CF Activity** and **DASD/Cache** reports.
 - **SMF 113 counters** (RNI, CPI, L1MP; LSPR workload classification).
 - **Db2 accounting** (SMF 101; CPU cost when on).
@@ -1141,8 +1207,10 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - **SMF 30 batch analytics**: critical-path Gantt with per-job CPU/I-O/wait.
 
 **Tier 3:**
-- **Capacity planner**: forecast R4HA, utilisation and SLA risk *N* days ahead from growth
-  trends, with confidence bands that widen with horizon.
+- **Capacity planner**: forecast R4HA, MSU demand against installed capacity and SLA risk *N* days ahead from growth
+  trends, with confidence bands that widen with horizon. The CPC series is MSU demand (online peak busy × installed
+  CP MSU), fitted on weekdays only (weekend peaks stay on the chart but not in the fit), and capacity changes are
+  marked (PT-16).
 - **What-if simulator**: during the briefing, fork the run and play *today* twice (as planned, and with
   the change basket), using *forecast* arrivals: no hidden events and a re-seeded noise stream. Compares
   SLA breach hours, incidents, batch end, CPC and R4HA peaks and the MLC estimate. 1 engineer-hour per run.
@@ -1305,15 +1373,46 @@ baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, 
 records the queue the same arrivals would build at their unqueued service time (base latency, CPU, zIIP and I/O
 connect/disconnect, no waits), and THREAD_LIMIT is credited only with that queue's growth; the rest is a symptom of
 whatever slowed the tasks (APPROX: unqueued service time is the reference, so the limit's own share is slightly
-understated when healthy work already queues a little). A CPU win is split three ways: CAPPING when a host LPAR was
-capped for at least 5 % of the hour — the share of the hour's 10-second ticks in which its CP demand was cut, not the worst
-tick (`CAPPING.minHourShare`; a night sums its hours' ticks) — CPU_CAPACITY when an
-image hosting the workload was full over the hour — its CPC averaged at least 90 % general-CP busy (judged per CPC,
-since PR/SM shares engines only within a machine), or the image itself used at least 95 % of the CP available to it
-(online logical CPs, entitlement plus white space), as when all its logical CPs are busy on a CPC with engines it
-can't reach — *and* less than 10 % of that image's CP went to work less important than the hurt
-workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the policy could have served it.
-Both thresholds are FICTIONAL.
+understated when healthy work already queues a little). A CPU win uses RT-32's host/pool split (game rules):
+
+- Host: largest positive `cp + ziip + backlog − CPU baseline × completions` from the workload's host wait ledger;
+  ties by image id. APPROX: one workload-wide baseline. Co-hosts with ≥ `CPU_SPLIT.coHostFrac` (⅓) of total excess
+  contribute their verdict; ≥ ⅔ on the leading host with another image busy < 85 % on the judged pool also accepts
+  ROUTING.
+- Pool: zIIP when its wait exceeds CP plus backlog wait on that host; otherwise CP. CP consumption includes IIPCP.
+  With IIPHONORPRIORITY=NO or class `honorPriority` off and image CP busy < 85 %, zIIP queueing is CPU_PRIORITY and
+  also accepts POLICY (SA23-1380-60 PDF p.430 (printed 394): NO prevents CP help; a class's Honor Priority=NO likewise, SC34-2662-60
+  PDF p.121 (printed 101); APPROX: the hurt class alone decides, not a CICS region's transaction-class mix).
+- CAPPING: only the judged image, and any of: the image was capped in ≥ `CAPPING.minHourShare` (5 %) of the hour's
+  ticks; a period of the hurt work on it, or the server period holding its regions (`$SRMS001`), shows CAP delay ≥
+  `CAPPING.capDelayFrac` (5 %) of its samples; or a server role it depends on (`servers`/`hostRole`) was
+  resource-group capped for ≥ 5 % of the ticks. CAP delay is resource-group or discretionary capping and is not part
+  of CPU delay (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500)). A resource-group or server cap is
+  POLICY unless a card is blamed, and its cause is `none:CAPPING:<host>:rg:<group>` (the capped class's group), so it
+  does not group with an image cap on the same host; the basis records `capBy` IMAGE/GROUP/SERVER. Discretionary goal
+  management only caps work that overachieves, so it cannot hold the hour (no special case). An hour with no judged host
+  (a night, a loaded partial hour) keeps the any-host image rule; RT-21 owns the night.
+- Otherwise CPU_CAPACITY iff CPC busy ≥ 90 % or image busy ≥ 95 % on the judged pool, and displaceable consumption
+  < `CPU_CAPACITY.displaceableFrac` (10 %); else CPU_PRIORITY. Existing RT-07 bands read displaceable consumption:
+  host room < 85 % rules capacity out; host busy ≥ 95 % and displaceable < 5 % leave capacity alone; otherwise both.
+- Displaceable: captured pool engines excluding SYSTEM/SYSSTC, the hurt workload's own transactions (by workload,
+  not shared class), its regions' completion-proportioned base CPU and its dependency roles (not their entire mixed
+  STC class). Also exclude other SLA periods/server roles at risk: PCT attainment < target + ¼ of remaining percentage,
+  AVG RT > 0.8 × budget (or failures); critical running batch during the game's night (18:00 to the day end) when
+  the batch view's projected critical end is within `CPU_SPLIT.atRiskMargin` (¼) of the night window before the
+  deadline (03:00 for the default 06:00 deadline). Importance does not enter.
+  APPROX: whole happy classes count, workload CPU is apportioned across its class periods by observed use, and shared
+  region base CPU by completions; these are not predictions of WLM's next adjustment.
+
+All thresholds are FICTIONAL and live in `content/incidents.ts`. The basis records host, pool, normalized excess
+shares, displaceable share and up to three largest eligible class consumers; a CAPPING basis also records `capBy`
+(IMAGE, GROUP or SERVER) and the resource group's name. Consumer percentages are the full
+class's share of captured pool APPL (not its eligible subset); names include contributing workload ids, so a runaway
+sharing the hurt class is visible. Snapshot exclusions in `subjects.cpu` are read by both truth and the CPU_PRIORITY
+proof predicate; proof scales a mixed row to its eligible part. Hours without a host wait ledger keep the old
+first-full-host/busiest-CPC and importance-donor split. Old bases retain `donorPct`; readers prefer `displaceablePct`.
+Old proofs without a consumer snapshot conservatively exclude own/server/system classes. A loaded partial RT-16
+hour uses only observed grants until the next full hour (no backfill).
 
 The healthy baseline is an EWMA (×0.8 per hour) folded only from closed hours in which the workload met its SLA
 *and* no card's footprint reached it (direct or collateral): a card's own effect must not become the new normal, or a
@@ -1349,18 +1448,22 @@ card); a card that lowered the processor's capacity (POWER_CAP) adds CPU_CAPACIT
 short of CPU adds CPU_PRIORITY; and an incident with no card to blame accepts GROWTH and POLICY together, because no
 visible data separates growth that crossed the headroom from a configuration without headroom. Authentication from an
 accepted mechanism earns evidence points too. The reply names the primary and gives one line for each other accepted
-answer. Old saves carry no accepted set and are scored on the primary alone.
+answer. Every truth carries its accepted set (`acceptedAnswers`), and the primary is always part of it.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III — class rows, SYSWKM server rows and PROCU job rows — Db2 101, CICS 110 (transactions and the region
 storage view's SOS time), Partition Data, and the CF Activity and DASD Activity rows: a CF's sync service
-time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time). A pin is
+time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time).
+Hourly Db2/CICS pins label a closed hour's full range; a current-hour pin labels `:00` through the capture time.
+This is the game's hourly reporting window; the pin's end tick and evidence judging are unchanged.
+A pin is
 relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
 trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes, the serving region classes
 (`serverClasses`, kept apart so a region's row is the server's), images and serving regions recorded when it opened
 (`closeHour`, `batchMissIncident`) — so a policy activation or a routing change made after it opened cannot turn a pin that was
-good at the time into "not about" the work; incidents from old saves derive the subjects from the present. The
+good at the time into "not about" the work; every incident carries the subjects it recorded, and a file from another
+build is refused rather than judged against the present (CL-20). The
 record is taken at the hour's close, so a change applied during that same hour is already in it, and a later hour
 of a still-open incident keeps the subjects it opened with.
 Every pin gets a **relation** to the incident, derived from those subjects: `self` (the work's own class or period,
@@ -1398,7 +1501,7 @@ the filed mechanism earns 3 evidence points (`PROOF.recipePoints`, what three fu
 predicate shown earns 0.5 (`PROOF.partialPoints`, a lone non-specific pin's old weight), and a complete recipe for
 the filed, accepted trigger on top makes the evidence **strong** (+5 Insight). Two delay rows of the work's own class
 no longer reach strong evidence for any CPU incident (A9). The reply ticks each predicate and names the pins that met
-it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, absent in older saves).
+it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, absent when no pin was attached).
 Notable recipes: CPU_CAPACITY reads a full processor (CPC/image busy ≥ 90 %, or a capacity adjustment), CPU_PRIORITY a
 displaceable consumer (a less important period, or a job, at ≥ 10 % of the image), CAPPING a capped image or CAP delay;
 DEMAND_SURGE is the ended rate ≥ 1.25 × its normal at a flat CPU per transaction, and a change regression the reverse
@@ -1426,8 +1529,8 @@ at filing time (`EVIDENCE.groupTrustPerIncident`; a wrong RCA's penalty is not s
 group's accepted answers are the union of its members', its primary is the lead's, so a mechanism or trigger accepted for
 any victim scores in full. A pin counts as evidence if it supports any incident in the group. An incident that joins a
 group after its RCA was filed inherits it only when the cause is that card: a later incident of a no-card cause is listed
-as new, so an RCA filed at 10:00 cannot silently cover four at 13:00 (A13). Saves written before RT-07 carry no cause and
-group by equal mechanism and trigger. Real incident management correlates alerts the same way; one cause should not mean
+as new, so an RCA filed at 10:00 cannot silently cover four at 13:00 (A13). Real incident management correlates alerts
+the same way; one cause should not mean
 five near-identical write-ups (playtest round 1, design item C).
 
 **A missed batch window is an incident:** when the critical path misses its deadline, the day end opens a `BATCH`
@@ -1486,7 +1589,8 @@ workload and batch growth rates are scaled; Normal is the untouched balance base
 | Hard | ×1.3 | ×1.3 | ×0.92 | ×0.85 | 65 | yes | none |
 | Ironman | as Hard | | | | | no (alerts slow to ½× instead) | none |
 
-Event severity scales each card's magnitudes (the excess of a multiplier over 1, lock boosts, extra I/O):
+Event severity scales each card's magnitudes (the excess of a multiplier over 1, lock boosts, extra I/O;
+`regionFailFrac` is an absolute fraction, scaled from zero and capped at 1):
 Story 0.7×, Normal 1×, Hard/Ironman 1.25×. Constraint beats arrive 3 days later on Story
 (which also drops the CFO mandate) and 4 days earlier on Hard/Ironman. Story starts with the infrastructure flaws
 F7, F8 and F11 already fixed (announced in a handover message); the WLM and PR/SM flaws stay on every difficulty.
@@ -1812,8 +1916,8 @@ keyboard-first.
 
 ## 15. Technical architecture
 
-- **Language:** TypeScript (strict). **Build:** Vite. **UI:** React plus Zustand for UI state.
-  **Charts:** uPlot for dense time series (fast), plus lightweight SVG for small widgets.
+- **Language:** TypeScript (strict). **Build:** Vite. **UI:** React; state lives in hooks fed by the worker's
+  snapshot stream. **Charts:** lightweight SVG (no chart library).
   **Tests:** Vitest.
 - **Sim core runs in a Web Worker**; the UI receives a snapshot stream (per tick at ≤ 15 Hz,
   coalesced) and sends **commands**. Headless runner via Node for balancing.
@@ -1851,10 +1955,12 @@ tools/
   headless.ts          # run N days with a scripted/autopilot policy → text RMF reports (`npm run sim`)
   bot.ts, strategies.ts, sweep.ts   # strategy bots and balance sweeps
   bench.ts, compare.ts, lab.ts      # timing + hash, behaviour diff vs base, realism A/B lab
-  ci/                  # CI gates (balanceGate.ts, behaviourNote.ts)
+  ci/                  # CI gates (balanceGate.ts, behaviourNote.ts) and the remote sweep/test sharding and report tools
   play.ts              # text play interface for AI agents (PROGRESS M8.9)
-.claude/agents/        # game-playing agent definitions (PROGRESS M8.9)
-docs/agents.md         # how to run the agents
+.claude/agents/        # agent definitions: ten roles, players to reviewers and fixers (docs/codex.md)
+.claude/skills/        # agent skills: the dev, review-and-fix and audit loops; playtest, WLM and z/OS docs
+.codex/                # Codex host configuration (docs/codex.md)
+docs/                  # design notes, the research ledger, the playtest checklist (README "Documents")
 tests/
   sim/…                # unit + "realism" property tests
   golden/              # golden-run snapshots (seeded) to detect unintended model drift
@@ -1880,7 +1986,7 @@ never touches the DOM.
   - WLM policy adjustment holds its invariants I1 … I17 (docs/wlm-design.md §5.9): property tests over generated
     images in `tests/sim/wlm-invariants.test.ts` (determinism, one change per interval, receiver order, receiver value,
     no harm to more important work, equal-importance convergence, donor order, one PI basis, the canonical ladder, CPU
-    protection, skip clock without starvation, settling, not fixable not moved, minimums above goal work, the
+    protection, skip clock without starvation, settling, not fixable not moved, minimum placement, the
     projection cost bound, an honest projection at rest), server periods in `tests/sim/wlm-servers.test.ts` (I11), and
     scenario assertions in `tests/sim/wlm-realism.test.ts` (a happy more important donor is not pushed past its
     goal; at most one move undone within two minutes on Midwest PROD2; PROD2's goal periods on at least four levels on
@@ -1904,7 +2010,7 @@ never touches the DOM.
   LPAR, class or workload, an identity whose feature a scenario lacks makes no comparison there, and two coverage
   tests fail if an identity or a stress situation is reached by no scenario. A new report field joins an identity
   in the same change. Identities that do not hold yet are left out with a comment naming their BACKLOG entry
-  (RF-05 … RF-08, CL-10).
+  (RF-05 … RF-08, PR-21).
 - **Golden runs:** fixed seed + scripted commands → hashed day summaries; changes that alter
   them must be intentional (update the golden file in the same commit with an explanation).
 - **Strategy bots** for balance (headless):
@@ -1938,12 +2044,14 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | The table as of z/OS 1.8 (SG24-6472 p.65; Enrico slide 49): 255 SYSTEM, 254 SYSSTC, 253–249 reserved (the sim: promotion 253, resource-group minimum 249, APPROX), 248 small consumer, 247–203 managed, 201–192 discretionary. Goal periods sit on a canonical ladder (246, 244, …; unbunching, WLM Services p.139), so 247 is never occupied (WT-06). The sim runs every discretionary period at 196 and has no small consumers (row "Small consumer, mean-time-to-wait") |
-| Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
-| Batch response-time goals | **Modelled** | Each finished job adds one queue-plus-elapsed response time and one bucket observation to its ending period and assigned report class (WLM Planning 3.1 p.71, p.113), but only when that period has a response time goal: a velocity or discretionary batch class shows ENDED 0 (APPROX; RMF counts ended jobs for any goal type, RF-07). Measured AVG/PCT PIs expire at decayed completions ≤ 1e-9; tick-boundary timing, fixed decay and the cutoff are approximations. JES RT goals carry the three-completions-per-20-minutes editor advice. Batch-only AVG/PCT base/trial projections scale the measured PI by the projected execution-speed change of the elapsed part (queue held; `rtQueueSumSec`; APPROX, docs/wlm-design.md §5.8), so a batch RT period can be a receiver or a donor. Started tasks have no transaction completions |
+| Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); CHANGE REASON renders on the CPU Activity report header (RMF Report Analysis p.391–392: NONE / POWERSAVE (initiated by the user) / MACHINE (cycle steering, initiated by the machine)), and Partition Data no longer carries it. APPROX: the sim's CPU Activity report carries only the CHANGE REASON line per CPC (no CPU table, CPC CAPACITY or HIPERDISPATCH, p.391); SMF70CAI is kept on the interval for tooling but not printed, while real RMF shows effective capacity as CAP% in the Workload Activity POLICY header (p.543). The Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98). A power cap does not slow cycle speed |
+| On/Off CoD early deactivation | **Approximation** | An active lease can be ended early and reverts at 06:00 the next day. Real capacity remains active until deactivated, exhausted or the record expires, and bills on a 24-hour basis; manual deactivation removes the processors (SG24-8579-00 Jul 2025 p.370, p.372). APPROX: the game's fixed three-day lease and next-06:00 boundary stand in for operator-controlled deactivation and daily windows |
+| Batch response-time goals | **Modelled** | Each finished job adds one ended transaction with its queue-plus-elapsed response time to its ending period and assigned report class (WLM Planning 3.1 p.71, p.113), whatever the period's goal type: a velocity or discretionary batch class counts its job ends too (RMF Report Analysis 3.1 p.530–531). Only a response-time goal gets a bucket observation (RMF's per-system distribution for velocity periods is not modelled). Measured AVG/PCT PIs expire at decayed completions ≤ 1e-9; tick-boundary timing, fixed decay and the cutoff are approximations. JES RT goals carry the three-completions-per-20-minutes editor advice. Batch-only AVG/PCT base/trial projections scale the measured PI by the projected execution-speed change of the elapsed part (queue held; `rtQueueSumSec`; APPROX, docs/wlm-design.md §5.8), so a batch RT period can be a receiver or a donor. Started tasks have no transaction completions |
+| Dependency delay (server address spaces) | **Modelled** | Each request pays Σ latency × (1/max(health, ε) − 1 + queue ratio) per server role (SG24-7621 p.81, p.126 for the server/region split); a role capped below `SERVER_STARVATION.healthBelow` (FICTIONAL) of its demand carries only its granted share, so its dependents complete that share of arrivals, the rest time out, and their CPU falls with completions (RF-09). APPROX: fluid dependent queue (a timeout fraction, no per-request queue), only roles on the dependent's own image, and a timed-out request's CPU is not charged |
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Bottlenecks (WT-10): plans are built for CPU and then zIIP delay, largest first, each when it is at least 15 % of the managed delay (CPU, zIIP, I/O in velocity, storage, queue; WLM Services p.148 works delays largest first; SG24-6472 p.63–64), so waits and capping never outvote CPU delay; a period mostly waiting logs `mostly waiting, CPU delay n %: not WLM-fixable` (APPROX: only CPU and zIIP are fixed by policy adjustment). Only periods missing their goals are receivers: IBM's last case, a period meeting its goal chosen by largest PI (SG24-6472 p.63), is not modelled, so the order is not tuned while every period meets its goal (APPROX). A receiver whose every move was rejected is skipped for 3 policy adjustment cycles while more than five goal periods on the image miss their goals (WLM Services p.145 gives the clock but not its length; Sinram, SHARE 2010 session 7777 p.11 gives 3 cycles and the z/OS 1.11 exception; APPROX: the count is per image), and is not skipped at five or fewer (RF-03); a period with under 2 % managed delay is not assessed (p.144), and proposal projections are bounded at 12 per image per interval. Atomic plans (WT-08) retain safe intermediate UP/CARRY/DONOR moves and commit only with whole-plan receiver value; one carry and a bounded join-and-split repair, at most six retained moves (APPROX; SG24-6472-03 p.67–68). Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL). The ladder, CPU protection and the donor pool are of holders (WT-09): a CICS transaction class served by TRANSACTION regions is a goal receiver or donor, and its server period moves (row "CICS region management"). No trial puts a holder below work missing its goal with a backlog the projection bounded (APPROX, the same guard of the sim's bound) |
-| Incident ground truth (mechanism, trigger) | **Game rule** | Trigger by card footprint (RT-14: resource, reach, direct set; direct before collateral, fresh before background, then overlap). Mechanism: largest response-time component growth against baseline; CPU split by host-LPAR capping (capped in ≥ 5 % of the hour's ticks), then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work, though since WT-07 a happy more important period can donate too; RT-16's displaceable CP replaces this) |
+| Incident ground truth (mechanism, trigger) | **Game rule** | Trigger by RT-14 card footprint. Largest delay-group growth chooses the mechanism; RT-32 judges CPU on the largest positive host excess, on zIIP when its wait dominates. CAPPING when that image was capped for ≥ 5 % of the ticks, when one of its hurt periods (or its `$SRMS001` server period) shows CAP delay ≥ 5 % of its samples, or when a server role the work depends on was group-capped for ≥ 5 % of the ticks (CAP delay is not CPU delay, z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500); RT-33); otherwise capacity at CPC ≥ 90 % or image ≥ 95 %, with displaceable pool use < 10 %. SYSTEM/SYSSTC, own workload/region/server CPU and SLA/batch-at-risk work are excluded, regardless of importance. Co-host ≥ ⅓ contributes a verdict; ≥ ⅔ imbalance with a roomy peer accepts ROUTING; blocked zIIP overflow with CP room is priority/policy. Hour averages, margins and lines are FICTIONAL; proportional shared-region/period accounting and whole happy consumers are APPROX. Basis and proof share frozen consumer exclusions (§10); old hours retain legacy donors |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
@@ -1957,7 +2065,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9); a soft cap lowers E for polarity (WLM Planning p.46) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
-| LPAR capping measurement | **Matches** | Capped share = what a binding cap removed vs. an uncapped allocation; PR/SM contention excluded. Partition WLM% from soft capping only; LPAR capping posts CPU delay, not CAP (RMF Report Analysis p.401, p.540). APPROX: WLM% and Monitor III WLM Capping % are the share of demand the cap removed, where RMF's are the share of time WLM capped the partition (RF-06). SYSINFO, WFEX and the header show an image as capped when its R4HA is above its defined capacity or its capacity group is capped |
+| LPAR capping measurement | **Matches** | Capped share = what a binding cap removed vs. an uncapped allocation; PR/SM contention excluded. Partition WLM% is the share of the interval WLM considered to cap the image (soft cap in force: R4HA above defined capacity or capacity group capped), whether or not the cap removed demand; CAPPED stays the removed share. LPAR capping posts CPU delay, not CAP (RMF Report Analysis p.401, p.540; SMF70NSW ÷ SMF70DSA, RMF User's Guide p.186, MVS SMF p.603). APPROX: Monitor III is a live view, so its WLM Capping % is the instant state rather than the interval share. SYSINFO, WFEX and the header show an image as capped when its R4HA is above its defined capacity or its capacity group is capped |
 | LPAR BUSY vs MVS BUSY | **Matches** | Partition Data shows both: LPAR BUSY = dispatched / online time; MVS BUSY = ready-or-running demand / unparked online logical CPs (parked VLs leave the time range), so ready work PR/SM does not dispatch counts only in MVS BUSY and a starved low-weight LPAR reads near 100 % (RMF Report Analysis p.389). Monitor III MVS Util% uses the same value. Interval average of per-tick values |
 | Batch initiation delay (WLM-managed job classes) | **Plausible model** | Jobs queued for an initiator add one delay sample per tick to their service class (WLMGL QMPL), so velocity sees the miss; JES-managed queues stay invisible (WLM Planning p.70). APPROX: counted on the first eligible system; WLM still starts at most 2 initiators per interval below 92 % busy |
 | Storage Critical (paging protection) | **Plausible model** | Image paging is one over-commitment fraction; protected periods page nothing and their share moves to unprotected work in proportion to activity × steal weight (importance 5 and discretionary most), so total paging stays the same (WLM Planning p.119). APPROX: CP+zIIP activity stands in for frames held |
@@ -1972,10 +2080,10 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Equal-DP sharing by ready units (max-min) | **Approximation** | Fluid processor sharing over time-averaged units, not task-level time slicing. Unit counts per address-space role are FICTIONAL; transactions count one unit per engine of new work, backlog excluded (`dispatcher.ts` `shareByUnits`) |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | WLMGL APPL% CP/IIPCP/IIP | **Matches** | CP includes all time executed on general CPs; IIPCP is its zIIP-eligible subset, and IIP is time executed on zIIPs (RMF Report Analysis 3.1 [p.534 Table 222](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534)). Service/report classes average engine use over the full interval; plex rows sum systems. APPL evidence adds CP + IIP, counting IIPCP once |
-| Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 120 s MINTIME; rows are service-class periods, not jobs or individual enclaves, except PROCU, which lists jobs (address spaces and running batch jobs, TSO under the user id) with each class row's CPU shared by estimated load (APPROX) and DDF enclave CPU in the DIST address space's EAppl % only (Report Analysis 3.1 p.188–189); no IDL state, workload groups or report classes; DELAY shows % Delayed for PRC (CP + zIIP), DEV, STR, SUB, OPR, ENQ (SUB/OPR/ENQ 0) with capping counted only in DLY % and Primary Reason in RMF's forms (main jobname or *ENCLAVE of the heaviest processor user, the row's own class competing with its other units, LCU id instead of volser, LOCL, RG-Cap; Report Analysis 3.1 p.106–110); PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% is the MVS BUSY of the Partition Data row (ready work over unparked logical CPs); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL); the header's PI heat map is the SYSSUM sysplex PI (samples where RMF reports them); history is a snapshot of that smoothed view every 120 s (MINTIME(120); RMF's default is 100 s) for 48 h (retention is a game choice; real retention depends on the VSAM data set size) |
+| Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 120 s MINTIME; rows are service-class periods, not jobs or individual enclaves, except PROCU, which lists jobs (address spaces and running batch jobs, TSO under the user id) with each class row's CPU shared by estimated load (APPROX) and DDF enclave CPU in the DIST address space's EAppl % only (Report Analysis 3.1 p.188–189); no IDL state, workload groups or report classes; DELAY shows % Delayed for PRC (CP + zIIP), DEV, STR, SUB, OPR, ENQ (SUB/OPR/ENQ 0) with capping counted only in DLY % and Primary Reason in RMF's forms (main jobname or *ENCLAVE of the heaviest processor user, the row's own class competing with its other units, LCU id instead of volser, LOCL, RG-Cap; Report Analysis 3.1 p.106–110); PRC/DEV using and zIIP/IIPCP engine splits come from decayed reporting-only component sums (PR-21), so a sysplex row is the sum of its systems; MVS Util% is the MVS BUSY of the Partition Data row (ready work over unparked logical CPs); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL); the header's PI heat map is the SYSSUM sysplex PI (samples where RMF reports them); history is a snapshot of that smoothed view every 120 s (MINTIME(120); RMF's default is 100 s) for 48 h (retention is a game choice; real retention depends on the VSAM data set size) |
 | Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
-| WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |
+| WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately. Saved definitions can also be loaded into pending edits or activated through the ordinary Change Desk path (PT-10). Real V WLM activates a previously installed policy ([MVS System Commands 3.1 p.945](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=945)); combined installation, engineer-hours, emergency risk and briefing/live timing are game abstractions. A switch due at the tick (by schedule, or the day-start change board) is issued before the tick's queued commands, so a queued activation is the later act and wins that tick — a game rule for the pause-and-queue interface, not IBM behaviour — and the log says which scheduled switch it overrode (PR-01) |
 | DASD per LCU, HyperPAV alias pools, 256 devices per LCU | **Faithful simplification** | Aliases pooled per LCU (real HyperPAV); hot volumes = top 10% with a skew; utility I/O lands on hot volumes; batch sees class-level SEQ response (APPROX). The LCU summary's IOSQ, DISC and response are the model's per-LCU figures, I/O-mix weighted |
 | CF structures (LOCK/CACHE/LIST), placement, sync→async by type | **Faithful simplification** | z/OS 1.2+ heuristic: every structure type converts once its sync time passes a per-type threshold (lock threshold FICTIONAL ×1.5); thresholds not scaled by sender CP speed (APPROX) |
 | SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
@@ -1992,6 +2100,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: the server period `$SRMS001` (TRANSACTION; one per system, APPROX: IBM has one per set of regions serving the same classes), which the served classes move as goal receivers and donors (free ride), or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
 | Percentile PI in WLM projections | **Simplified** | Reported PI stops at 4.0 (bucket layout); receiver value and donor harm use the bucketed PI of the projection at sustained demand (`base` and `after`, never this tick's own), extended past 4.0 by a log-normal quantile of the mean RT (sigma 0.5, FICTIONAL), so work far past its goal can still be helped and harm to it still vetoes a move |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
+| Db2 statistics (DISPLAY DDF) view | **Approximation** | The cumulative count of DBAT requests that waited for a slot during the hour, per Db2 member (QUEDBAT/QDSTQDBT, Db2 13 Command Reference p.303). APPROX: real QUEDBAT is cumulative since Db2 restart, and the sim reports it per interval. The SMF 101 view no longer carries a DBAT queue column (Db2 does not trace the wait, Db2 13 Managing Performance p.143). The queue model is unchanged |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
 | Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand. Separate-pool WLM trials check a conservative demand-recovery envelope using the execution cross-pacing formula; unsettled trials are rejected. Pacing and recovery remain approximations. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth. A Db2 job started on an image without Db2 fails at connect (APPROX: modelled as DSNE100I, Db2 13 Messages p.140) and needs a restart; RCA truth JOB_FAILURE / POLICY when no card explains it |
@@ -2014,6 +2123,9 @@ This is the bibliography. Individual facts, with page links, are in [`docs/resea
 page links point at the z/OS 3.1 editions.
 
 Primary IBM sources:
+- IBM Redbook **SG24-8579-00**, *IBM z17 (9175) Technical Guide* (July 2025): On/Off CoD active capacity,
+  24-hour billing windows and manual deactivation (p.370, p.372).
+  https://www.redbooks.ibm.com/redbooks/pdfs/sg248579.pdf
 - IBM Redbook **SG24-7621**, *ABCs of z/OS System Programming Volume 12* (WLM): PI formulas,
   percentile buckets, sampling (250 ms), policy adjustment (10 s), DP ranges, special service
   classes, resource groups, soft/group capping, discretionary capping, CICS topology.

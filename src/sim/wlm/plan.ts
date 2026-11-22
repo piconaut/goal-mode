@@ -1,7 +1,7 @@
 // Composite priority changes (SG24-6472-03, March 2008, p.67–68): retain safe intermediate moves,
 // carry a secondary receiver, leave a failing donor, and roll everything back without receiver value.
 import { canonical, levelOf, moveToLevel, raiseOneStep, type Ladder } from './ladder';
-import type { WlmTrialVerdict } from './adjust';
+import type { WlmTrialVerdict } from './adjust/trace';
 
 export interface PlanMove {
   kind: 'UP' | 'CARRY' | 'DONOR';

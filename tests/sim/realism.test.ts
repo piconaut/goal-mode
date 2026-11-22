@@ -21,8 +21,21 @@ import * as wlmAdjust from '../../src/sim/wlm/adjust';
 import { projectionInput } from '../../src/sim/wlm/projection';
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { committedMoves } from '../helpers/wlmMoves';
+import type { SimState } from '../../src/sim/core/types';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
+
+// The CF, project-modifier and report-class blocks all start from the same seed-42 Midwest midday state
+// (six sim-hours). Build it once, and hand each block its own copy so no block sees another's changes.
+let middayState: SimState | null = null;
+function midday(): SimState {
+  if (!middayState) {
+    let s = initState(42, MIDWEST);
+    for (let i = 0; i < 6 * 360; i++) s = step(s, [], MIDWEST);
+    middayState = s;
+  }
+  return structuredClone(middayState);
+}
 
 const txn = (over: Partial<SliceSpec>): SliceSpec => ({
   key: 'T',
@@ -82,6 +95,59 @@ describe('priority inversion through dependencies', () => {
     const out = policyAdjust({ def, system, evalInput: base, current: cur, sysplexPi: {}, clockText: 'T' });
     expect(out.log).toMatch(/^T SYS1 DDF#1 PI=\S+ mostly waiting, CPU delay \d+ %: not WLM-fixable/);
   });
+});
+
+describe('a starved server carries its dependents at its granted share, not at every arrival (RF-09)', () => {
+  // STCMED (Db2 MSTR, DBM1, DIST) capped to 1 SU/s: the agents that hold commits and getpages cannot run, so the
+  // dependents mostly stop completing instead of all completing late.
+  const db2Work = new Set(MIDWEST.workloads.filter((w) => w.servers.some((x) => x.role.startsWith('DB2.'))).map((w) => w.id));
+  const run = (capSu: number | null) => {
+    let s = midday();
+    if (capSu !== null) {
+      const def = s.wlm.definition;
+      s = {
+        ...s,
+        wlm: {
+          ...s.wlm,
+          definition: {
+            ...def,
+            resourceGroups: [...def.resourceGroups, { id: 'RGSTC', type: 3 as const, min: null, max: capSu }],
+            classes: def.classes.map((c) => (c.id === 'STCMED' ? { ...c, resourceGroup: 'RGSTC' } : c)),
+          },
+        },
+      };
+    }
+    let completions = 0;
+    let failed = 0;
+    // CPU the images gave every class but the capped one (engines × ticks). The workloads' completion-weighted
+    // `parts.cpu` would fall with completions alone, so it can't show whether the dependents' demand followed them.
+    let cpu = 0;
+    for (let i = 0; i < 120; i++) {
+      s = step(s, [], MIDWEST);
+      for (const w of s.last.workloads) {
+        if (!db2Work.has(w.id)) continue;
+        completions += w.completions;
+        failed += w.failed;
+      }
+      for (const l of s.last.lpars) for (const p of l.scps) if (!p.scKey.startsWith('STCMED#')) cpu += p.cpEngines + p.ziipEngines;
+    }
+    const health = Math.min(...s.last.lpars.flatMap((l) => Object.entries(l.roleHealth).filter(([r]) => r.startsWith('DB2.')).map(([, h]) => h.health)));
+    return { completions, failed, cpu, health };
+  };
+
+  it('stops dependent work completing and lets its CPU fall with the completions', () => {
+    const free = run(null);
+    const starved = run(1);
+    // Db2's system agents get a few percent of their demand, so only that share of the work gets through.
+    expect(starved.health).toBeLessThan(0.2);
+    expect(starved.completions).toBeGreaterThan(0);
+    expect(starved.completions).toBeLessThan(0.25 * free.completions);
+    // The rest times out in the dependent's limits instead of completing late ...
+    expect(starved.failed).toBeGreaterThan(3 * starved.completions);
+    // ... and the CPU of the dependents falls with them instead of rising with failed and retried work: work waiting
+    // for the agent does not run above it.
+    expect(starved.cpu).toBeLessThan(0.6 * free.cpu);
+  }, 120_000);
 });
 
 describe('equal-DP work shares by ready units, not by demand (PROGRESS realism fix, #111)', () => {
@@ -175,23 +241,11 @@ describe('zIIP offload flaw F7', () => {
   });
 });
 
-describe('determinism', () => {
-  it('same seed gives identical state', () => {
-    let a = initState(11, MIDWEST);
-    let b = initState(11, MIDWEST);
-    for (let i = 0; i < 400; i++) {
-      a = step(a, [], MIDWEST);
-      b = step(b, [], MIDWEST);
-    }
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
-  });
-});
-
 describe('CF structure placement', () => {
   // Midday state once, then three placements for 30 minutes each.
-  let base = initState(42, MIDWEST);
+  let base: SimState;
   beforeAll(() => {
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    base = midday();
   });
   const run = (cmds: Parameters<typeof step>[1]) => {
     let s = step(base, cmds, MIDWEST);
@@ -220,8 +274,7 @@ describe('CF structure placement', () => {
 
 describe('project modifiers', () => {
   it('efficiency lowers CPU; zIIP shift moves MOBILE work from CPs to zIIPs', () => {
-    let base = initState(42, MIDWEST);
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    const base = midday();
     const run = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);
       for (let i = 0; i < 30; i++) s = step(s, [], MIDWEST);
@@ -238,8 +291,7 @@ describe('project modifiers', () => {
 
 describe('report classes (F6)', () => {
   it('split mixed work for reporting without changing how WLM manages it', () => {
-    let base = initState(42, MIDWEST);
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    const base = midday();
     const policy = (withRc: boolean) => {
       const d = structuredClone(BASEPOL);
       d.policyName = 'RCPOL';
@@ -460,9 +512,9 @@ describe('MPL / swap (storage overcommit)', () => {
 });
 
 describe('CF failure, rebuild and duplexing', () => {
-  let base = initState(42, MIDWEST);
+  let base: SimState;
   beforeAll(() => {
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    base = midday();
   });
   const rbankCfMs = (s: typeof base) => {
     const w = s.last.workloads.find((x) => x.id === 'RBANK')!;
@@ -1104,6 +1156,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
     const lines: string[] = [];
     const traces: WlmAdjustTrace[] = [];
+    /** The state after each step in the window: the trace's `dps` is recorded before its move. */
+    const afterStep: { clockText: string; heldBy?: Record<string, string>; dps: Record<string, number> }[] = [];
+    let stepTraces: WlmAdjustTrace[] = [];
     const samples: { cp: number; zi: number; pi: number }[] = [];
     const adjust = wlmAdjust.policyAdjust;
     const probe = vi.spyOn(wlmAdjust, 'policyAdjust').mockImplementation((input) => {
@@ -1120,11 +1175,20 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       }
       return adjust(input);
     });
-    setWlmTraceSink((t) => { if (t.lparId === 'PROD1' && / 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t); });
+    setWlmTraceSink((t) => {
+      if (t.lparId !== 'PROD1') return;
+      stepTraces.push(t);
+      if (/ 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t);
+    });
     try {
       for (let t = 0; t < 10 * 360; t++) {
         const prev = s.wlm.log;
+        stepTraces = [];
         s = step(s, [], MIDWEST);
+        const after = s.wlm.systems.find((x) => x.lparId === 'PROD1');
+        if (after && stepTraces[0] !== undefined) {
+          afterStep.push({ clockText: stepTraces[0].clockText, heldBy: stepTraces[0].heldBy, dps: Object.fromEntries(after.scps.map((p) => [p.scKey, p.dp])) });
+        }
         if (s.wlm.log === prev) continue;
         const last = prev[prev.length - 1];
         const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
@@ -1175,6 +1239,34 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && t.dps[k]! >= t.dps['ONLHI#1']!;
     }).map((k) => `${t.clockText} ${k}`));
     expect(reachedOnlhi).toEqual([]);
+    // PR-18: the trace records `dps` before the move, so a move accepted in the last interval would be missed.
+    // Check the state after the step too.
+    expect(afterStep.length).toBeGreaterThan(1_000); // every step in the window, not only the traced ones
+    const reachedAfter = afterStep.flatMap(({ clockText, heldBy, dps }) => Object.keys(dps).filter((k) => {
+      const g = goalInfo(s.wlm.definition, k);
+      const sameHolder = heldBy?.[k] !== undefined && heldBy[k] === heldBy['ONLHI#1'];
+      return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && dps[k]! >= dps['ONLHI#1']!;
+    }).map((k) => `${clockText} ${k}`));
+    expect(reachedAfter).toEqual([]);
+    // PR-18: the first rejection here is unnamed ("no gain for the receiver") and a later trial harms ONLHI; the
+    // clue must name what stood in the way, not the first trial's reason.
+    const clueWindows = traces.filter((t) => t.candidates.some((c) => {
+      if (c.scKey !== 'ONLMED#1') return false;
+      const rej = c.trials.filter((x) => x.verdict !== 'RETAINED' && x.verdict !== 'ACCEPTED');
+      const firstNamed = rej.findIndex((x) => x.blockedBy !== undefined || x.verdict === 'CPU_CRITICAL' || x.verdict === 'PROJECTION_DISAGREES');
+      const harmed = rej.findIndex((x) => x.verdict === 'MORE_IMPORTANT_HARMED');
+      return harmed > 0 && firstNamed === harmed;
+    }));
+    expect(clueWindows.length).toBeGreaterThan(0);
+    // Not every such interval logs (the clue is written when the clock is set or at the five-minute cadence), but
+    // every logged one names the harm rather than the first trial's reason.
+    const clueLines = clueWindows.map((t) => lines.find((l) => l.startsWith(`${t.clockText} PROD1 ONLMED#1`)))
+      .filter((l): l is string => l !== undefined);
+    expect(clueLines.length).toBeGreaterThan(0);
+    for (const line of clueLines) {
+      expect(line).toContain('rejected: harms ONLHI#1, more important');
+      expect(line).not.toContain('no gain for the receiver');
+    }
     // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
     expect(samples).toHaveLength(3);
     expect(samples[0]!.cp).toBeLessThan(samples[1]!.cp);

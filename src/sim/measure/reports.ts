@@ -4,27 +4,28 @@
 import type { ProductDef } from '../../content/pricing';
 import { CF_LOCK_CONTENTION } from '../../content/cf';
 import { billLines, type CostState } from '../cost/mlc';
-import { clockAt } from '../core/clock';
+import { clockAt, pad2 } from '../core/clock';
 import { BUCKET_BOUNDS } from '../wlm/goals';
 import { workManagerStatePct, type WorkManagerState } from '../wlm/reporting';
 import type { RmfInterval, WlmRecord } from './rmf';
 
-const pad = (s: string | number, n: number) => String(s).padStart(n);
-const padR = (s: string | number, n: number) => String(s).padEnd(n);
-const f = (x: number | null | undefined, d = 1, n = 6) => pad(x === null || x === undefined ? '-' : x.toFixed(d), n);
+// Space padding to a fixed width: `padLeft` right-aligns, `padRight` left-aligns (not `pad2`, which zero-pads).
+const padLeft = (s: string | number, n: number) => String(s).padStart(n);
+const padRight = (s: string | number, n: number) => String(s).padEnd(n);
+const f = (x: number | null | undefined, d = 1, n = 6) => padLeft(x === null || x === undefined ? '-' : x.toFixed(d), n);
 
 function stamp(tick: number): string {
   const c = clockAt(tick);
   const h = Math.floor(c.hourOfDay);
   const m = Math.round((c.hourOfDay - h) * 60);
-  return `DAY ${String(c.day + 1).padStart(2, '0')}  TIME ${String(h).padStart(2, '0')}.${String(m % 60).padStart(2, '0')}.00`;
+  return `DAY ${pad2(c.day + 1)}  TIME ${pad2(h)}.${pad2(m % 60)}.00`;
 }
 
 function header(title: string, iv: RmfInterval): string[] {
   const mins = Math.floor(iv.intervalSec / 60);
   return [
     ''.padEnd(30) + title.split('').join(' '),
-    `z/OS V3R1        SYSPLEX PLEXP1     ${stamp(iv.startTick)}   INTERVAL ${String(mins).padStart(2, '0')}.00.000   MODE = GOAL`,
+    `z/OS V3R1        SYSPLEX PLEXP1     ${stamp(iv.startTick)}   INTERVAL ${pad2(mins)}.00.000   MODE = GOAL`,
     `                 RPT VERSION V3R1 RMF   POLICY=${iv.policy}`,
     '',
   ];
@@ -70,7 +71,7 @@ const WLM_GROUPS: { from: number; to: number; label: string }[] = [
   { from: 15, to: 20, label: 'DELAY %' },
 ];
 const fmt = (x: number | null | undefined, d: number) => (x === null || x === undefined ? '-' : x.toFixed(d));
-const cell = (c: Col, s: string) => (c.left ? padR(s, c.w) : pad(s, c.w)).slice(0, Math.max(c.w, s.length));
+const cell = (c: Col, s: string) => (c.left ? padRight(s, c.w) : padLeft(s, c.w)).slice(0, Math.max(c.w, s.length));
 
 function wlmRow(r: WlmRecord): string {
   return WLM_COLS.map((c, i) => cell(c, r.resourceSamples === false && (i === 5 || i >= 9) ? '-' : c.v(r))).join(' ');
@@ -132,7 +133,7 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
     out.push(...wlmHeader('REPORT'));
     for (const r of rcRows) out.push(wlmRow(r));
     out.push('', 'SERVICE CLASS PERIODS PER REPORT CLASS');
-    for (const r of rcRows) out.push(`${padR(r.serviceClass, 9)} ${(r.members ?? []).join(', ')}`);
+    for (const r of rcRows) out.push(`${padRight(r.serviceClass, 9)} ${(r.members ?? []).join(', ')}`);
   }
   for (const r of [...rows, ...rcRows]) if (r.workManager) out.push('', `${r.scKey}${r.reportClass ? ' (REPORT CLASS)' : ''}`, ...workManagerLines(r));
   return out.join('\n');
@@ -142,16 +143,16 @@ function workManagerLines(r: WlmRecord): string[] {
   const w = r.workManager!;
   const pct = (state: WorkManagerState) => {
     const v = workManagerStatePct(w, state);
-    return pad(v === null ? '-' : v.toFixed(1), 7);
+    return padLeft(v === null ? '-' : v.toFixed(1), 7);
   };
   // RMF Report Analysis p.536–537 column order; CONV, DIST, LOCAL, SYSPL, REMOT and TIMER are not modelled.
   const cols = ['ACTIVE*', 'READY', 'IDLE', 'LOCK', 'I/O', 'CONV', 'PROD', 'MISC'];
-  const vals = [pct('active'), pct('ready'), pad('-', 7), pct('lock'), pct('io'), pad('-', 7), pct('prod'), pct('misc')];
+  const vals = [pct('active'), pct('ready'), padLeft('-', 7), pct('lock'), pct('io'), padLeft('-', 7), pct('prod'), pct('misc')];
   return [
     'WORK MANAGER STATES: STATE SAMPLES BREAKDOWN (%) (ESTIMATED)',
     `${''.padEnd(10)}${''.padEnd(24)}${'-'.repeat(14)}WAITING FOR${'-'.repeat(15)}`,
-    `${padR('SUB  TYPE', 10)}${cols.map((c) => pad(c, 7)).join(' ')}`,
-    `${padR('CICS EXE', 10)}${vals.join(' ')}`,
+    `${padRight('SUB  TYPE', 10)}${cols.map((c) => padLeft(c, 7)).join(' ')}`,
+    `${padRight('CICS EXE', 10)}${vals.join(' ')}`,
     'CICS BTE (BEGIN-TO-END/TOR): NOT MODELLED; EXE RESPONSE-TIME COVERAGE NOT MODELLED',
     '* ACTIVE COMBINES SUB/APPL; IDLE TASK POPULATIONS NOT MODELLED. READY ESTIMATES CICS QR DISPATCH WAITS.',
     `RESOURCE USAGE AND USING/DELAY SAMPLES: REGION CLASSES ${w.regionKeys.join(', ')}`,
@@ -196,7 +197,7 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
       const label = bound === Infinity ? `> ${hms(4 * goalSec)}` : `${i === 0 ? '< ' : '<='}${hms(bound * goalSec)}`;
       const pctIn = (100 * b) / total;
       out.push(
-        `${padR(label, 16)}${pad(Math.round(cum), 12)}${pad(Math.round(b), 14)}${f((100 * cum) / total, 1, 13)}${f(pctIn, 1, 11)}  ${'>'.repeat(Math.round(pctIn / 4))}`,
+        `${padRight(label, 16)}${padLeft(Math.round(cum), 12)}${padLeft(Math.round(b), 14)}${f((100 * cum) / total, 1, 13)}${f(pctIn, 1, 11)}  ${'>'.repeat(Math.round(pctIn / 4))}`,
       );
     });
   }
@@ -207,18 +208,13 @@ function hms(sec: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
-  return `${String(h).padStart(2, '0')}.${String(m).padStart(2, '0')}.${s.toFixed(3).padStart(6, '0')}`;
+  return `${pad2(h)}.${pad2(m)}.${s.toFixed(3).padStart(6, '0')}`;
 }
 
 export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
   for (const c of iv.cpcBusy) {
-    // A capacity change shows as CHANGE REASON on the CPU Activity header (RMF Report Analysis p.391–392);
-    // this sim renders it on Partition Data instead (APPROX, SPEC §17). SMF70CCR: 1 = operator, >1 = external.
-    const adj = c.capacityReasonCode !== undefined && c.pool === 'CP'
-      ? `   CHANGE REASON=${c.capacityReasonCode === 1 ? 'POWERSAVE (initiated by the user)' : 'MACHINE (initiated by the machine)'}`
-      : '';
-    out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%${adj}`);
+    out.push(`CPC ${c.cpcId}  ${padRight(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
   }
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
@@ -226,10 +222,10 @@ export function renderPartitionData(iv: RmfInterval): string {
   for (const r of iv.cpu.filter((x) => x.logicalCps > 0)) {
     out.push(
       [
-        padR(r.lparId, 8),
-        pad(r.weight, 4),
-        pad(r.logicalCps, 5),
-        ' ' + padR(r.polarity, 14),
+        padRight(r.lparId, 8),
+        padLeft(r.weight, 4),
+        padLeft(r.logicalCps, 5),
+        ' ' + padRight(r.polarity, 14),
         f(r.physicalEngines, 2, 9),
         f(r.logicalBusyPct, 1, 10),
         f(r.mvsBusyPct, 1, 10),
@@ -238,14 +234,31 @@ export function renderPartitionData(iv: RmfInterval): string {
         f(r.wlmCappingPct ?? 0, 1, 8),
         f(r.msuAvg, 0, 8),
         f(r.r4ha, 0, 7),
-        pad(r.definedCapacityMsu ?? '-', 8),
-        pad(r.absoluteCapEngines != null ? r.absoluteCapEngines.toFixed(2) : '-', 8),
+        padLeft(r.definedCapacityMsu ?? '-', 8),
+        padLeft(r.absoluteCapEngines != null ? r.absoluteCapEngines.toFixed(2) : '-', 8),
         f(r.ziipEngines, 2, 9),
       ].join(' '),
     );
   }
   const cfs = iv.cpu.filter((x) => x.logicalCps === 0 && x.icfEngines > 0);
-  for (const r of cfs) out.push(`${padR(r.lparId, 8)}  ICF ENGINES ${r.icfEngines.toFixed(2)}`);
+  for (const r of cfs) out.push(`${padRight(r.lparId, 8)}  ICF ENGINES ${r.icfEngines.toFixed(2)}`);
+  return out.join('\n');
+}
+
+/** CPU Activity report: one header line per CPC with the capacity-change reason
+ *  (RMF Report Analysis p.391–392: NONE / POWERSAVE (initiated by the user) /
+ *  MACHINE (cycle steering, initiated by the machine)). */
+export function renderCpuActivity(iv: RmfInterval): string {
+  const out = header('CPU ACTIVITY', iv);
+  out.push('');
+  for (const c of iv.cpcBusy.filter((x) => x.pool === 'CP')) {
+    const reason = c.capacityReasonCode === undefined
+      ? 'NONE'
+      : c.capacityReasonCode === 1
+        ? 'POWERSAVE (initiated by the user)'
+        : 'MACHINE (cycle steering, initiated by the machine)';
+    out.push(`CPC ${c.cpcId}  ${padRight(c.pool, 4)} CHANGE REASON=${reason}`);
+  }
   return out.join('\n');
 }
 
@@ -253,7 +266,7 @@ export function renderCfActivity(iv: RmfInterval): string {
   const out = header('COUPLING FACILITY ACTIVITY', iv);
   out.push('CF NAME   UTIL%    REQ/SEC   SYNC SERV(us)  ASYNC %   AVG SERV(us)');
   for (const c of iv.cf) {
-    out.push(`${padR(c.lparId, 8)} ${f(c.busyPct, 1, 6)} ${f(c.reqPerSec, 0, 10)} ${f(c.syncUs, 1, 14)} ${f(c.asyncPct, 1, 9)} ${f(c.serviceUs, 1, 14)}`);
+    out.push(`${padRight(c.lparId, 8)} ${f(c.busyPct, 1, 6)} ${f(c.reqPerSec, 0, 10)} ${f(c.syncUs, 1, 14)} ${f(c.asyncPct, 1, 9)} ${f(c.serviceUs, 1, 14)}`);
   }
   if ((iv.cfStructures ?? []).length) {
     // Usage Summary lists every structure copy; synchronously duplexed pairs are marked PRIM/SEC (RMF Report Analysis p.365).
@@ -265,7 +278,7 @@ export function renderCfActivity(iv: RmfInterval): string {
     out.push('STRUCTURE NAME     TYPE   STATUS  CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)  CONTENTION %');
     const lockContention = iv.lockIndex === undefined ? null : Math.min(CF_LOCK_CONTENTION.capPct, CF_LOCK_CONTENTION.pctPerIndex * iv.lockIndex);
     for (const st of iv.cfStructures) {
-      out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.role ?? '', 7)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)} ${f(st.type === 'LOCK' ? lockContention : null, 1, 14)}`);
+      out.push(`${padRight(st.name, 18)} ${padRight(st.type, 6)} ${padRight(st.role ?? '', 7)} ${padRight(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)} ${f(st.type === 'LOCK' ? lockContention : null, 1, 14)}`);
     }
   }
   if ((iv.cfStructSystems ?? []).length) {
@@ -280,7 +293,7 @@ export function renderCfActivity(iv: RmfInterval): string {
         out.push('  SYSTEM     REQ/SEC   SYNC %  ASYNC %  SYNC SERV(us)  ASYNC SERV(us)');
         last = head;
       }
-      out.push(`  ${padR(r.system, 8)} ${f(r.reqPerSec, 0, 9)} ${f(r.syncPct, 1, 8)} ${f(100 - r.syncPct, 1, 8)} ${f(r.syncUs, 1, 14)} ${f(r.asyncUs, 1, 15)}`);
+      out.push(`  ${padRight(r.system, 8)} ${f(r.reqPerSec, 0, 9)} ${f(r.syncPct, 1, 8)} ${f(100 - r.syncPct, 1, 8)} ${f(r.syncUs, 1, 14)} ${f(r.asyncUs, 1, 15)}`);
     }
   }
   if ((iv.cfSystems ?? []).length) {
@@ -289,7 +302,7 @@ export function renderCfActivity(iv: RmfInterval): string {
     out.push('', 'SUBCHANNEL ACTIVITY');
     out.push('CF       SYSTEM     REQ/SEC   SYNC SERV(us)  ASYNC %   AVG SERV(us)  EST DIST(km)');
     for (const s of iv.cfSystems ?? []) {
-      out.push(`${padR(s.cfLparId, 8)} ${padR(s.system, 8)} ${f(s.reqPerSec, 0, 9)} ${f(s.syncUs, 1, 15)} ${f(s.asyncPct, 1, 9)} ${f(s.serviceUs, 1, 14)} ${f(s.distKm, 0, 13)}`);
+      out.push(`${padRight(s.cfLparId, 8)} ${padRight(s.system, 8)} ${f(s.reqPerSec, 0, 9)} ${f(s.syncUs, 1, 15)} ${f(s.asyncPct, 1, 9)} ${f(s.serviceUs, 1, 14)} ${f(s.distKm, 0, 13)}`);
     }
   }
   return out.join('\n');
@@ -306,13 +319,13 @@ export function renderDasdSummary(iv: RmfInterval): string {
     out.push('', 'LOGICAL CONTROL UNIT SUMMARY (HyperPAV aliases are pooled per LCU)');
     out.push('LCU  CONTENTS               VOLS  ALIASES  ACTIVITY RATE  AVG RESP(ms)   IOSQ(ms)  DISC(ms)  ALIASES/HOT VOL');
     for (const l of iv.lcus) {
-      out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.discMs, 3, 9)} ${f(l.aliasesPerHotVol, 2, 16)}`);
+      out.push(`${padRight(l.id, 4)} ${padRight(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.discMs, 3, 9)} ${f(l.aliasesPerHotVol, 2, 16)}`);
     }
   }
   return out.join('\n');
 }
 
-export const REPORT_KINDS = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CF', 'DASD'] as const;
+export const REPORT_KINDS = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CPU_ACTIVITY', 'CF', 'DASD'] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /** One interval report by kind; WLM_DETAIL defaults to ONLHI#1 and the WLM reports to the sysplex view. */
@@ -324,6 +337,8 @@ export function renderReport(iv: RmfInterval, kind: ReportKind, scKey = 'ONLHI#1
       return renderWlmDetail(iv, scKey, system);
     case 'PARTITION':
       return renderPartitionData(iv);
+    case 'CPU_ACTIVITY':
+      return renderCpuActivity(iv);
     case 'CF':
       return renderCfActivity(iv);
     case 'DASD':
@@ -350,7 +365,7 @@ export function renderScrt(
   ];
   for (const l of lines) {
     const p = products.find((x) => x.id === l.product)!;
-    out.push(`${padR(p.name, 16)} ${padR(p.lpars.join(','), 29)} ${f(l.peakMsu, 1, 13)}   ${padR(l.peakMsu > 0 ? clockText(l.peakTick) : '-', 22)} ${f(l.cost, 0, 10)}`);
+    out.push(`${padRight(p.name, 16)} ${padRight(p.lpars.join(','), 29)} ${f(l.peakMsu, 1, 13)}   ${padRight(l.peakMsu > 0 ? clockText(l.peakTick) : '-', 22)} ${f(l.cost, 0, 10)}`);
   }
   out.push('', `TOTAL ${f(lines.reduce((a, l) => a + l.cost, 0), 0, 82)}`, '', 'PEAK-HOUR CONTRIBUTION BY LPAR (R4HA, limited by defined capacity)');
   for (const l of lines) {
@@ -359,14 +374,14 @@ export function renderScrt(
       .sort()
       .map((k) => `${k} ${f(by[k]!, 1, 0)}`)
       .join('  ');
-    out.push(`${padR(products.find((x) => x.id === l.product)!.name, 16)} ${parts || '-'}`);
+    out.push(`${padRight(products.find((x) => x.id === l.product)!.name, 16)} ${parts || '-'}`);
   }
   if (lines.some((l) => l.msuHours !== undefined)) {
     out.push('', 'CONSUMPTION (TAILORED FIT PRICING; CHARGE ABOVE INCLUDES ANY SUB-CAPACITY PART OF THE MONTH)', 'PRODUCT          MSU-HOURS USED   BASELINE (PRORATED)   OVER BASELINE');
     for (const l of lines) {
       const used = l.msuHours ?? 0;
       const base = l.baselineMsuHours ?? 0;
-      out.push(`${padR(products.find((x) => x.id === l.product)!.name, 16)} ${f(used, 0, 14)}   ${f(base, 0, 19)}   ${f(Math.max(0, used - base), 0, 13)}`);
+      out.push(`${padRight(products.find((x) => x.id === l.product)!.name, 16)} ${f(used, 0, 14)}   ${f(base, 0, 19)}   ${f(Math.max(0, used - base), 0, 13)}`);
     }
   }
   return out.join('\n');

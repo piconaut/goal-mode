@@ -28,7 +28,7 @@ import { SCENARIOS } from '../src/content/scenarios';
 import type { DifficultyId } from '../src/content/difficulty';
 import { initState } from '../src/sim/core/init';
 import { step } from '../src/sim/core/step';
-import { clockAt } from '../src/sim/core/clock';
+import { clockAt, hhmm } from '../src/sim/core/clock';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
 import type { Command } from '../src/sim/core/commands';
 import type { SimState } from '../src/sim/core/types';
@@ -92,11 +92,6 @@ function fmt(v: unknown): string {
   return v == null ? '-' : String(v);
 }
 const pick = (o: unknown, fields: string[]) => fields.map((f) => `${f.split('.').pop()}=${fmt(get(o, f))}`).join(' ');
-
-const hhmm = (tick: number) => {
-  const m = Math.round(clockAt(tick).hourOfDay * 60);
-  return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-};
 
 function changeTick(at: string | undefined): number {
   if (!at) return 0;

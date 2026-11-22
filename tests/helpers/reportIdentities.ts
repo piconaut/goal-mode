@@ -8,9 +8,10 @@
 // `source`). A new report field must join an identity here (CLAUDE.md, Testing expectations).
 
 import { tieredMonthlyCost } from '../../src/content/pricing';
+import { VELOCITY_FLOOR } from '../../src/content/wlm/tuning';
 import { financeView } from '../../src/game/finance';
 import type { Mon3Row } from '../../src/game/mon3';
-import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../../src/game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics, smf113 } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { allWorkloads } from '../../src/game/workloads';
@@ -85,7 +86,7 @@ const goalOf = (def: ServiceDefinition, r: WlmRecord): Goal | null => goalInfo(d
  * response time ÷ goal, percentile from the distribution's bucket bounds), without the sim's PI code. */
 function piFromRow(goal: Goal, r: { velocity: number | null; avgRtSec: number | null; ended: number; buckets: readonly number[] }): number | null {
   if (goal.kind === 'DISC') return 0.81;
-  if (goal.kind === 'VEL') return r.velocity === null ? null : Math.min(99, goal.velocity / Math.max(r.velocity, 0.1));
+  if (goal.kind === 'VEL') return r.velocity === null ? null : Math.min(99, goal.velocity / Math.max(r.velocity, VELOCITY_FLOOR));
   // Fluid completions: a remainder below a billionth of a transaction is no transaction (the report shows ENDED 0).
   if (r.ended <= 1e-9) return null;
   if (goal.kind === 'AVG') return r.avgRtSec === null ? null : r.avgRtSec / goal.rtSec;
@@ -117,6 +118,32 @@ function plexSum(c: Check, o: IntervalObs, rows: readonly WlmRecord[], what: str
 }
 
 export const IDENTITIES: Identity[] = [
+  {
+    id: 'incident-cpu-basis',
+    title: 'CPU basis: host excess shares total 100; top class shares agree with that hour’s WLMGL pool APPL',
+    basis: 'game',
+    source: 'SPEC §10, RT-32: shares use captured pool CPU (CP includes IIPCP), not installed capacity; float rounding only',
+    check: (run, c) => {
+      for (const h of run.hours) for (const inc of h.end.incidents.filter((i) => i.startTick === h.end.sim.tick - TICKS_PER_HOUR)) {
+        const b = inc.basis;
+        if (!b?.pool || !b.excessSharesPct) continue;
+        c.close(sum(Object.values(b.excessSharesPct)), 100, ROUNDING, () => `${inc.id} host excess shares`);
+        c.close(b.excessSharePct ?? NaN, b.excessSharesPct[b.lparId] ?? NaN, ROUNDING, () => `${inc.id} judged host share`);
+        const intervals = run.intervals.filter((o) => o.iv.startTick >= inc.startTick && o.iv.endTick <= inc.startTick + TICKS_PER_HOUR);
+        const uses: Record<string, number> = {};
+        for (const o of intervals) for (const r of o.iv.wlm.filter((r) => r.lparId === b.lparId)) {
+          uses[r.scKey] = (uses[r.scKey] ?? 0) + o.iv.intervalSec * (b.pool === 'CP' ? r.applCpPct : r.applIipPct);
+        }
+        const total = sum(Object.values(uses));
+        for (const consumer of b.topConsumers ?? []) {
+          c.ok(consumer.kind === 'class' && consumer.scKey !== undefined, () => `${inc.id} consumer has a WLMGL identity`);
+          c.close(consumer.pct, 100 * (uses[consumer.scKey!] ?? 0) / total, ROUNDING, () => `${inc.id} ${b.lparId} ${consumer.name} share vs WLMGL APPL`);
+        }
+        const data = inc.subjects.cpu?.[b.lparId]?.[b.pool];
+        if (data) c.close(b.displaceablePct ?? NaN, 100 * sum(Object.values(data.classes).map((r) => r.displaceable)) / (data.engines || 1), ROUNDING, () => `${inc.id} displaceable share vs snapshot`);
+      }
+    },
+  },
   // ---------------------------------------------------------------- Workload Activity (WLMGL, SMF 72.3)
   {
     id: 'wlmgl-sysplex-sum',
@@ -283,7 +310,7 @@ export const IDENTITIES: Identity[] = [
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const r of o.iv.cpu) {
-          for (const [name, x] of [['LPAR BUSY', r.logicalBusyPct], ['MVS BUSY', r.mvsBusyPct ?? 0], ['LPAR MGMT', r.overheadPct], ['CAPPED', r.cappedPct], ['WLM%', r.wlmCappingPct ?? 0], ['PR/SM DLY', r.prsmDelayPct]] as const)
+          for (const [name, x] of [['LPAR BUSY', r.logicalBusyPct], ['MVS BUSY', r.mvsBusyPct], ['LPAR MGMT', r.overheadPct], ['CAPPED', r.cappedPct], ['WLM%', r.wlmCappingPct ?? 0], ['PR/SM DLY', r.prsmDelayPct]] as const)
             c.ok(x >= -1e-9 && x <= 100 + 1e-9, () => `${at(o)} ${r.lparId} ${name} ${x} outside 0–100`);
           if (!o.steady || r.logicalCps === 0) continue;
           c.close((r.logicalBusyPct * r.logicalCps) / 100, r.physicalEngines, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY × LCPs vs PHYS ENG`);
@@ -394,12 +421,12 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'partition-capping',
-    title: 'Partition Data: WLM% needs a defined capacity or capacity group and is part of the capping; capping needs a cap',
+    title: 'Partition Data: WLM% is the share of the interval WLM capped the image, needs a defined capacity or capacity group, and capping needs a cap',
     basis: 'z/OS',
-    // CAPPING DEF/WLM%: WLM% is the "Percentage of time when WLM capped the partition" (soft capping only).
-    // Left out: WLM% equal to the share of the interval WLM capped the image. The sim reports the share of demand
-    // the cap removed instead (BACKLOG RF-06).
-    source: 'RMF Report Analysis 3.1 p.401–402; WLM Planning 3.1 p.44–47',
+    // CAPPING DEF/WLM%: WLM% is the "Percentage of time when WLM capped the partition" (soft capping only), the
+    // samples where "WLM considers to cap" over all samples (SMF70NSW ÷ SMF70DSA). It counts the decision in force,
+    // not the demand it removed: CAPPED is that removed share, and can be below WLM%.
+    source: 'RMF Report Analysis 3.1 p.401–402; RMF User\'s Guide 3.1 p.186; MVS SMF 3.1 p.603; WLM Planning 3.1 p.44–47',
     check: (run, c) => {
       for (const o of run.intervals) {
         const n = o.iv.intervalSec / TICK_SEC;
@@ -407,18 +434,21 @@ export const IDENTITIES: Identity[] = [
           if (r.logicalCps === 0) continue;
           const wlm = r.wlmCappingPct ?? 0;
           const s = o.lpars[r.lparId]!;
-          c.atMost(wlm, r.cappedPct, ROUNDING, () => `${at(o)} ${r.lparId} WLM% above capping %`);
+          c.close(wlm, (100 * s.wlmCapTicks) / n, ROUNDING, () => `${at(o)} ${r.lparId} WLM% vs the ticks the soft cap was in force`);
+          // The soft cap removes demand only while WLM is capping.
+          c.ok(s.softCappedTicks <= s.wlmCapTicks, () => `${at(o)} ${r.lparId} ${s.softCappedTicks} soft-capped ticks, ${s.wlmCapTicks} with the soft cap in force`);
           // The share of demand a cap removed is at most the share of the time it bound.
-          c.atMost(wlm, (100 * s.softCappedTicks) / n, ROUNDING, () => `${at(o)} ${r.lparId} WLM% above the time soft-capped`);
           c.atMost(r.cappedPct, (100 * s.cappedTicks) / n, ROUNDING, () => `${at(o)} ${r.lparId} capping % above the time capped`);
-          c.ok(wlm > 0 === s.softCappedTicks > 0, () => `${at(o)} ${r.lparId} WLM% ${wlm} with ${s.softCappedTicks} soft-capped ticks`);
           if (!o.steady) continue;
           const l = o.config.lpars.find((x) => x.id === r.lparId)!;
           const cp = l.pools.find((p) => p.pool === 'CP');
           const soft = l.definedCapacityMsu !== null || l.capacityGroup !== null;
+          // With a defined capacity alone, the cap is in force exactly while the image entered the tick capped
+          // (WLM Planning 3.1 p.44).
+          if (l.definedCapacityMsu !== null && l.capacityGroup === null) c.ok(s.wlmCapTicks === s.capFlagTicks, () => `${at(o)} ${r.lparId} soft cap in force ${s.wlmCapTicks} ticks, capped flag ${s.capFlagTicks}`);
           if (wlm > 0) c.ok(soft, () => `${at(o)} ${r.lparId} WLM% ${wlm} with no defined capacity or group`);
           if (r.cappedPct > 0) c.ok(soft || cp?.absoluteCapEngines != null || !!cp?.initialCapping, () => `${at(o)} ${r.lparId} capped ${r.cappedPct} % with no cap defined`);
-          c.ok(r.definedCapacityMsu === l.definedCapacityMsu && (r.absoluteCapEngines ?? null) === (cp?.absoluteCapEngines ?? null), () => `${at(o)} ${r.lparId} DEF CAP / ABS CAP differ from the configuration`);
+          c.ok(r.definedCapacityMsu === l.definedCapacityMsu && r.absoluteCapEngines === (cp?.absoluteCapEngines ?? null), () => `${at(o)} ${r.lparId} DEF CAP / ABS CAP differ from the configuration`);
         }
       }
     },
@@ -492,7 +522,7 @@ export const IDENTITIES: Identity[] = [
     // in wait: LPAR BUSY = dispatch ÷ online, MVS BUSY = (online − wait − parked) ÷ (online − parked).
     source: 'Derived from the formulas of RMF Report Analysis 3.1 p.389; SPEC §17 "LPAR BUSY vs MVS BUSY"',
     check: (run, c) => {
-      for (const o of run.intervals) for (const r of o.iv.cpu) if (r.logicalCps > 0 && o.steady) c.atMost(r.logicalBusyPct, r.mvsBusyPct ?? 0, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY above MVS BUSY`);
+      for (const o of run.intervals) for (const r of o.iv.cpu) if (r.logicalCps > 0 && o.steady) c.atMost(r.logicalBusyPct, r.mvsBusyPct, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY above MVS BUSY`);
     },
   },
   // ---------------------------------------------------------------- Finance (SCRT-style bill)
@@ -832,12 +862,11 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'smf30-vs-wlmgl',
-    title: 'SMF 30 against WLMGL: a batch class with a response time goal ends one transaction per job, at queue + elapsed time',
+    title: 'SMF 30 against WLMGL: a batch class ends one transaction per job, at queue + elapsed time, whatever its goal',
     basis: 'z/OS',
     // "The number of batch transactions equals number of jobs"; the response time includes the "Time waiting for an
-    // Initiator" (TRANS-TIME ACTUAL = execution + queued + ...).
-    // Left out: the same count for batch classes with a velocity or discretionary goal. RMF's ENDED has no goal-type
-    // condition, but the sim counts job ends only into response-time-goal periods (BACKLOG RF-07).
+    // Initiator" (TRANS-TIME ACTUAL = execution + queued + ...). ENDED has no goal-type condition (RMF Report
+    // Analysis 3.1 p.530-531), so a velocity or discretionary batch class counts its job ends too.
     source: 'WLM Planning 3.1 p.71; JES2 Initialization and Tuning Guide 3.1 p.113–114; RMF Report Analysis 3.1 p.530–531',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -845,17 +874,30 @@ export const IDENTITIES: Identity[] = [
         const def = o.def;
         const jobs = o.iv.jobs.map((j) => {
           const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick && x.lparId === j.lparId)!;
-          return { ...j, serviceClass: classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass };
+          return { ...j, cls: classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }) };
         });
+        // A class or report class that also serves transaction workloads holds their completions in the same row.
+        const workloadScs = workloadClasses(run, o);
+        const workloadRcs = new Set(
+          allWorkloads(run.scenario, o.end)
+            .flatMap((w) => Object.keys(o.end.sim.routing[w.id] ?? w.routing).map((lparId) => classify(def, { ...w.work, SY: lparId }).reportClass))
+            .filter((x): x is string => x !== null),
+        );
         for (const lparId of systemsOf(o.iv)) {
-          for (const sc of new Set(jobs.filter((j) => j.lparId === lparId).map((j) => j.serviceClass))) {
-            const cls = def.classes.find((x) => x.id === sc);
-            // Every period a response time goal, and no transaction workload in the class: its ENDED are jobs.
-            if (!cls || !cls.periods.every((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT') || workloadClasses(run, o).has(sc)) continue;
-            const mine = jobs.filter((j) => j.lparId === lparId && j.serviceClass === sc);
-            const rows = scRows(o.iv, lparId).filter((r) => r.serviceClass === sc);
-            c.close(sum(rows.map((r) => r.ended)), mine.length, ROUNDING, () => `${at(o)} ${lparId} ${sc} ENDED vs jobs ended`);
-            c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(mine.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} response time vs queue + elapsed`);
+          const mine = jobs.filter((j) => j.lparId === lparId);
+          for (const sc of new Set(mine.map((j) => j.cls.serviceClass))) {
+            if (!def.classes.some((x) => x.id === sc) || workloadScs.has(sc)) continue;
+            const inClass = mine.filter((j) => j.cls.serviceClass === sc);
+            const rows = scRows(o.iv, lparId).filter((r) => !r.reportClass && r.serviceClass === sc);
+            c.close(sum(rows.map((r) => r.ended)), inClass.length, ROUNDING, () => `${at(o)} ${lparId} ${sc} ENDED vs jobs ended`);
+            c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inClass.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} response time vs queue + elapsed`);
+          }
+          for (const rc of new Set(mine.map((j) => j.cls.reportClass).filter((x): x is string => x !== null))) {
+            if (workloadRcs.has(rc)) continue;
+            const inRc = mine.filter((j) => j.cls.reportClass === rc);
+            const rows = (o.iv.wlmRc ?? []).filter((r) => r.lparId === lparId && r.serviceClass === rc);
+            c.close(sum(rows.map((r) => r.ended)), inRc.length, ROUNDING, () => `${at(o)} ${lparId} report class ${rc} ENDED vs jobs ended`);
+            c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inRc.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} report class ${rc} response time vs queue + elapsed`);
           }
         }
       }
@@ -883,7 +925,7 @@ export const IDENTITIES: Identity[] = [
             c.close(x.avgRtMs, r.class1Ms, ROUNDING, where(`${r.workloadId} response time 110 vs class 1`));
             c.close(x.cpuMs, r.cpuMs, ROUNDING, where(`${r.workloadId} CPU 110 vs 101`));
           }
-          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs + r.dbatQueueMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
+          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
         }
         for (const x of cics) {
           const w = h.workloads[x.workloadId];
@@ -894,6 +936,21 @@ export const IDENTITIES: Identity[] = [
         }
         for (const s of cicsStorageStats(h.end, key)) {
           c.ok(s.peakMb >= 0 && s.sosSec >= 0 && s.sosSec <= 3600, where(`${s.region} storage statistics`));
+        }
+        for (const s of db2Statistics(h.end, run.scenario, key)) {
+          // A new report field joins an identity. QUEDBAT counts the hour's waits, and the run keeps only the last
+          // tick's share, so a closed hour can prove the non-negativity and the absent -> 0 fallback.
+          c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT waited non-negative`));
+          if (last.dbatQueuedByLpar?.[s.lparId] === undefined) c.close(s.dbatQueued, 0, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT waited absent -> 0`));
+        }
+      }
+      // The open hour's count includes every tick so far, the last one included, and the run state keeps that
+      // tick's share (LparTick.dbatWaited): the report can never be below it (RF-02 B1).
+      const open = run.final.hour;
+      if (open && open.ticks > 0) {
+        for (const s of db2Statistics(run.final, run.scenario, 'current')) {
+          const tick = run.final.sim.last.lpars.find((l) => l.lparId === s.lparId)?.dbatWaited ?? 0;
+          c.atMost(tick, s.dbatQueued, ROUNDING, () => `open hour ${s.lparId} ${s.ssid} DBAT waited vs its last tick`);
         }
       }
     },
@@ -917,7 +974,7 @@ export const IDENTITIES: Identity[] = [
           return classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
         })));
         for (const group of workloadGroups(run, h.end, def)) {
-          // A batch job that ended in a class with a response time goal is a transaction there too (smf30-vs-wlmgl).
+          // A batch job that ended in a class is a transaction there too, whatever the goal (smf30-vs-wlmgl, RF-07).
           if (group.classes.some((sc) => jobClasses.has(sc))) continue;
           const rows = ivs.flatMap((o) => o.iv.wlm.filter((r) => r.lparId === '*PLEX' && group.classes.includes(r.serviceClass)));
           const recs = group.workloads.map((id) => last.workloads[id]).filter((x) => !!x);
@@ -960,7 +1017,7 @@ export const IDENTITIES: Identity[] = [
           c.close(share((m) => m.avgUsers.active * m.usingFrac), usingOf(r), DECAYED_PCT, where('USG vs USING %'));
           c.close(share((m) => m.avgUsers.delayProc), r.delayPct.cpu + r.delayPct.ziip, DECAYED_PCT, where('delay PRC vs DELAY % CPU + IIP'));
           c.close(share((m) => m.avgUsers.delayDev), r.delayPct.io, DECAYED_PCT, where('delay DEV vs DELAY % I/O'));
-          // Initiation queue delay has no Monitor III column and shows with STR (mon3.ts, APPROX).
+          // Initiation queue delay has no Monitor III column and shows with STR (mon3/index.ts, APPROX).
           c.close(share((m) => m.avgUsers.delayStor), r.delayPct.storage + (r.delayPct.queue ?? 0), DECAYED_PCT, where('delay STR vs DELAY % STO + QMPL'));
           c.close(share((m) => m.avgUsers.active * m.delay.cap), r.delayPct.cap, DECAYED_PCT, where('capping vs DELAY % CAP'));
           c.close(share((m) => m.avgUsers.active * m.unknownFrac), r.delayPct.other, DECAYED_PCT, where('UKN vs unknown'));
@@ -973,8 +1030,6 @@ export const IDENTITIES: Identity[] = [
     title: 'Monitor III: a sysplex row is the sum of its systems (CPU, ended rate, active and delayed users)',
     basis: 'z/OS',
     // Sysplex reports show an *ALL summary line over one row per system.
-    // Left out: zIIP and IIPCP engines and the users using PROC and DEV, which the sim splits by the last tick's mix,
-    // per row, so the sysplex row is not the sum of the systems' (BACKLOG CL-10).
     source: 'RMF Report Analysis 3.1 p.62, p.229–240',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -983,8 +1038,12 @@ export const IDENTITIES: Identity[] = [
           const w = (f: string) => () => `${at(o)} ${p.scKey} ${f}`;
           const add = (f: (r: Mon3Row) => number) => sum(parts.map(f));
           c.close(p.cpuEngines, add((r) => r.cpuEngines), DECAYED, w('CP engines'));
+          c.close(p.ziipEngines, add((r) => r.ziipEngines), DECAYED, w('zIIP engines'));
+          c.close(p.iipcpEngines, add((r) => r.iipcpEngines), DECAYED, w('IIPCP engines'));
           c.close(p.endedPerSec, add((r) => r.endedPerSec), DECAYED, w('ended/s'));
           c.close(p.avgUsers.active, add((r) => r.avgUsers.active), DECAYED, w('active users'));
+          c.close(p.avgUsers.proc, add((r) => r.avgUsers.proc), DECAYED, w('users using PROC'));
+          c.close(p.avgUsers.dev, add((r) => r.avgUsers.dev), DECAYED, w('users using DEV'));
           c.close(p.avgUsers.delayProc, add((r) => r.avgUsers.delayProc), DECAYED, w('users delayed PROC'));
           c.close(p.avgUsers.delayDev, add((r) => r.avgUsers.delayDev), DECAYED, w('users delayed DEV'));
           c.close(p.avgUsers.delayStor, add((r) => r.avgUsers.delayStor), DECAYED, w('users delayed STOR'));
@@ -999,8 +1058,6 @@ export const IDENTITIES: Identity[] = [
     // RMF gives USG %, DLY % and IDL % the same sample count as denominator but lets a job be using one resource and
     // delayed for another in one sample, so the book has no such sum; the sim's samples are exclusive states. That
     // DLY % exceeds the delay columns by the WLM capping delay is RMF's (p.109).
-    // Left out: users using PROC + DEV equal to USG, which the last tick's mix breaks when that tick had no using
-    // sample (BACKLOG CL-10).
     source: 'SPEC §17 "WLM samples", "Monitor III views"; RMF Report Analysis 3.1 p.106–110',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -1012,7 +1069,7 @@ export const IDENTITIES: Identity[] = [
           c.close(r.usingFrac + r.delayFrac + r.unknownFrac, 1, DECAYED, w('USG + DLY + UKN'));
           c.close(r.delay.cpu + r.delay.ziip + r.delay.io + r.delay.stor + r.delay.cap, r.delayFrac, DECAYED, w('delay columns + capping vs DLY'));
           c.close(r.delay.other, r.unknownFrac, DECAYED, w('UKN'));
-          c.atMost(r.avgUsers.proc + r.avgUsers.dev, r.usingFrac * a, DECAYED, w('users using above USG'));
+          c.close(r.avgUsers.proc + r.avgUsers.dev, r.usingFrac * a, DECAYED, w('users using PROC + DEV vs USG'));
           c.close(r.avgUsers.delayProc, (r.delay.cpu + r.delay.ziip) * a, DECAYED, w('users delayed PROC'));
           c.close(r.avgUsers.delayDev, r.delay.io * a, DECAYED, w('users delayed DEV'));
           c.close(r.avgUsers.delayStor, r.delay.stor * a, DECAYED, w('users delayed STOR'));
@@ -1038,7 +1095,7 @@ export const IDENTITIES: Identity[] = [
           if (io && r.velocity !== null) c.close(r.velocity, (100 * r.usingFrac) / (r.usingFrac + r.delayFrac), DECAYED_PCT, w('velocity vs USG ÷ (USG + DLY)'));
           c.ok(r.velocityAct === (r.workManager ? null : r.velocity), w('Exec Vel Act'));
           if (r.pi === null) continue;
-          if (r.goalVelocity !== null && r.velocity !== null) c.close(r.pi, Math.min(99, r.goalVelocity / Math.max(r.velocity, 0.1)), ROUNDING, w('velocity PI'));
+          if (r.goalVelocity !== null && r.velocity !== null) c.close(r.pi, Math.min(99, r.goalVelocity / Math.max(r.velocity, VELOCITY_FLOOR)), ROUNDING, w('velocity PI'));
           else if (r.goalRtMs !== null && r.goalPct === null && r.avgRtMs !== null) c.close(r.pi, r.avgRtMs / r.goalRtMs, ROUNDING, w('average response time PI'));
           else if (r.goalPct !== null && r.withinGoalPct !== null) c.ok(r.pi <= 1 === r.withinGoalPct >= r.goalPct - 1e-9, w(`percentile PI ${r.pi} with ${r.withinGoalPct} % in goal (goal ${r.goalPct} %)`));
         }
@@ -1221,10 +1278,10 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
   'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
   'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
-  'batch jobs ended in a class with a response time goal': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
+  'batch jobs ended in a class': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
     const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick);
     const sc = rt && classify(o.def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
-    return !!o.def.classes.find((x) => x.id === sc)?.periods.every((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT');
+    return !!o.def.classes.find((x) => x.id === sc);
   })),
   'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
   'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),

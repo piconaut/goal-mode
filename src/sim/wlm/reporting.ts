@@ -199,7 +199,7 @@ export function decayMoved(a: MovedSamples | undefined, m: MovedSamples | undefi
 }
 
 /** The moved samples in WLM accumulator terms (runtime.decayInto). */
-function asAcc(m: MovedSamples): Pick<ScpAcc, 'using' | 'delay' | 'delayCpu' | 'delayZiip' | 'delayIo' | 'delayOther' | 'delayCap' | 'cpuEngines' | 'usingIoNoVel' | 'delayIoNoVel'> {
+function asAcc(m: MovedSamples): Pick<ScpAcc, 'using' | 'delay' | 'delayCpu' | 'delayZiip' | 'delayIo' | 'delayOther' | 'delayCap' | 'cpuEngines' | 'ziipEngines' | 'ziipEnginesView' | 'usingCpu' | 'usingZiip' | 'usingIo' | 'iipcpEngines' | 'usingIoNoVel' | 'delayIoNoVel'> {
   return {
     using: m.usingCpu + m.usingZiip + m.usingIo,
     delay: m.delayCpu + m.delayZiip + m.delayIo + m.delayStorage + m.delayCap,
@@ -209,18 +209,24 @@ function asAcc(m: MovedSamples): Pick<ScpAcc, 'using' | 'delay' | 'delayCpu' | '
     delayOther: m.delayOther,
     delayCap: m.delayCap,
     cpuEngines: m.cpEngines + m.iipcpEngines,
+    ziipEngines: m.ziipEngines,
+    ziipEnginesView: m.ziipEngines,
+    usingCpu: m.usingCpu,
+    usingZiip: m.usingZiip,
+    usingIo: m.usingIo,
+    iipcpEngines: m.iipcpEngines,
     ...(m.usingIoNoVel !== undefined ? { usingIoNoVel: m.usingIoNoVel, delayIoNoVel: m.delayIoNoVel ?? 0 } : {}),
   };
 }
-const ACC_FIELDS = ['using', 'delay', 'delayCpu', 'delayZiip', 'delayIo', 'delayOther', 'delayCap', 'cpuEngines', ...NOVEL_FIELDS] as const;
+const ACC_FIELDS = ['using', 'delay', 'delayCpu', 'delayZiip', 'delayIo', 'delayOther', 'delayCap', 'cpuEngines', 'ziipEngines', 'ziipEnginesView', 'usingCpu', 'usingZiip', 'usingIo', 'iipcpEngines', ...NOVEL_FIELDS] as const;
 
 /** Decayed sums drift apart by rounding (and the moved part expires first): treat what is left at that scale as none. */
 const net = (a: number, m: number): number => (Math.abs(a - m) <= 1e-9 * Math.max(1, Math.abs(a)) ? 0 : a - m);
 
 /** One image's WLM accumulators as Monitor III reports them (the attribution of reportedTicks). */
-export function reportedAccs(accs: Readonly<Record<string, ScpAcc>>, targets: CicsTargets | undefined): Record<string, ScpAcc> {
+export function reportedAccs(accs: Readonly<Record<string, ScpAcc>>, targets: CicsTargets | undefined, iipcpReported = true): Record<string, ScpAcc> {
   const out: Record<string, ScpAcc> = { ...accs };
-  if (!targets) return out;
+  if (!targets) return foldIipcp(out, iipcpReported);
   for (const [k, a] of Object.entries(accs)) {
     if (!a.moved) continue;
     const m = asAcc(a.moved);
@@ -229,11 +235,18 @@ export function reportedAccs(accs: Readonly<Record<string, ScpAcc>>, targets: Ci
     for (const f of ACC_FIELDS) if (m[f] !== undefined && a[f] !== undefined) own[f] = net(a[f], m[f]);
     out[k] = own;
     for (const r of targets.regions) {
-      const reg = (out[r.scKey] = { ...(out[r.scKey] ?? { completions: 0, rtSumSec: 0, buckets: [], using: 0, delay: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayOther: 0, delayCap: 0, cpuEngines: 0 }) });
+      const reg = (out[r.scKey] = { ...(out[r.scKey] ?? { completions: 0, rtSumSec: 0, buckets: [], using: 0, delay: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayOther: 0, delayCap: 0, delayStorage: 0, cpuEngines: 0 }) });
       for (const f of ACC_FIELDS) if (m[f] !== undefined) reg[f] = (reg[f] ?? 0) + m[f] * r.share;
     }
   }
-  return out;
+  return foldIipcp(out, iipcpReported);
+}
+
+/** On an image with no zIIP defined, IIPCP time is reported as CP time (reportedTicks' withoutIipcp). */
+function foldIipcp(accs: Record<string, ScpAcc>, reported: boolean): Record<string, ScpAcc> {
+  if (reported) return accs;
+  for (const [key, a] of Object.entries(accs)) if (a.iipcpEngines) accs[key] = { ...a, iipcpEngines: 0 };
+  return accs;
 }
 
 /** CICS transaction rows show '-' for resources: work manager data and nothing left of their own. */

@@ -5,6 +5,7 @@
 //   npm run sweep -- --bots donothing,textbook,expert --seeds 1-5 --out runs/ci-sweep.csv
 //   npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]
 import { appendFileSync, readFileSync } from 'node:fs';
+import { isMain } from '../args';
 
 interface Band {
   dayMedian: [number, number];
@@ -65,7 +66,7 @@ export function checkBands(rows: Row[], seedsPerBot: number, bands = BANDS): { t
   return { table, failures };
 }
 
-if (process.argv[1]?.endsWith('balanceGate.ts')) {
+if (isMain(import.meta.url)) {
   const [file, seeds, scenario = 'midwest'] = process.argv.slice(2);
   if (!file || !seeds) throw new Error('usage: balanceGate.ts <sweep.csv> <seedsPerBot> [scenario]');
   const { table, failures } = checkBands(parseSweepCsv(readFileSync(file, 'utf8')), Number(seeds));

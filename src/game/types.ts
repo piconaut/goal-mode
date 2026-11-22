@@ -12,41 +12,18 @@ import type { EvidencePin, PinVerdict } from './evidence';
 import type { ProofResult } from './proof';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
-import type { SimState } from '../sim/core/types';
+import type { CpuGrant, CpuWait, SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
+import type { Facet, DraftOption, Mechanism, Trigger } from '../content/types';
 
 export type Phase = 'BRIEFING' | 'LIVE' | 'REVIEW' | 'GAMEOVER' | 'VICTORY';
-/** A stakeholder whose trust is tracked. Scenarios name their own; every scenario has Finance and Regulator. */
-export type Facet = string;
+// The content layer owns this vocabulary (src/content/types.ts) so it need not import from the game layer.
+export type { DraftOption, Facet, Mechanism, Trigger } from '../content/types';
+
 /** Midwest Mutual's facets (the default when a scenario names none). */
 export const FACETS: readonly Facet[] = ['Retail', 'Cards', 'Digital', 'Payments', 'Finance', 'Regulator'];
 /** The facets this run tracks, in display order. */
 export const facetsOf = (run: { trust: Record<Facet, number> }): Facet[] => Object.keys(run.trust);
-
-export type Mechanism =
-  | 'CPU_CAPACITY'
-  | 'CPU_PRIORITY'
-  | 'CAPPING'
-  | 'DEPENDENCY'
-  | 'LOCK_CONTENTION'
-  | 'CF_SERVICE'
-  | 'QR_TCB'
-  | 'THREAD_LIMIT'
-  | 'ROUTING'
-  | 'IO'
-  | 'STORAGE'
-  | 'JOB_FAILURE';
-
-export type Trigger =
-  | 'DEMAND_SURGE'
-  | 'CHANGE_REGRESSION'
-  | 'RUNAWAY_WORK'
-  | 'BATCH_OVERLAP'
-  | 'POLICY'
-  | 'HARDWARE_FAULT'
-  | 'NEW_WORKLOAD'
-  | 'GROWTH'
-  | 'APPLICATION_ERROR';
 
 export interface PlannedChange {
   id: number;
@@ -82,14 +59,15 @@ export interface ActiveEvent {
   /** The footprint's direct set (RT-14): the workloads whose own demand or path the card changes. */
   affects: string[];
   /** The footprint's reach while the card runs: image ids, and `JOB@LPAR` for a region reach. Re-resolved every tick
-   * and kept as the union over the hour (`affectsHour`), like a power cap's scope (absent = direct only: saves from
-   * before RT-14, and cards that load nothing shared). */
+   * and kept as the union over the hour (`affectsHour`), like a power cap's scope (absent = direct only: a card that
+   * loads nothing shared). */
   reach?: string[];
   /** Workloads that closed a met SLA hour (or BATCH a met night) with the card already running at its start: the card
    * is background for them, and ranks after a fresh one (docs/rca-design.md §4.4(2)). Sorted. */
   metWith?: string[];
-  /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
-  mechanisms?: Mechanism[];
+  /** Mechanisms the card causes; it only takes the blame for incidents with one of these (empty = none, so a card
+   * whose footprint loads nothing never takes blame). */
+  mechanisms: Mechanism[];
   /** Mechanism the card causes through failures rather than delay (copied from the card). */
   failureMechanism?: Mechanism;
   /** Hardware items refused while the card runs (copied from the card). */
@@ -119,10 +97,13 @@ export interface SmfHour {
   hourOfDay: number;
   workloads: Record<string, WorkloadHour>;
   /** Per workload, CPU per transaction ÷ the healthy baseline in force at close. Frozen when the hour closes so
-   * a past row keeps its "vs base" ratio however later hours move the EWMA (absent in older saves). */
+   * a past row keeps its "vs base" ratio however later hours move the EWMA (absent when no workload closed a rate). */
   cpuVsBase?: Record<string, number>;
-  /** CICS storage manager statistics per AOR (absent in older saves). */
+  /** CICS storage manager statistics per AOR (absent without the CICS monitoring tool). */
   cicsStorage?: Record<string, CicsStorageHour>;
+  /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member
+   * (QUEDBAT/QDSTQDBT, Db2 13 Command Reference p.303). */
+  dbatQueuedByLpar?: Record<string, number>;
 }
 
 /** CICS storage manager statistics for one region over an hour. */
@@ -138,6 +119,11 @@ export interface CapacityDay {
   day: number;
   /** Highest hourly CPC busy during the online prime shift. */
   peakCpcBusyPct: number;
+  /** Highest hourly MSU demand in the online prime shift (busy × installed capacity). Absent on days recorded
+   *  before PT-16, so readers derive or skip it. */
+  peakDemandMsu?: number;
+  /** Installed CP MSU capacity at the end of the day (Σ msuPerCp × CP engines). Absent before PT-16. */
+  installedMsu?: number;
   peakR4ha: Record<string, number>;
   /** Peak of the sum of R4HAs across LPARs (what the MLC bill uses). */
   peakR4haSum: number;
@@ -153,34 +139,68 @@ export interface HourAcc {
   maxCappedFrac: number;
   /** Max capped fraction per LPAR during the hour. */
   cappedByLpar: Record<string, number>;
-  /** Per LPAR: ticks of the hour in which the image's CP demand was capped (`cappedFrac > 0`). Absent in an hour
-   * accumulated before RT-08 (a save loaded mid-hour), which keeps the `cappedByLpar` reading of its worst tick. */
-  cappedTicksByLpar?: Record<string, number>;
+  /** Per LPAR: ticks of the hour in which the image's CP demand was capped (`cappedFrac > 0`). */
+  cappedTicksByLpar: Record<string, number>;
   cpcBusySum: number;
-  /** Per CPC: sum over the hour's ticks of general-CP busy (absent in older saves). */
-  cpcBusyById?: Record<string, number>;
+  /** Per CPC: sum over the hour's ticks of general-CP busy. */
+  cpcBusyById: Record<string, number>;
   /** Per LPAR: sum over the hour's ticks of CP delivered ÷ CP available to it (logical CPs, weight, white space). */
-  lparBusyById?: Record<string, number>;
+  lparBusyById: Record<string, number>;
   /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
-  cpByImportance?: Record<string, number[]>;
+  cpByImportance: Record<string, number[]>;
+  // RT-16 report ledgers (read by RT-32's game judge, never by the sim). Old hours lack these;
+  // accumulation starts at the first new tick (no backfill).
+  // A loaded mid-hour remains partial until the next full hour; merged nights likewise include only observed data.
+  /** Workload → image → completion-weighted wait seconds and completions. */
+  cpuWaitByWorkloadLpar?: Record<string, Record<string, CpuWait>>;
+  /** Image → period → CP/zIIP/IIPCP engine-ticks (CP-pool use = cp + iipcp). */
+  cpByScpLpar?: Record<string, Record<string, CpuGrant>>;
+  /** Image → server role → CP/zIIP/IIPCP engine-ticks. */
+  cpByRoleLpar?: Record<string, Record<string, CpuGrant>>;
+  /** Image → workload → CP/zIIP/IIPCP engine-ticks. */
+  cpByWorkloadLpar?: Record<string, Record<string, CpuGrant>>;
+  /** Image → period → CAP and total using + delay samples; includes the synthetic server period. */
+  capDelayByScpLpar?: Record<string, Record<string, { cap: number; samples: number }>>;
+  /** Ticks with capped server-role CPU, keyed by "lparId:role". */
+  roleCappedTicks?: Record<string, number>;
+  /** Per CPC: sum of zIIP delivered / installed engines, fraction-ticks. */
+  ziipBusyById?: Record<string, number>;
+  /** Per image: sum of min(1, zIIP delivered / available engines), fraction-ticks. */
+  ziipLparBusyById?: Record<string, number>;
   lockIndexSum: number;
   cicsStorage?: Record<string, CicsStorageHour>;
+  /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member. */
+  dbatQueuedByLpar: Record<string, number>;
 }
 
 /** The figures the capacity decision used, for the verdict the player is shown. Kept on the incident when the
  * truth is set: the RMF intervals don't carry the image measure, and the routing can change before the RCA. */
 export interface CapacityBasis {
-  /** The image whose numbers decided: one that cleared a line, else the busiest CPC. */
+  /** Largest CPU-wait excess; legacy hours choose a full host, else the busiest CPC. */
   lparId: string;
   cpcId: string;
-  /** Hour-average CPC general-CP busy, %. */
+  /** Hour-average CPC busy on `pool` (CP for old incidents), %. */
   cpcBusyPct: number;
-  /** Hour-average delivered ÷ available CP of the image, %, the measure the rule uses. */
+  /** Hour-average delivered ÷ available engines of the image's judged pool, %. */
   lparBusyPct: number;
-  /** Share of the image's CP that went to less important work, %. */
+  /** Legacy donor reading: share of the image's CP that went to less important work, %. Kept for saved incidents. */
   donorPct: number;
-  /** A capacity line was reached and the donor test passed: the verdict is CPU_CAPACITY. */
+  /** Absent on saved incidents predating RT-32; those retain their CP/donor reading. */
+  pool?: 'CP' | 'ZIIP';
+  excessSharePct?: number;
+  excessSharesPct?: Record<string, number>;
+  displaceablePct?: number;
+  topConsumers?: { name: string; kind: 'class' | 'job' | 'space'; pct: number; scKey?: string }[];
+  /** zIIP could not overflow despite CP room. */
+  overflowBlocked?: boolean;
+  /** A capacity line was reached with little displaceable use: the verdict is CPU_CAPACITY. */
   full: boolean;
+  /** A CAPPING verdict (RT-33): what held the work back. IMAGE is the image's own cap, GROUP a resource-group
+   * maximum on the hurt work's periods or on the server period holding its regions, and SERVER a resource-group cap
+   * on a server role the work depends on. Absent on saved incidents that predate RT-33. */
+  capBy?: 'IMAGE' | 'GROUP' | 'SERVER';
+  /** The resource group behind a GROUP or SERVER cap: the capped class's `resourceGroup`. */
+  capGroup?: string;
 }
 
 /** What the evidence judge derived when the incident opened (RT-04): the hurt work's service classes (including the
@@ -197,9 +217,17 @@ export interface IncidentSubjects {
   hosts: string[];
   /** CICS regions (AOR/TOR) serving the transactions, by jobname and image. */
   servers: { jobname: string; lparId: string }[];
-  /** The region classes among `classes` (RT-12): a row on one of them is the server's, not the hurt work's. Absent in
-   * saves written before RT-12, which then treat every recorded class as the work's own. */
-  serverClasses?: string[];
+  /** The region classes among `classes` (RT-12): a row on one of them is the server's, not the hurt work's. */
+  serverClasses: string[];
+  /** Frozen RT-32 consumer accounting: proof and truth read the same exclusions after policy edits. */
+  cpu?: Record<string, Record<'CP' | 'ZIIP', CpuConsumers>>;
+}
+
+export interface CpuConsumers {
+  /** Pool engines averaged across the observed hour ticks. */
+  engines: number;
+  classes: Record<string, { used: number; displaceable: number; workloads: string[] }>;
+  jobs: Record<string, { used: number; displaceable: number }>;
 }
 
 /** The answers a fair expert could defend from visible data, always including the primary (RT-07): one incident's, or
@@ -213,15 +241,13 @@ export interface Accepted {
 export interface IncidentTruth {
   mechanism: Mechanism;
   trigger: Trigger;
-  /** Answers a fair expert could defend from visible data, always including the primary (RT-07). Absent in saves
-   * written before RT-07: read it through `acceptedOf` (game/sla.ts), which falls back to the primary alone. */
-  accepted?: Accepted;
+  /** Answers a fair expert could defend from visible data, always including the primary (RT-07). */
+  accepted: Accepted;
   /** One line per accepted answer that is not the primary, keyed by the answer, for the post-RCA reply. */
   notes?: Record<string, string>;
   /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`,
-   * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. Absent in
-   * saves written before RT-07, which group by equal mechanism and trigger. */
-  cause?: string;
+   * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. */
+  cause: string;
 }
 
 export interface Incident {
@@ -234,15 +260,14 @@ export interface Incident {
   worstAttainmentPct: number;
   truth: IncidentTruth;
   /** The capacity figures behind a CPU mechanism verdict, taken when the truth was set (absent for other
-   * mechanisms and in old saves). */
+   * mechanisms). */
   basis?: CapacityBasis;
   /** AIOps hypotheses when the incident opened (tool AIOPS), best first. */
   aiops?: Hypothesis[];
-  /** Classes, images and serving regions as they were when the incident opened (RT-04; absent in old saves). */
-  subjects?: IncidentSubjects;
-  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). `proof` is the
-   * filed claims' recipes over the attached pins (RT-13; absent in saves written before it and when no pin was
-   * attached). */
+  /** Classes, images and serving regions as they were when the incident opened (RT-04). */
+  subjects: IncidentSubjects;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed. `proof` is the filed claims' recipes
+   * over the attached pins (RT-13; absent when no pin was attached). */
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string } | null;
   trustLost: number;
   /** Id of the group's lead, the first incident of its cause (docs/rca-design.md §4.5): one RCA covers the group,
@@ -266,8 +291,8 @@ export interface DayReport {
   score: number;
   mlcEstimate: number;
   events: string[];
-  /** Worst sysplex PI per service-class period over the day's RMF intervals (absent in old saves). */
-  piWorst?: Record<string, number>;
+  /** Worst sysplex PI per service-class period over the day's RMF intervals. */
+  piWorst: Record<string, number>;
 }
 
 export interface Message {
@@ -277,17 +302,11 @@ export interface Message {
   body: string;
 }
 
-export interface DraftOption {
-  id: string;
-  title: string;
-  description: string;
-}
-
 export interface RunState {
-  version: 1;
+  /** `SAVE_VERSION` (game/runFile.ts): another version is refused at load. */
+  version: 2;
   scenarioId: string;
-  /** Absent in saves from before difficulty presets (= Normal). */
-  difficulty?: DifficultyId;
+  difficulty: DifficultyId;
   seed: number;
   /** ISO date (UTC) when this is a daily-challenge run. */
   daily?: string;

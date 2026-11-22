@@ -2,19 +2,21 @@ import { EVIDENCE, PROOF } from '../../src/content/evidence';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import type { EvidencePin } from '../../src/game/evidence';
-import { judgeEvidence } from '../../src/game/evidence';
+import { judgeEvidence, incidentSubjects } from '../../src/game/evidence';
 import { newRun, submitRca } from '../../src/game/run';
 import { alsoAcceptedOf } from '../../src/game/run/rca';
 import type { Incident, RunState } from '../../src/game/types';
+import { truthOf } from '../helpers/truth';
 
 function grouped(): RunState {
   const r = newRun(MIDWEST, MIDWEST_GAME, 7);
-  const base: Incident = {
-    id: 1, workloadId: 'RBANK', day: r.day, startTick: r.sim.tick, endTick: r.sim.tick,
-    hours: 1, worstAttainmentPct: 80, truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' },
-    rca: null, trustLost: 0,
-  };
-  return { ...r, incidents: [base, { ...base, id: 2, workloadId: 'CARDAUTH', rcaGroup: 1 }] };
+  const base = (workloadId: string, id: number, over: Partial<Incident> = {}): Incident => ({
+    id, workloadId, day: r.day, startTick: r.sim.tick, endTick: r.sim.tick,
+    hours: 1, worstAttainmentPct: 80, truth: truthOf('CPU_PRIORITY', 'POLICY'),
+    subjects: incidentSubjects(r, MIDWEST, workloadId, r.day),
+    rca: null, trustLost: 0, ...over,
+  });
+  return { ...r, incidents: [base('RBANK', 1), base('CARDAUTH', 2, { rcaGroup: 1 })] };
 }
 
 function pin(r: RunState, over: Partial<EvidencePin> = {}): EvidencePin {
@@ -66,8 +68,8 @@ describe('grouped RCA evidence verdicts', () => {
     r.incidents = [
       // The lead's hour has room, so its line rules capacity out; the member's hour is full, which is what makes the
       // union accept it.
-      { ...r.incidents[0]!, basis: basis({}), truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', accepted: { mechanisms: ['CPU_PRIORITY'], triggers: ['POLICY'] } } },
-      { ...r.incidents[1]!, basis: basis({ cpcBusyPct: 99, donorPct: 0, full: true }), truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY', accepted: { mechanisms: ['CPU_CAPACITY'], triggers: ['POLICY'] } } },
+      { ...r.incidents[0]!, basis: basis({}), truth: truthOf('CPU_PRIORITY', 'POLICY') },
+      { ...r.incidents[1]!, basis: basis({ cpcBusyPct: 99, donorPct: 0, full: true }), truth: truthOf('CPU_CAPACITY', 'POLICY') },
     ];
     const rca = submitRca(r, 1, 'CPU_CAPACITY', 'POLICY').incidents[0]!.rca!;
     expect(rca.points).toBe(5);
@@ -109,7 +111,7 @@ describe('grouped RCA evidence verdicts', () => {
 
   it('selects evidence independently per pin and awards group points and bonuses once', () => {
     const r = grouped();
-    r.incidents = r.incidents.map((inc) => ({ ...inc, truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY' } }));
+    r.incidents = r.incidents.map((inc) => ({ ...inc, truth: truthOf('CPU_CAPACITY', 'POLICY') }));
     // RBANK's region class waiting for CPU on PROD1 (also the POLICY symptom), CPCA full, and CARDAUTH's own rate at
     // its normal: the CPU_CAPACITY and POLICY recipes over the group's two incidents (RT-13).
     r.pins = [

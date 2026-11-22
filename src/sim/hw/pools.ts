@@ -15,7 +15,7 @@ import {
   type PoolClaim,
 } from './prsm';
 
-export const POOLS: readonly PoolType[] = ['CP', 'ZIIP', 'ICF'];
+const POOLS: readonly PoolType[] = ['CP', 'ZIIP', 'ICF'];
 
 export interface PoolDemand {
   lparId: string;
@@ -131,6 +131,7 @@ export function resolveCpc(
         mvsBusyFrac: mvsBusyFrac(demand, m.pc.logical, m.pc.logical),
         cappedFrac: 0,
         softCappedFrac: 0,
+        softCapInForce: false,
       };
     }
 
@@ -144,8 +145,10 @@ export function resolveCpc(
     });
     const alloc = allocatePoolDetailed(claims, usablePhysical);
     const delivered = alloc.delivered;
-    // What each LPAR would get with no caps, so capping counts only what a binding cap removed and PR/SM
-    // contention doesn't (RMF Report Analysis p.401).
+    // What each LPAR would get with no caps, so `cappedFrac` counts only what a binding cap removed and PR/SM
+    // contention doesn't. That is the sim's own measure (the Monitor III CPC "capped %" column is ours): RMF's WLM%
+    // and WLM Capping % are the share of time WLM capped the partition, not capacity removed (RMF Report Analysis
+    // PDF p.401 (printed 361), PDF p.98 (printed 58)).
     const uncapped = claims.some((c) => Number.isFinite(c.capEngines))
       ? allocatePoolDetailed(claims.map((c) => ({ ...c, capEngines: Infinity })), usablePhysical).delivered
       : delivered;
@@ -168,6 +171,10 @@ export function resolveCpc(
       const cappedFrac = binds ? clamp(((uncapped[i] ?? del) - del) / uncappedWant, 0, 1) : 0;
       const softCap = demandOf(m.lpar.id, pool)?.softCapEngines ?? Infinity;
       const softCappedFrac = softCap <= claim.capEngines + 1e-9 ? cappedFrac : 0;
+      // "WLM considers to cap" (SMF70NSW): the decision is in force even when demand is under the cap and nothing is
+      // removed. Partition Data WLM% counts the samples where it is, not the demand it cut (RMF Report Analysis
+      // PDF p.401, printed 361).
+      const softCapInForce = Number.isFinite(softCap);
       out[poolKey(m.lpar.id, pool)] = {
         pool,
         entitlementEngines: e,
@@ -187,6 +194,7 @@ export function resolveCpc(
         ),
         cappedFrac,
         softCappedFrac,
+        softCapInForce,
       };
     });
   }

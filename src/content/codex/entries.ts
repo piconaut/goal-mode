@@ -316,7 +316,7 @@ export const CODEX: CodexEntry[] = [
     id: 'capacity-change',
     title: 'Capacity change (CHANGE REASON, SMF70CAI/SMF70CCR)',
     category: 'Capacity & cost',
-    body: 'A CPC can run below its normal capacity without losing engines. SMF type 70 records it: SMF70CAI is 100 at normal capacity and 1 to 99 when capacity is reduced (temporary capacity such as CBU or On/Off CoD is not counted), and SMF70CCR gives the reason: 1 for a manual control, above 1 for a machine condition or an external exception. RMF prints the reason as CHANGE REASON in the CPU Activity report header: NONE, POWERSAVE (power-save mode, set by the user) or MACHINE (cycle steering, initiated by the machine). Every LPAR on the machine delivers less MSU at the same busy, so CPU delay rises everywhere at once. In this game the line appears on Partition Data, as the CPU Activity report is not rendered.',
+    body: 'A CPC can run below its normal capacity without losing engines. SMF type 70 records it: SMF70CAI is 100 at normal capacity and 1 to 99 when capacity is reduced (temporary capacity such as CBU or On/Off CoD is not counted), and SMF70CCR gives the reason: 1 for a manual control, above 1 for a machine condition or an external exception. RMF prints the reason as CHANGE REASON in the CPU Activity report header: NONE, POWERSAVE (power-save mode, set by the user) or MACHINE (cycle steering, initiated by the machine). Every LPAR on the machine delivers less MSU at the same busy, so CPU delay rises everywhere at once.',
     sources: [
       { label: 'IBM z/OS 3.1 MVS System Management Facilities (SMF), p.589: SMF70CAI, SMF70CCR', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=589' },
       { label: 'IBM z/OS 3.1 RMF Report Analysis, p.391–392: CPU Activity report, CHANGE REASON', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=391' },
@@ -327,7 +327,7 @@ export const CODEX: CodexEntry[] = [
     id: 'cics-sos',
     title: 'CICS MXT and short-on-storage (SOS)',
     category: 'Subsystems',
-    body: 'MXT caps how many user tasks a CICS region runs at once; work beyond it waits to be attached, which shows as queue time rather than CPU. Each task also needs dynamic storage, so EDSALIM (default 800 MB) has to hold the region\'s base storage plus its in-flight tasks. When the extended DSAs run short (SOS, message DFHSM0133), CICS defers new task attaches and stops new input until storage frees up, so it looks like an MXT wall. The storage manager statistics show it: EDSA peak at EDSALIM and time spent SOS. Fixes: find the leak and recycle the region, raise EDSALIM while the region runs, lower MXT to what storage holds (fewer concurrent tasks use less storage), or move work elsewhere. A very large EDSALIM delays the SOS warning until a leak is hard to resolve.',
+    body: 'MXT caps how many user tasks a CICS region runs at once; work beyond it waits to be attached, which shows as queue time rather than CPU. Each task also needs dynamic storage, so EDSALIM (default 800 MB) has to hold the region\'s base storage plus its in-flight tasks. When the extended DSAs run short (SOS, message DFHSM0133), CICS defers new task attaches and stops new input until storage frees up, so it looks like an MXT wall. The storage manager statistics show it: EDSA peak at EDSALIM and time spent SOS. Fixes: find the leak and recycle the region, raise EDSALIM while the region runs, lower MXT to what storage holds (fewer concurrent tasks use less storage), or move work elsewhere. A very large EDSALIM delays the SOS warning until a leak is hard to resolve. An alert rule can watch the region SOS minutes (CICS monitoring) and page on them, since response times cover ended transactions only and can stay green while tasks stall.',
     sources: [
       { label: 'IBM CICS TS 6: Performance (performance_pdf), p.73 EDSALIM, p.76–78 SOS', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/performance_pdf.pdf#page=76' },
       { label: 'IBM CICS TS: Short-on-storage conditions in dynamic storage areas', url: 'https://www.ibm.com/docs/en/cics-ts/6.x?topic=storage-short-conditions-in-dynamic-areas' },
@@ -338,8 +338,11 @@ export const CODEX: CodexEntry[] = [
     id: 'cod',
     title: 'On/Off Capacity on Demand and Capacity Provisioning',
     category: 'Capacity & cost',
-    body: 'On/Off CoD temporarily activates spare engines for a daily fee. z/OS Capacity Provisioning Manager can activate it automatically by rule, but it should not be combined with hard-capped LPARs.',
-    sources: [{ label: 'IBM: z/OS Capacity Provisioning', url: 'https://www-03.ibm.com/systems/z/os/zos/features/cpm' }],
+    body: 'On/Off CoD temporarily activates spare engines for a daily fee. z/OS Capacity Provisioning Manager can activate it automatically by rule, but it should not be combined with hard-capped LPARs. IBM documents manual deactivation and 24-hour billing windows. In this game a three-day lease can be ended early at 06:00 the next day (APPROX: the fixed lease and next-06:00 timing are game rules).',
+    sources: [
+      { label: 'IBM: z/OS Capacity Provisioning', url: 'https://www-03.ibm.com/systems/z/os/zos/features/cpm' },
+      { label: 'IBM Redbook SG24-8579-00, IBM z17 Technical Guide (Jul 2025), PDF p.370, p.372: CoD remains active until deactivated, exhausted or expired; 24-hour billing', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg248579.pdf#page=372' },
+    ],
     discover: { tools: ['AUTOMATION'] },
   },
   {
@@ -402,6 +405,17 @@ export const CODEX: CodexEntry[] = [
       { label: 'IBM z/OS 3.1 MVS SMF p.1133: record type 101 (Db2 accounting)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1133' },
       { label: 'IBM Db2 13 for z/OS Managing Performance pp.709, 726, 729–731: class 1/2/3 times', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=729' },
       { label: 'IBM Db2 13 for z/OS Managing Performance pp.143, 476, 660, 703: DBAT queue and package accounting', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=143' },
+    ],
+    discover: { tools: ['DB2_ACCT'] },
+  },
+  {
+    id: 'db2-ddf',
+    title: 'Db2 statistics and DISPLAY DDF (QUEDBAT)',
+    category: 'Measurement',
+    body: 'Db2 does not trace a request\'s wait for a database access thread (DBAT) in SMF 101: the request waits before the thread exists, so the wait appears in no accounting record. The clue is the count of work items that had to wait for a DBAT. `-DISPLAY DDF DETAIL` reports QUEDBAT, "the cumulative number of new work items that had to wait for a DBAT to become available", which corresponds to QDSTQDBT in the statistics record (IFCID 1) and is reset only at Db2 restart, not per interval. A non-zero value means MAXDBAT was reached and requests queued for a slot; with a large enough backlog, throughput and response time suffer. Raise MAXDBAT (or spread the work over more members) to relieve it. This game shows the cumulative count of DBAT requests that waited during the hour, per Db2 member, in the Db2 statistics view.',
+    sources: [
+      { label: 'IBM Db2 13 Command Reference p.303: DISPLAY DDF DETAIL, QUEDBAT/QDSTQDBT', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=303' },
+      { label: 'IBM Db2 13 for z/OS Managing Performance p.143: MAXDBAT queue not traced, IFCID 73 reports the count', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=143' },
     ],
     discover: { tools: ['DB2_ACCT'] },
   },
@@ -500,4 +514,3 @@ export const CODEX: CodexEntry[] = [
   },
 ];
 
-export const codexEntry = (id: string): CodexEntry | undefined => CODEX.find((e) => e.id === id);

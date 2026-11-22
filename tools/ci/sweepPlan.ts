@@ -56,6 +56,8 @@ export function planSweep(text: string, shardsWanted?: number): SweepPlan {
   return { args: rest.join(' '), seeds: `${lo}-${hi}`, shards };
 }
 
+// Self-contained on purpose: the remote runners overlay this file into the ref they test or sweep, and that
+// ref may predate tools/args.ts, so the entry guard is a suffix check rather than isMain().
 if (process.argv[1]?.endsWith('sweepPlan.ts')) {
   const plan = planSweep(process.argv[2] ?? '', Number(process.argv[3] ?? '') || undefined);
   console.log(`args=${plan.args}`);

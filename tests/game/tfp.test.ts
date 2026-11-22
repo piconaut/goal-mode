@@ -4,11 +4,13 @@ import { MIDWEST } from "../../src/content/scenarios";
 import { codexDiscovered } from "../../src/game/codex";
 import { financeView } from "../../src/game/finance";
 import { advance, newRun, startDay } from "../../src/game/run";
-import { decideTfp, tfpAtDayEnd } from "../../src/game/tfp";
+import { decideTfp, quoteTfp, tfpAtDayEnd } from "../../src/game/tfp";
 import type { RunState } from "../../src/game/types";
+import { TICKS_PER_DAY } from "../../src/sim/core/units";
 import {
   billLines,
   closeMonth,
+  monthElapsedFrac,
   startTfp,
   tfpCharge,
   type CostState,
@@ -72,6 +74,54 @@ describe("Tailored Fit Pricing", () => {
       peaks: [{ product: "ZOS", peakMsu: 900, peakTick: 5 }],
     };
     expect(billLines(peaky, zos)[0]!.cost).toBeCloseTo(300_000);
+  });
+
+  it("quotes actual consumed MSU-hours per product and the run rate to the quote", () => {
+    // The R4HA samples are a DC-limited 4-hour average, not consumption: quote from `usage` instead.
+    const usage = Object.fromEntries(products.map((p) => [p.id, 160_000]));
+    const tick = 10 * TICKS_PER_DAY;
+    const tracked = 240; // 10 played days, the hours the usage covers
+    const quoted = {
+      ...offerDayRun(),
+      sim: { ...offerDayRun().sim, tick, cost: { ...offerDayRun().sim.cost, usage, usageHours: tracked } },
+    };
+    const offer = quoteTfp(quoted, MIDWEST);
+    expect(offer.quotedTick).toBe(tick);
+    expect(monthElapsedFrac(tick)).toBeGreaterThan(tracked / 720); // the run's month began before tick 0
+    for (const row of offer.products!) {
+      expect(row.usageEstimated).toBeUndefined();
+      expect(row.msuHoursUsed).toBe(160_000);
+      expect(row.projectedMsuHours).toBeCloseTo((160_000 / tracked) * 720);
+      const samples = quoted.sim.cost.hourly[row.id]!;
+      const sampled = samples.reduce((a, x) => a + x, 0);
+      expect(sampled).toBeLessThan(160_000); // the samples alone would understate the month
+      const avg = sampled / samples.length;
+      // The committed baseline is still the contract figure from the quote-time R4HA profile.
+      expect(row.baselineMsuHours).toBeCloseTo(avg * 720 * (1 + TFP_OFFER.baselineGrowthFrac));
+      expect(row.pricePerMsu).toBeCloseTo(row.subcapMonthly / row.peakMsu);
+      expect(row.pricePerMsuHour).toBeCloseTo((row.subcapMonthly * (1 - TFP_OFFER.discountFrac)) / row.baselineMsuHours);
+    }
+    const proj = offer.projection!;
+    expect(proj.msuHours).toBeCloseTo((160_000 / tracked) * 720 * products.length);
+    expect(proj.overageMsuHours).toBeGreaterThan(0); // the consumption pace now really can exceed the baseline
+    expect(proj.tfpMonthly).toBeGreaterThan(offer.baselineMonthly);
+    expect(proj.subcapMonthly).toBeCloseTo(offer.subcapMonthly);
+    expect(proj.savings).toBeCloseTo(offer.subcapMonthly - proj.tfpMonthly);
+    expect(proj.savings).toBeLessThan(0);
+    const shown = financeView({ ...quoted, tfpOffer: offer }, MIDWEST);
+    expect(shown.offer?.products?.[0]?.msuHoursUsed).toBe(160_000);
+    expect(shown.offer?.quotedAt).toMatch(/^day \d+ /);
+  });
+
+  it("labels usage as an R4HA estimate on a run saved before consumption tracking", () => {
+    const r = offerDayRun();
+    const legacy = { ...r, sim: { ...r.sim, cost: { ...r.sim.cost, usage: undefined, usageHours: undefined } } };
+    expect(legacy.sim.cost.usage).toBeUndefined();
+    const offer = quoteTfp(legacy, MIDWEST);
+    for (const row of offer.products!) {
+      expect(row.usageEstimated).toBe(true);
+      expect(row.msuHoursUsed).toBe((legacy.sim.cost.hourly[row.id] ?? []).reduce((a, x) => a + x, 0));
+    }
   });
 
   it("is offered once, signed only outside the live day, and expires", () => {

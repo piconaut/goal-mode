@@ -9,9 +9,31 @@ import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
 import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
 import { TICK_SEC } from '../units';
-import { type BatchSliceRef, DEFAULT_EFF_RATIO, type TickCtx, usesDb2 } from './ctx';
+import { DEFAULT_EFF_RATIO } from '../../../content/sim-tuning';
+import { SERVER_STARVATION } from '../../../content/wlm/tuning';
+import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { atOrFind } from './plan';
 import { applyCpuModifiers, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
+
+/** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
+ * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
+ * on that role (RF-09). Then the dependents complete at the server's granted share — throughput-limited, as a
+ * starved MSTR/DBM1 holds commits and getpages and the work piles up behind its own limits — and the rest of the
+ * arrivals time out there instead of all completing late. An image-wide CP shortage is not a capped role: it keeps
+ * the bounded-delay form, because it takes the dependents' own CPU with it. Only roles recorded on this image's own
+ * tick are seen, so a dependent served by another image keeps the latency form. */
+export function starvedShare(
+  servers: readonly { role: string }[] | undefined,
+  roleHealth: Readonly<Record<string, { health: number; capped?: boolean }>> | undefined,
+): number {
+  if (!servers || !roleHealth) return 1;
+  let share = 1;
+  for (const srv of servers) {
+    const h = roleHealth[srv.role];
+    if (h?.capped && h.health < SERVER_STARVATION.healthBelow) share = Math.min(share, h.health);
+  }
+  return share;
+}
 
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 export function lparDemand(t: TickCtx, l: LparConfig): void {
@@ -82,7 +104,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   // Task-slot queues persist across ticks: offered load above MXT / MAXDBAT builds a backlog that only
   // drains at limit / hold time, and times out (MAXCONQW for DDF).
   const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
-    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0 };
+    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0, waited: 0 };
     const key = kind === 'MXT' ? img.mxtKey : img.dbatKey;
     const hold = rate > 0 ? holdW / rate : 0;
     const refHold = rate > 0 ? refW / rate : 0;
@@ -90,10 +112,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     if (r.queued > 1e-9) t.slotQueue[key] = r.queued;
     // Same queue at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
     const refSec = rate * refHold >= Math.max(1, Math.floor(limit)) ? r.waitSec : slotQueueStep(0, rate, refHold, limit, timeoutSec, TICK_SEC).waitSec;
-    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac };
+    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac, waited: r.waited };
   };
   const mxt = slotQ('MXT', aors.length > 0, cicsRate, cicsRtWeighted, cicsRefWeighted, maxTasks, SLOT_QUEUE.cicsQueueTimeoutSec);
   const dbat = slotQ('DBAT', !!db2, ddfRate, ddfRtWeighted, ddfRefWeighted, db2?.maxDbat ?? 0, SLOT_QUEUE.ddfQueueTimeoutSec);
+  if (dbat.waited > 1e-9) t.dbatWaitedByLpar[l.id] = dbat.waited;
 
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {
@@ -136,6 +159,10 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     failFrac = Math.max(failFrac, abendFrac);
     if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
+    // RF-09: a starved server carries its dependents at its granted share, so that part of the arrivals times out
+    // in the dependent queue instead of every arrival completing late (SPEC §5.6).
+    const share = starvedShare(w.servers, prev.last.lpars.find((x) => x.lparId === l.id)?.roleHealth);
+    if (share < 1) failFrac = Math.max(failFrac, 1 - share);
     s.ioPerTxn = ioPerTxn;
     s.extraParts = parts;
     s.extraOtherSec = extra;
@@ -144,6 +171,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     s.failFrac = failFrac;
     s.cpEngines = s.cpEngines + s.rate * cpuAdd;
     s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
+    if (share < 1) {
+      // Their CPU follows completions: work that times out waiting for the starved server does not run above it.
+      s.cpEngines *= share;
+      s.ziipEngines *= share;
+    }
   }
   const slices = base;
 
@@ -232,12 +264,12 @@ export function planLpar(t: TickCtx, l: LparConfig): void {
   const hasZiip = img.hasZiips;
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
   const cpShare = { entitlementEngines: poolEntitlement(cpc, config.lpars, l.id, 'CP') };
-  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, img.suPerCpuSec, plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}, !hasZiip), discretionaryCaps(def, all, atOrFind(prev.wlm.systems, img.zosIdx, (s) => s.lparId === l.id)?.scps ?? []));
+  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, img.suPerCpuSec, plexShare, workloadById, prev.backlog, prev.ziipBacklog, !hasZiip), discretionaryCaps(def, all, atOrFind(prev.wlm.systems, img.zosIdx, (s) => s.lparId === l.id)?.scps ?? []));
   t.capOfBy[l.id] = capOf;
   let cp = 0;
   let zi = 0;
   for (const s of all) {
-    const demand = dispatchableDemand(s, prev.backlog, prev.ziipBacklog ?? {}, capOf, !hasZiip);
+    const demand = dispatchableDemand(s, prev.backlog, prev.ziipBacklog, capOf, !hasZiip);
     cp += demand.cp;
     zi += demand.zi;
   }

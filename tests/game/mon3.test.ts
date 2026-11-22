@@ -1,15 +1,15 @@
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { buildMon3, explainWlmLog, type Mon3Row } from '../../src/game/mon3';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
+import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { buildView } from '../../src/game/view';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 let noon: RunState;
 
 beforeAll(() => {
-  noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * 360); // 12:00
+  noon = midwestNoon(); // 12:00
 });
 
 describe('Monitor III views', () => {
@@ -142,6 +142,29 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     for (const h of m.cpcHeaders) {
       expect(h.imageCapacityMsu).toBeLessThanOrEqual(h.cpcCapacityMsu + 1e-6);
       expect(h.max4hMsu).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('CPC groups by processor type: *IIP rows for images with online zIIPs and a PHYSICAL line per group', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const zos = m.cpc.filter((c) => c.kind === 'ZOS');
+    // PROD1 has two zIIPs online; PROD2's zIIP is reserved only, so it has no *IIP row (Proc Num counts online).
+    expect(zos.find((c) => c.lparId === 'PROD1')!.iip).toBeDefined();
+    expect(zos.find((c) => c.lparId === 'PROD2')!.iip).toBeUndefined();
+    for (const c of zos.filter((x) => x.iip)) {
+      const i = c.iip!;
+      expect(i.procNum).toBeGreaterThan(0);
+      expect(i.physTotalPct).toBeCloseTo(i.physEffectPct + i.physLparPct, 6);
+      expect(i.logicalTotalPct).toBeGreaterThanOrEqual(i.logicalEffectPct - 1e-9);
+      expect(i.physTotalPct).toBeLessThanOrEqual(100 + 1e-9); // against the CPC's two IIP engines
+    }
+    // PHYSICAL is *unattributed* physical busy time, not the partitions' LPAR-management column. Every busy
+    // engine-second in the sim comes from a partition's dispatch, so each group's line is 0.0 (and adds nothing
+    // to the group's summary totals).
+    expect(m.cpcPhysical.map((x) => x.kind)).toEqual(['CP', 'IIP', 'ICF']);
+    for (const line of m.cpcPhysical) {
+      expect(line.cpcId).toBe('CPCA');
+      expect(line.physPct).toBe(0);
     }
   });
 

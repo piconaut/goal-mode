@@ -54,6 +54,34 @@ export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 
 
 // Policy adjustment (docs/wlm-design.md §5.10). IBM publishes none of these numbers; each note says where the
 // starting value comes from, not that IBM uses it.
+/** FICTIONAL: velocity floor below which a starved period's execution velocity is clamped when computing its
+ *  projected PI (goal.velocity ÷ max(velocity, VELOCITY_FLOOR), e.g. VEL 74 → 740 at 0.1 %). Shape: keeps
+ *  zero-service projections finite instead of infinite; velocity PI is capped at 10 × goal by this floor,
+ *  while percentile projections extrapolate past the 4.0 reporting ceiling from the mean RT
+ *  (`projectedPercentilePi`). Which can outweigh the other depends on the starvation level — no fixed
+ *  ordering (RF-04). No near-zero bound documented in the WLM books checked, not real WLM behaviour. */
+export const VELOCITY_FLOOR = 0.1;
+
+/** FICTIONAL: WLM repeats an unchanged receiver clue, and logs the no-action note, at most every five minutes
+ *  (30 policy adjustment cycles; adjust.ts's notes and RF-03). Shape: a stuck receiver's log does not fill every tick. */
+export const CLUE_LOG_EVERY = 30;
+
+/** FICTIONAL: ceiling on a slice's queue-time ratio (CPU or zIIP queue, in multiples of service time). Shape: a
+ *  saturated pool's queue cannot dominate the result without bound; it counts as very unhealthy. */
+export const MAX_QUEUE_RATIO = 50;
+
+/** FICTIONAL: a server role capped below this share of its demand is starved (RF-09). Its dependents then complete
+ *  at that share of their arrivals and the rest time out in the dependent queue, instead of every arrival completing
+ *  late; above it, and for a shortfall an image-wide shortage caused, the bounded latency form applies. Shape:
+ *  Db2's MSTR/DBM1 system agents "cannot tolerate significant CPU delay" (Db2 13 Managing Performance p.41, p.47,
+ *  p.116), so at 10 % of demand they are non-dispatchable nearly all the time and commits and getpages stop; no
+ *  book gives a threshold. */
+export const SERVER_STARVATION = { healthBelow: 0.1 };
+
+/** FICTIONAL: a period whose waits are over this share of its samples is "mostly waiting": its note names the
+ *  wait instead of a delay. Shape: a class that mostly waits is described by the wait's size, not its cause. */
+export const MOSTLY_WAITING_FRAC = 0.5;
+
 export const POLICY_ADJUST = {
   // FICTIONAL: per-tick decay of WLM's accumulators. Shape: the management PI looks back about a minute.
   accDecay: 0.85,

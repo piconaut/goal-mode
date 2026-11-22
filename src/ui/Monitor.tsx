@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { MON3_HISTORY } from '../content/tools';
 import type { Mon3HistoryRange } from '../game/mon3History';
 import type { ViewModel } from '../game/view';
-import { formatClock, tickOfClock } from '../sim/core/clock';
+import { formatClock, hhmm, tickOfClock } from '../sim/core/clock';
 import { TICK_SEC, TICKS_PER_HOUR } from '../sim/core/units';
 import { Alerts } from './Alerts';
 import { Automation } from './Automation';
@@ -118,7 +118,7 @@ function TimeBar({ range, at, setAt }: { range: Mon3HistoryRange; at: number | n
     const snapped = Math.floor(t / step) * step;
     setAt(snapped >= range.lastTick ? null : Math.max(range.firstTick, snapped));
   };
-  const rangeText = (end: number) => `${formatClock(end - step).slice(0, -3)}–${formatClock(end).slice(-8, -3)}`;
+  const rangeText = (end: number) => `${formatClock(end - step).slice(0, -3)}–${hhmm(end)}`;
   const back = (n: number) => setAt(Math.max(range.firstTick, (at ?? range.lastTick + step) - n * step));
   const fwd = () => (at === null || at + step > range.lastTick ? setAt(null) : setAt(at + step));
   return (

@@ -3,19 +3,14 @@
 
 import { SCENARIOS } from '../src/content/scenarios';
 import { initState } from '../src/sim/core/init';
-import { instanceClock, step } from '../src/sim/core/step';
-import { clockAt } from '../src/sim/core/clock';
+import { step } from '../src/sim/core/step';
+import { clockAt, instanceClock, pad2 } from '../src/sim/core/clock';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
 import { goalInfo, tickPi } from '../src/sim/wlm/runtime';
 import { velocityOf } from '../src/sim/wlm/goals';
 import { estimateMonth } from '../src/sim/cost/mlc';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../src/sim/measure/reports';
-
-function arg(name: string, dflt: string): string {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1]!.startsWith('--') ? process.argv[i + 1]! : dflt;
-}
-const flag = (name: string) => process.argv.includes(`--${name}`);
+import { arg, flag } from './args';
 
 const scenario = SCENARIOS[arg('scenario', 'midwest')]!;
 const days = Number(arg('days', '1'));
@@ -116,7 +111,7 @@ for (let d = 0; d < days; d++) {
         .slice(0, 4)
         .map(([k, v]) => `${k}=${v.toFixed(2)}`)
         .join(' ');
-      console.log(`${String(hr).padStart(2, '0')}:00 ${b}  io=${(h.io / h.n).toFixed(2)}ms jobs=${(h.running / h.n).toFixed(1)} lock=${(h.lock / h.n).toFixed(1)}  ${worst}`);
+      console.log(`${pad2(hr)}:00 ${b}  io=${(h.io / h.n).toFixed(2)}ms jobs=${(h.running / h.n).toFixed(1)} lock=${(h.lock / h.n).toFixed(1)}  ${worst}`);
     }
   }
 }

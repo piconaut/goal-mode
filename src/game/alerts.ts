@@ -2,10 +2,11 @@
 // sim-minute. A rule fires after its condition has held for `forMin` minutes and clears when it stops.
 
 import { ALERT_METRICS, ALERTS, type AlertMetric } from '../content/alerts';
-import { clockAt, formatClock } from '../sim/core/clock';
+import { clockAt, hhmm } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { buildMon3 } from './mon3';
+import { hasFeature } from './tools';
 import type { RunState } from './types';
 
 export interface AlertRule {
@@ -66,6 +67,11 @@ export function alertValue(run: RunState, scenario: Scenario, rule: Pick<AlertRu
       const proj = sim.batch.projectedCriticalEndSec;
       return proj === null ? null : (run.batchDeadlineSec - proj) / 60;
     }
+    case 'CICS_SOS': {
+      if (!hasFeature(run, 'CICS_MONITORING')) return null;
+      const st = run.hour?.cicsStorage?.[rule.subject];
+      return st === undefined ? null : st.sosSec / 60;
+    }
   }
 }
 
@@ -92,7 +98,7 @@ export function evaluateAlerts(run: RunState, scenario: Scenario): RunState {
       breachSince[key] = since;
       if (!firing.includes(rule.id) && (tick - since) * TICK_SEC >= rule.forMin * 60) {
         firing.push(rule.id);
-        log.push({ tick, ruleId: rule.id, kind: 'FIRED', text: `${formatClock(tick).slice(-8, -3)} PAGE: ${ruleText(rule)} (now ${v.toFixed(v < 10 ? 2 : 0)}${ALERT_METRICS[rule.metric].unit})` });
+        log.push({ tick, ruleId: rule.id, kind: 'FIRED', text: `${hhmm(tick)} PAGE: ${ruleText(rule)} (now ${v.toFixed(v < 10 ? 2 : 0)}${ALERT_METRICS[rule.metric].unit})` });
         if (rule.pause) pause = true;
         if (night) fatigue = Math.min(100, fatigue + ALERTS.nightFatigue);
       }
@@ -100,7 +106,7 @@ export function evaluateAlerts(run: RunState, scenario: Scenario): RunState {
       delete breachSince[key];
       if (firing.includes(rule.id)) {
         firing = firing.filter((x) => x !== rule.id);
-        log.push({ tick, ruleId: rule.id, kind: 'CLEARED', text: `${formatClock(tick).slice(-8, -3)} cleared: ${ruleText(rule)}` });
+        log.push({ tick, ruleId: rule.id, kind: 'CLEARED', text: `${hhmm(tick)} cleared: ${ruleText(rule)}` });
       }
     }
   }

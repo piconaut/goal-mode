@@ -1,6 +1,6 @@
 // End-of-day draft rewards (SPEC §9.5): pick 1 of 3.
 
-import type { DraftOption } from '../game/types';
+import type { DraftOption } from './types';
 
 export interface DraftDef extends DraftOption {
   weight: number;

@@ -23,8 +23,8 @@ export interface CardRef {
   defId: string;
   name: string;
   trigger: Trigger;
-  /** What the card declares it causes (absent = any mechanism: pre-RT-02 saves). */
-  mechanisms?: Mechanism[];
+  /** What the card declares it causes (empty = it cannot be the cause of any mechanism). */
+  mechanisms: Mechanism[];
   /** The card has no footprint, so it is a red herring by design: a control for the noise floor. */
   control: boolean;
   startTick: number;
@@ -88,14 +88,14 @@ export interface NoiseFloor {
 
 /** A red herring by design: the card has no footprint (RT-14: it causes no mechanism), so it cannot be the cause of an
  * SLA miss. */
-const isControl = (e: ActiveEvent) => !e.mechanisms?.length;
+const isControl = (e: ActiveEvent) => e.mechanisms.length === 0;
 
 const ref = (e: ActiveEvent): CardRef => ({
   uid: e.uid,
   defId: e.defId,
   name: e.name,
   trigger: e.trigger,
-  ...(e.mechanisms ? { mechanisms: [...e.mechanisms] } : {}),
+  mechanisms: [...e.mechanisms],
   control: isControl(e),
   startTick: e.startTick,
   endTick: e.endTick,
@@ -160,7 +160,7 @@ export function blameIncident(run: RunState, scenario: Scenario, content: GameCo
   // Candidates from the opening and closing state, so a cap's expanded scope and a card starting inside the hour
   // are both in; branches from the opening state.
   const candidates = cardsActiveInHour(run.events, baselineRun.events, incident.startTick);
-  const scope = workScopeOf(incident.subjects ?? { hosts: [] });
+  const scope = workScopeOf(incident.subjects);
   const window = hourWindow(Math.floor(incident.startTick / TICKS_PER_HOUR));
   const qualified = qualifyingCards(baselineRun.events, incident.workloadId, incident.truth.mechanism, window, scope);
   const blamedEvent = qualified[0]?.card;

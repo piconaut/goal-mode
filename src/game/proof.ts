@@ -7,8 +7,8 @@ import { triggerLabel } from '../content/rca';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
-import { incidentSubjects, incidentWindow, notableFloor, pinRelation, smfHourEndTick, type EvidencePin } from './evidence';
-import { importanceRank } from './sla';
+import { incidentWindow, notableFloor, pinRelation, smfHourEndTick, type EvidencePin } from './evidence';
+import { displaceable } from './displaceable';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from './types';
 import { subsystemClasses } from './wlmEdit';
 
@@ -23,7 +23,7 @@ export interface RecipeCheck {
   claim: Mechanism | Trigger;
   complete: boolean;
   predicates: PredicateCheck[];
-  /** Whether the truth accepts the claim, set when the RCA is scored (absent in saves from before it). */
+  /** Whether the truth accepts the claim: set when the RCA is scored (a bare `judgeProof` result has not been). */
   accepted?: boolean;
 }
 
@@ -33,9 +33,9 @@ export interface ProofResult {
 }
 
 /** The pinned image's online general CPs, so an APPL% share can be read as a share of the image. */
-function imageCps(run: RunState, lparId: string): number {
+function imageCps(run: RunState, lparId: string, pool: 'CP' | 'ZIIP' = 'CP'): number {
   const l = run.sim.config.lpars.find((x) => x.id === lparId);
-  return l?.pools.filter((p) => p.pool === 'CP').reduce((a, p) => a + p.logical, 0) ?? 0;
+  return l?.pools.filter((p) => p.pool === pool).reduce((a, p) => a + p.logical, 0) ?? 0;
 }
 
 /** New work's rows: a Workload Activity row, or a workload's Db2 101/CICS 110 row, that first appeared within the day
@@ -66,36 +66,10 @@ interface ProofContext {
   /** The policy's batch classes: those a JES rule assigns (BATCH_OVERLAP's "batch running then"). APPROX: read from
    * the definition active at review time, not the one in force when the row was written. */
   batch: Set<string>;
-  /** The hurt work's most important period importance (null when none of its classes is in the definition). */
-  ownImportance: number | null;
+  /** Exclusions recorded when the incident opened. */
+  subjects: IncidentSubjects;
+  pool: 'CP' | 'ZIIP';
   scenario: Scenario;
-}
-
-/** A class row's period importance as donor accounting ranks it (SYSTEM and SYSSTC 0, discretionary 6); null for a
- * period the definition does not hold (SYSOTHER, or a class a later policy dropped), which is never displaceable.
- * APPROX: read from the definition active at review time (§4.6's A10 note). */
-function periodImportance(run: RunState, scKey: string): number | null {
-  const def = run.sim.wlm.definition;
-  const [cls, n] = scKey.split('#');
-  const builtIn = cls === 'SYSTEM' || cls === 'SYSSTC';
-  return builtIn || def.classes.find((c) => c.id === cls)?.periods[Number(n) - 1] ? importanceRank(def, scKey) : null;
-}
-
-/** A PROCU job's importance: its address space classified as the STC rules would (SYSTEM and SYSSTC rank above
- * every period, so they are never displaceable). */
-function jobImportance(ctx: ProofContext, p: EvidencePin): number | null {
-  // The PROCU row names the job's service class (batch jobs and TSO users as well as started tasks). APPROX: it prints
-  // no period, so the job is judged at period 1 (a TSO user in period 2 reads as more important than it is).
-  if (p.serviceClass !== undefined) return periodImportance(ctx.run, `${p.serviceClass}#1`);
-  const a = [...ctx.scenario.addressSpaces, ...ctx.run.sim.extraAddressSpaces].find((x) => x.jobname === p.subject && x.lparId === p.system);
-  if (!a) return null;
-  const sc = classify(ctx.run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
-  return sc ? periodImportance(ctx.run, `${sc}#1`) : null;
-}
-
-function ownImportance(run: RunState, s: IncidentSubjects): number | null {
-  const own = s.classes.filter((c) => !(s.serverClasses ?? []).includes(c)).map((c) => periodImportance(run, `${c}#1`)).filter((x): x is number => x !== null);
-  return own.length > 0 ? Math.min(...own) : null;
 }
 
 /** Does this pin, in this relation, satisfy this predicate option? */
@@ -106,8 +80,30 @@ function optionHolds(ctx: ProofContext, p: EvidencePin, relation: PinRelation | 
   if (o.displaceable) {
     // A job row (PROCU's EAppl per jobname) by its job; any class row, Monitor III's PROCU class rows included, by its
     // period.
-    const theirs = p.metric === 'JOB_APPL' ? jobImportance(ctx, p) : periodImportance(run, p.subject);
-    if (theirs === null || ctx.ownImportance === null || theirs <= ctx.ownImportance) return false;
+    const pool = p.metric === 'APPL_IIP' ? 'ZIIP' : 'CP';
+    if (pool !== ctx.pool) return false;
+    const ratio = displaceable(ctx.subjects, p.system, pool, { name: p.subject, job: p.metric === 'JOB_APPL' });
+    if (ratio === null) {
+      // Old incidents cannot reconstruct workload/role grants. Conservatively exclude own and server classes;
+      // never infer exclusions from today's importance or attainment.
+      const space = [...ctx.scenario.addressSpaces, ...run.sim.extraAddressSpaces]
+        .find((a) => a.lparId === p.system && a.jobname === p.subject);
+      const cls = p.metric === 'JOB_APPL'
+        ? p.serviceClass ?? (space ? classify(run.sim.wlm.definition, { subsystem: space.subsystem, TN: space.jobname, SY: p.system }).serviceClass : undefined)
+        : p.subject.split('#')[0]!;
+      if (!cls) return false;
+      if (['SYSTEM', 'SYSSTC'].includes(cls) || ctx.subjects.classes.includes(cls) || ctx.subjects.servers.some((s) => s.jobname === p.subject)) return false;
+    } else {
+      if (ratio <= 0) return false;
+      // Only the eligible part of a mixed class is evidence. Use the same observed pool denominator as truth.
+      if (o.test.kind === 'shareOfImage') {
+        const engines = ctx.subjects.cpu?.[p.system]?.[pool].engines ?? 0;
+        const row = ctx.subjects.cpu?.[p.system]?.CP.classes[p.subject];
+        const ziip = ctx.subjects.cpu?.[p.system]?.ZIIP.classes[p.subject]?.used ?? 0;
+        const cpFraction = p.metric === 'APPL' && p.source === 'WLMGL' && row ? row.used / Math.max(1e-9, row.used + ziip) : 1;
+        return engines > 0 && p.value * cpFraction * ratio >= o.test.frac * 100 * engines;
+      }
+    }
   }
   const reading = o.reading === 'rate' ? p.rate : { value: p.value, baseline: p.baseline };
   if (!reading) return false;
@@ -130,7 +126,8 @@ function optionHolds(ctx: ProofContext, p: EvidencePin, relation: PinRelation | 
     case 'riseBy':
       return baseline !== undefined && value - baseline >= t.points;
     case 'shareOfImage': {
-      const cps = imageCps(run, p.system);
+      // The pin's own pool: a batch class's CP APPL row stays a share of the CPs on a zIIP-judged incident.
+      const cps = imageCps(run, p.system, p.metric === 'APPL_IIP' ? 'ZIIP' : 'CP');
       return cps > 0 && value >= t.frac * 100 * cps;
     }
     case 'noHistory':
@@ -179,8 +176,8 @@ export function judgeProof(
 ): ProofResult {
   const batch = new Set(subsystemClasses(run.sim.wlm.definition, 'JES'));
   const related = group.flatMap((inc): Related[] => {
-    const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
-    const ctx: ProofContext = { run, batch, ownImportance: ownImportance(run, subjects), scenario };
+    const subjects = inc.subjects;
+    const ctx: ProofContext = { run, batch, subjects, scenario, pool: inc.basis?.pool ?? 'CP' };
     const { lo, hi } = incidentWindow(run, inc);
     return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects) }));
   });

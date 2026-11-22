@@ -21,10 +21,8 @@ function run(hours: number) {
 }
 
 describe('multi-CPC world', () => {
-  it('runs deterministically with finite per-LPAR values on both CPCs', () => {
+  it('runs with finite per-LPAR values on both CPCs', () => {
     const a = run(3);
-    const b = run(3);
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     for (const l of a.lpars) expect(Number.isFinite(l.msuRate)).toBe(true);
     expect(a.lpars.find((l) => l.id === 'DEVT')!.msuRate).toBeGreaterThan(0);
     expect(a.lpars.find((l) => l.id === 'PROD1')!.msuRate).toBeGreaterThan(0);

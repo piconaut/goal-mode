@@ -1,4 +1,5 @@
-import type { Mechanism, Trigger } from '../game/types';
+import type { Mechanism, Trigger } from './types';
+import { CPU_CAPACITY } from './incidents';
 
 /** How a pinned value relates to the incident it is filed against (RT-12, docs/rca-design.md §4.6). A pin can only be
  * evidence for the relation its metric accepts: the hurt work's own delay is not another class's delay, and another
@@ -141,7 +142,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   JOB_APPL: { label: 'job EAppl CPU', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK'], notableAt: 25, weight: 1, relations: ['server', 'competitor'] },
   WM_LOCK: { label: 'LOCK state', unit: '%', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 35, weight: 1, relations: OWN },
   WM_READY: { label: 'READY state', unit: '%', mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY', 'QR_TCB'], triggers: [], notableAt: 5, notableMultiple: 2, weight: 0.5, relations: OWN },
-  DBAT_QUEUE: { label: 'DBAT queue ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
+  // FICTIONAL: Db2 does not trace the wait for a thread at MAXDBAT in SMF 101 (Db2 13 Managing Performance p.143);
+  // the analyst's clue is the number of work items that had to wait for a DBAT (QUEDBAT/QDSTQDBT, cumulative since
+  // restart, -DISPLAY DDF DETAIL, Db2 13 Command Reference p.303), shown per Db2 member per hour.
+  DBAT_QUEUE: { label: 'DBAT queue', unit: '', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   FAIL_PCT: { label: 'failed % of transactions', unit: '%', mechanisms: ['ROUTING'], triggers: [], notableAt: 1, weight: 1, relations: OWN },
@@ -210,8 +214,7 @@ export interface PredicateOption {
   reading?: 'rate';
   /** The row must be a batch class: one a JES classification rule assigns. */
   batchClass?: true;
-  /** The row's period must be less important than the hurt work's (a higher importance number, or discretionary):
-   * work WLM could have taken the CPU from. */
+  /** The incident snapshot's non-system, non-own/server, non-at-risk part of this consumer. */
   displaceable?: true;
   /** The pin must read the same row (image and class, or workload) as a pin meeting the recipe's first predicate: the
    * two halves of a surge or a regression describe one piece of work. */
@@ -233,7 +236,7 @@ export interface ProofRecipe {
 export const PROOF = {
   delayPct: 10,
   jobWaitPct: 25,
-  imageShareFrac: 0.1,
+  imageShareFrac: CPU_CAPACITY.displaceableFrac,
   busyPct: 90,
   cappedPct: 5,
   capDelayPct: 5,
@@ -304,26 +307,29 @@ const DEMAND_NORMAL: ProofPredicate = {
 
 export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
   CPU_CAPACITY: { predicates: [CPU_DELAYED, {
-    label: 'the processor full: CPC or image busy ≥ 90 %, or a capacity adjustment below 100 (Partition Data, CPC)',
+    label: 'the processor full: CPC or image busy ≥ 90 %, or a capacity adjustment below 100 (CPU Activity, CPC)',
     options: [at('CPC_BUSY', PROOF.busyPct, HOST_ONLY), at('LPAR_BUSY', PROOF.busyPct, HOST_ONLY), at('CAPACITY_ADJ', 1, HOST_ONLY)],
   }] },
-  // A less important period of the work's own class counts too (ADHOC's long queries in DDFPRD#2 behind MOBILE's
-  // DDFPRD#1): the row relates as `self`, but WLM could have taken its CPU.
+  // Another workload in the work's own class counts too (ADHOC's long queries in DDFPRD#2 behind MOBILE's DDFPRD#1):
+  // the row relates as `self`, but importance does not matter and WLM could have taken its CPU (RT-32).
   CPU_PRIORITY: { predicates: [CPU_DELAYED, {
-    label: 'a displaceable consumer on that host: a less important class or job using ≥ 10 % of the image (WLMGL APPL, PROCU)',
+    label: 'a consumer WLM could have taken CPU from: not system work, not the work’s own servers, not SLA work at risk, ≥ 10 % of the image (WLMGL APPL, PROCU)',
     options: [
       ...appl({ kind: 'shareOfImage', frac: PROOF.imageShareFrac }, SELF_OR_COMPETITOR, { displaceable: true }),
+      { metric: 'APPL_IIP', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
       { metric: 'JOB_APPL', relations: ['competitor'], test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
     ],
   }] },
   // APPROX: defined capacity and group capacity limit general-CP MSU, so the cap's symptom is CP delay, not zIIP (an
-  // absolute cap on a zIIP pool exists but no card here sets one).
+  // absolute cap on a zIIP pool exists but no card here sets one). A resource-group maximum is its own delay state:
+  // WLMGL CAP delay is "not part of the CPU delay" (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500)), so a CAP-delay row (≥ 10 %) is the
+  // symptom too and a DELAY_CAP pin alone can prove a group-capping hour (RT-33).
   CAPPING: { predicates: [{
-    label: 'CPU delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
-    options: CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'),
+    label: 'CPU delay ≥ 10 % or CAP delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
+    options: [...CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'), at('DELAY_CAP', PROOF.delayPct, OWN)],
   }, {
-    label: 'a cap held it: the image capped ≥ 5 % of the interval (Partition Data), or CAP delay ≥ 5 % on the class (WLMGL)',
-    options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, SELF)],
+    label: 'a cap held it: the cap removed ≥ 5 % of the image\'s demand (Partition Data CAPPED), or CAP delay ≥ 5 % on the class or its regions (WLMGL)',
+    options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, OWN)],
   }] },
   DEPENDENCY: { predicates: [{
     label: 'the server slow: a serving region delayed ≥ 10 %, the work waiting outside CPU and I/O (other/UNK up ≥ 10 points over its normal), or the jobs waiting on Db2 ≥ 25 %',
@@ -348,7 +354,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
   }] },
   THREAD_LIMIT: { predicates: [{
-    label: 'queued for a slot: MXT wait or DBAT queue ≥ 5 ms/txn, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
+    label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
     label: 'not slower work holding the slots: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',

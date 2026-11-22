@@ -1,8 +1,9 @@
 // Scenario-level checks of WLM policy adjustment (docs/wlm-design.md §5.9, SPEC §16 style).
-import { MIDWEST } from '../../src/content/scenarios';
+import { HARBOURLINE, MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
-import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { tickOfClock } from '../../src/sim/core/clock';
+import { levelDp } from '../../src/sim/wlm/ladder';
 import { goalInfo } from '../../src/sim/wlm/runtime';
 import { DP } from '../../src/sim/zos/dispatcher';
 import { BASEPOL } from '../../src/content/wlm/basepol';
@@ -171,17 +172,47 @@ describe('the ladder does not collapse (docs/archive/wlm-audit-2026-11.md W2, S-
   // Midwest seed 42, eight days. Before the canonical ladder, receivers moved to an occupied level + 1 and nothing
   // spread or lowered the ladder, so it climbed to the top managed priority: PROD2's seven goal periods of importance
   // 1 to 4 sat on three adjacent levels from day 2, five of them sharing 252 on day 4.
-  it('PROD2 at D8 12:00 has its goal periods on at least four levels and nothing at MANAGED_MAX', () => {
+  it('PROD2 at 12:00 on days 1–8: canonical spacing, 7–8 levels, nothing at MANAGED_MAX', () => {
     let s = initState(42, MIDWEST);
-    const at = 7 * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
-    while (s.tick < at) s = step(s, [], MIDWEST);
-    const prod2 = s.wlm.systems.find((x) => x.lparId === 'PROD2')!;
-    const goal = prod2.scps.filter((p) => {
+    const samples: number[][] = [];
+    for (let day = 0; day < 8; day++) {
+      const at = tickOfClock(`D${day + 1} 12:00`)!;
+      while (s.tick < at) s = step(s, [], MIDWEST);
+      const prod2 = s.wlm.systems.find((x) => x.lparId === 'PROD2')!;
+      const goal = prod2.scps.filter((p) => {
+        const g = goalInfo(s.wlm.definition, p.scKey);
+        return g !== null && g.goal.kind !== 'DISC';
+      });
+      expect(goal.length).toBeGreaterThanOrEqual(7);
+      // Canonical spacing: every goal DP is a ladder level, one free priority between them and none at MANAGED_MAX.
+      for (const p of goal) {
+        expect(p.dp, `${p.scKey} at D${day + 1} 12:00`).toBeLessThan(DP.MANAGED_MAX);
+        const i = (DP.MANAGED_MAX - 1 - p.dp) / 2;
+        expect(Number.isInteger(i), `${p.scKey} at ${p.dp}`).toBe(true);
+        expect(levelDp(i)).toBe(p.dp);
+      }
+      samples.push(goal.map((p) => p.dp));
+    }
+    // §9.7: PROD2 is on 7–8 levels from D1 to D8 — the ladder neither collapses onto a few levels nor climbs past
+    // the top of the managed range. Checked on each day, not only across them, so one day's collapse fails it
+    // (measured: D1 has 6 levels at 12:00, D2–D8 have 7–8).
+    samples.forEach((dps, day) => expect(new Set(dps).size, `D${day + 1} 12:00`).toBeGreaterThanOrEqual(day === 0 ? 6 : 7));
+    expect(new Set(samples.flat()).size).toBeGreaterThanOrEqual(7);
+    expect(new Set(samples.flat()).size).toBeLessThanOrEqual(8);
+  }, 300_000);
+
+  // §9.7: "R-4 is gone: at D1 14:17 on PRDD MKTDDF#2 is second from the bottom." Before WT-06 the importance-4
+  // second period of DDFPRD rode at the top managed priority while its importance-2 first period was skipped.
+  it('Harbourline PRDD at D1 14:17 has MKTDDF#2 second from the bottom (R-4)', () => {
+    let s = initState(42, HARBOURLINE);
+    const at = tickOfClock('D1 14:17')!;
+    while (s.tick < at) s = step(s, [], HARBOURLINE);
+    const prdd = s.wlm.systems.find((x) => x.lparId === 'PRDD')!;
+    const goal = prdd.scps.filter((p) => {
       const g = goalInfo(s.wlm.definition, p.scKey);
       return g !== null && g.goal.kind !== 'DISC';
-    });
-    expect(goal.length).toBeGreaterThanOrEqual(7);
-    expect(new Set(goal.map((p) => p.dp)).size).toBeGreaterThanOrEqual(4);
-    expect(goal.every((p) => p.dp < DP.MANAGED_MAX)).toBe(true);
-  }, 300_000);
+    }).sort((a, b) => a.dp - b.dp || (a.scKey < b.scKey ? -1 : 1));
+    expect(goal[1]!.scKey).toBe('MKTDDF#2');
+    expect(goal[1]!.dp).toBeLessThan(DP.MANAGED_MAX - 2); // not at or near the top managed priority
+  }, 120_000);
 });

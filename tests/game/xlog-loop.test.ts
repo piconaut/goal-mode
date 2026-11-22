@@ -1,4 +1,5 @@
 import { PACKS } from '../../src/content/packs';
+import { cardMechanisms } from '../../src/content/footprint';
 import { advance, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { applyCommands } from '../../src/sim/core/commands';
@@ -14,7 +15,7 @@ describe('looping log archiver lifecycle', () => {
       ...r,
       events: [0, 6].map((startTick, i) => ({
         uid: `XLOG_LOOP@${i}`, defId: def.id, name: def.name, startTick, endTick: startTick + 3,
-        trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false,
+        trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false,
       })),
     };
     const count = (run: RunState) => run.sim.extraAddressSpaces.filter((a) => a.jobname === 'CICSXLOG').length;

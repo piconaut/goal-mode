@@ -8,6 +8,9 @@ export interface SlotQueueResult {
   waitSec: number;
   /** Fraction of this tick's arrivals that timed out in the queue. */
   failFrac: number;
+  /** Arrivals this tick that had to wait for a slot (count). Cumulative over the hour, this is the QUEDBAT figure:
+   *  the number of work items that waited for a DBAT (Db2 13 Command Reference p.303). */
+  waited: number;
 }
 
 /**
@@ -18,13 +21,17 @@ export interface SlotQueueResult {
  */
 export function slotQueueStep(prevQueued: number, rate: number, holdSec: number, limit: number, timeoutSec: number, tickSec: number): SlotQueueResult {
   const slots = Math.max(1, Math.floor(limit));
-  if (holdSec <= 0) return { queued: 0, waitSec: 0, failFrac: 0 };
+  if (holdSec <= 0) return { queued: 0, waitSec: 0, failFrac: 0, waited: 0 };
   const mu = slots / holdSec;
+  const arrivals = rate * tickSec;
   let queued = Math.max(0, prevQueued + (rate - mu) * tickSec);
   const a = rate * holdSec;
   let erlangWait = 0;
+  let waitProb = 0;
   if (a < slots && !(slots >= SLOT_QUEUE.erlangSkipMinSlots && a < SLOT_QUEUE.erlangSkipBelowFrac * slots)) {
-    erlangWait = (erlangC(slots, a) * holdSec) / (slots - a);
+    const c = erlangC(slots, a);
+    erlangWait = (c * holdSec) / (slots - a);
+    waitProb = c;
   }
   let waitSec = erlangWait + queued / mu;
   let failFrac = 0;
@@ -35,5 +42,8 @@ export function slotQueueStep(prevQueued: number, rate: number, holdSec: number,
     waitSec = timeoutSec;
     failFrac = rate > 0 ? Math.min(1, failed / (rate * tickSec)) : 0;
   }
-  return { queued, waitSec, failFrac };
+  // Count the arrivals that waited: with a backlog or a saturated pool every arrival waits; below saturation it is
+  // the Erlang-C wait probability (mirroring the skip above, where no wait is modelled).
+  const waited = arrivals * (prevQueued > 1e-9 || a >= slots ? 1 : waitProb);
+  return { queued, waitSec, failFrac, waited };
 }

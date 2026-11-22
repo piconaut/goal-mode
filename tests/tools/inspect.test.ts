@@ -1,6 +1,7 @@
-import { applyPlayCommand, clockText, encodePlayFile, newPlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, clockText, encodePlayFile, newPlayFile, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { classRows, moveRows, replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const trial = (over: Partial<WlmTrialTrace> = {}): WlmTrialTrace => ({
   move: 'A#1 DP 20→21', verdict: 'NO_RECEIVER_GAIN', receiverPi: [1.4, 1.3], ...over,
@@ -321,33 +322,144 @@ describe('inspect … wlm-stats over a play file', () => {
 });
 
 describe('inspect … wlm-stats stops where the play CLI stopped', () => {
-  it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
-    let f = newPlayFile(42);
-    const run = (c: { cmd: 'start' } | { cmd: 'advance'; hours: number } | { cmd: 'draft'; optionId: null } | { cmd: 'restart'; name: string }) => {
+  // Both tests read one played log: the 15 hours to the abend are the expensive part, so they are played once and
+  // each test replays the same file for its own claim. Built in a hook, so a failure names the fixture rather than
+  // whichever test asked for it first.
+  interface Played {
+    /** The file where the CLI stopped at the abend (D1 21:00, 15 hours in). */
+    atStop: PlayFile;
+    /** The file after the restart and the three hours that followed. */
+    final: PlayFile;
+    after: string;
+    abended: string;
+    stopTick: number;
+  }
+  let played!: Played;
+  const playToAbend = (): Played => {
+    let f = newPlayFile(7);
+    const run = (c: Extract<PlayCommand, { cmd: 'start' | 'advance' | 'restart' | 'change' }>) => {
       const out = applyPlayCommand(f, c);
       expect(out.ok, out.text).toBe(true);
       f = out.file;
       return out;
     };
+    // A Db2 job that starts on an image without a Db2 subsystem abends at connect (DSNE100I, Db2 13 Messages p.140;
+    // src/sim/subsys/batch.ts). Class A runs on PROD1/PROD2 only, so giving it initiators on SYSP (no Db2) abends the
+    // first stream it starts in the first batch night — an ordinary change, not a 41-hour wait for the day-2 card.
+    const classA = (initiators: Record<string, number>) => run({ cmd: 'change', req: { label: `Class A initiators on ${Object.keys(initiators).join(' ') || 'none'}`, commands: [{ kind: 'SET_JOB_CLASS', jobClass: 'A', initiators }] } });
     run({ cmd: 'start' });
-    run({ cmd: 'advance', hours: 24 });
-    run({ cmd: 'draft', optionId: null });
-    run({ cmd: 'start' });
-    // Seed 42, Midwest, day 2: STL004 abends, so the CLI stops the advance 17 hours in.
-    expect(run({ cmd: 'advance', hours: 24 }).text).toContain('STOPPED:');
-    // One replay: the range reports that the log, not the request, ended it, and the counters cover the 41 hours the
-    // CLI actually played (24 + 17), not the 48 asked for.
-    const stats = JSON.parse(wlmStatsText(encodePlayFile(f), { to: 'D3 06:00', json: true }));
-    expect(stats.range.covered).toBe(false);
-    expect(stats.range.to).toMatch(/^D2 /);
-    expect(stats.total.adjustments).toBe(stats.systems.length * 41 * 360);
-    // Restarting the job clears the abend during the next advance; the CLI does not stop for that, so neither does
-    // the replay: it covers all three hours (D2 23:00 → D3 02:00), not one.
-    run({ cmd: 'restart', name: 'STL004' });
-    expect(run({ cmd: 'advance', hours: 3 }).text).not.toContain('STOPPED:');
-    const after = JSON.parse(wlmStatsText(encodePlayFile(f), { from: 'D2 22:00', to: 'D3 06:00', json: true }));
-    expect(after.range.to).toBe(clockText(f.run.sim.tick));
-    expect(after.total.adjustments).toBe(after.systems.length * 4 * 360);
-    // About 43 played hours plus two replays: ~27 s alone, so over the 30 s default under a parallel CI load.
+    // Live, so these are emergency changes: 1 h each from the day's 8, a trust cost, and a seeded 3 % chance of
+    // failing (labelled by their text). Planned in the briefing instead, seed 7's 06:00 apply fails, so keep them here.
+    classA({ PROD1: 12, PROD2: 10, SYSP: 8 });
+    // Seed 7, Midwest: the first class-A job on SYSP abends at 21:00, so the CLI stops the 24-hour advance 15 hours in.
+    const stopped = run({ cmd: 'advance', hours: 24 }).text;
+    expect(stopped).toContain('STOPPED:');
+    const abended = /STOPPED: (\S+)/.exec(stopped)![1]!;
+    const atStop = f;
+    const stopTick = f.run.sim.tick;
+    // Restarting the job and taking the initiators back off SYSP clears the cause; the next advance runs through.
+    run({ cmd: 'restart', name: abended });
+    classA({ PROD1: 12, PROD2: 10 });
+    const after = run({ cmd: 'advance', hours: 3 }).text;
+    return { atStop, final: f, after, abended, stopTick };
+  };
+
+  // The 18 played hours run here, not in the tests, so the hook carries the long timeout (default hookTimeout 30 s).
+  beforeAll(() => {
+    played = playToAbend();
   }, 120_000);
+
+  it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
+    const p = played;
+    // One replay of where the CLI stopped: the range reports that the log, not the request, ended it, and the
+    // counters cover the 15 hours the CLI actually played, not the 24 asked for.
+    const stats = JSON.parse(wlmStatsText(encodePlayFile(p.atStop), { to: 'D2 06:00', json: true }));
+    expect(stats.range.covered).toBe(false);
+    expect(stats.range.to).toBe('D1 Mon 21:00');
+    expect(stats.total.adjustments).toBe(stats.systems.length * 15 * 360);
+    // The restart has to be checked directly: the pass-through also holds with the initiator change alone.
+    expect(p.after).not.toContain('STOPPED:');
+    expect(p.final.run.sim.tick - p.stopTick).toBe(3 * TICKS_PER_HOUR); // all three hours ran, not one
+    // The restarted job is no longer abended; the other jobs that abended on SYSP still are.
+    const abendedNow = (f: PlayFile) => (/abended now: (.*)$/m.exec(catalogText(f))?.[1] ?? '').split(' ');
+    expect(abendedNow(p.atStop)).toContain(p.abended);
+    expect(abendedNow(p.final)).not.toContain(p.abended);
+    expect(abendedNow(p.final).filter((x) => x && x !== 'none').length).toBeGreaterThan(0);
+    // 15 played hours plus one replay of the same log: ~12-15 s alone on the shared host (was 43 s for 41 hours
+    // and two replays). The restart coverage the second replay used to give is the test below.
+  }, 120_000);
+
+  it('replays a log that restarts the abended job without stopping there', () => {
+    const p = played;
+    // The replay crosses the restart: it reaches the CLI's own clock (midnight) rather than stopping at the 21:00
+    // abend, and counts all 18 played hours across the restart. replayAdvance's stop rule around a restart has an
+    // injected test (PR-12); this is the one that runs replayTraces over a log that restarts.
+    const stats = JSON.parse(wlmStatsText(encodePlayFile(p.final), { to: 'D2 06:00', json: true }));
+    expect(stats.range.to).toBe(clockText(p.final.run.sim.tick));
+    // All four images reported, so the count below cannot shrink with a lost system.
+    expect(stats.systems.map((x: { lparId: string }) => x.lparId).sort()).toEqual(['DEVT', 'PROD1', 'PROD2', 'SYSP']);
+    expect(stats.total.adjustments).toBe(stats.systems.length * 18 * 360);
+  }, 120_000);
+});
+
+describe('PR-20: no-trial streaks are not assessment episodes', () => {
+  const clk = (i: number) => `D1 ${String(6 + Math.floor(i / 360)).padStart(2, '0')}:${String(Math.floor((i % 360) / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`;
+  /** A candidate checked every 10 s with no trials: NOT_FIXABLE on a mostly-waiting (OTHER) image. */
+  const checked = (i: number, over: Partial<WlmCandidateTrace> = {}) => trace({
+    clockText: clk(i),
+    candidates: [candidate({ outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE', waitingFrac: 0.8, ...over })],
+  });
+  const run = (n: number, from = 0, over: Partial<WlmCandidateTrace> = {}) => Array.from({ length: n }, (_, i) => checked(from + i, over));
+
+  it('reports 30 consecutive no-trial checks as one streak, with zero assessments or episodes', () => {
+    const stats = wlmStats(run(30), { episodes: true, streaks: true });
+    expect(stats.total.assessed).toBe(0);
+    expect(stats.total.episodes).toBe(0);
+    expect(stats.total.waitingNotFixable).toBe(30);
+    expect(stats.total.noTrialStreaks).toBe(1);
+    expect(stats.streaks).toEqual([{
+      lparId: 'PROD1', scKey: 'A#1', outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE',
+      first: clk(0), last: clk(29), checks: 30, end: null,
+    }]);
+    const text = statsText(stats);
+    expect(text).toContain('no-trial streaks of 30+ checks');
+    expect(text).toContain('No-trial streaks (30+ consecutive checks with no trials');
+    expect(text).toContain(`PROD1 A#1  NOT_FIXABLE QUEUE  ${clk(0)} → ${clk(29)}  30 checks, still open at the end of the range`);
+  });
+
+  it('ends a streak on a changed bottleneck, outcome or a missing candidate', () => {
+    expect(wlmStats([...run(29), checked(29, { bottleneck: 'IO' })], { streaks: true }).total.noTrialStreaks).toBe(0);
+    expect(wlmStats([...run(20), ...run(10, 20, { outcome: 'RECOVERING' })], { streaks: true }).total.noTrialStreaks).toBe(0);
+    expect(wlmStats([...run(20), trace({ clockText: clk(20), candidates: [] }), ...run(10, 21)], { streaks: true }).streaks).toEqual([]);
+    // A SKIP_CLOCK candidate keeps the assessment episode logic but does not start a no-trial streak.
+    expect(wlmStats([...run(29), checked(29, { outcome: 'SKIP_CLOCK' })], { streaks: true }).total.noTrialStreaks).toBe(0);
+  });
+
+  it('counts RECOVERING streaks too, not just NOT_FIXABLE', () => {
+    const stats = wlmStats(run(30, 0, { outcome: 'RECOVERING', bottleneck: null }), { streaks: true });
+    expect(stats.streaks).toEqual([{
+      lparId: 'PROD1', scKey: 'A#1', outcome: 'RECOVERING', bottleneck: null,
+      first: clk(0), last: clk(29), checks: 30, end: null,
+    }]);
+  });
+
+  it('keeps rejected-search episodes separate when skip clocks space the assessments', () => {
+    // 30 rejected-search assessments, each followed by five skip-clock adjustments.
+    const rows = Array.from({ length: 180 }, (_, i) => trace({
+      clockText: clk(i),
+      candidates: [candidate(i % 6 === 0 ? { trials: [trial()] } : { outcome: 'SKIP_CLOCK' })],
+    }));
+    const stats = wlmStats(rows, { episodes: true, streaks: true });
+    expect(stats.total.assessed).toBe(30);
+    expect(stats.total.episodes).toBe(1);
+    expect(stats.total.noTrialStreaks).toBe(0);
+    expect(stats.episodes).toHaveLength(1);
+  });
+
+  it('only exposes streaks when asked, including in JSON', () => {
+    const rows = run(30);
+    expect('streaks' in wlmStats(rows)).toBe(false);
+    const stats = wlmStats(rows, { streaks: true });
+    expect(JSON.parse(JSON.stringify(stats)).streaks).toHaveLength(1);
+  });
 });

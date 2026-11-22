@@ -5,6 +5,8 @@ import { useMemo, useState } from 'react';
 
 export interface Series {
   id: string;
+  /** Short name for the label drawn at the end of a line. */
+  endLabel?: string;
   color: string;
   values: (number | null)[];
   /** Drawn dashed (limits and capacities rather than measurements). */
@@ -96,6 +98,13 @@ export function LineChart({ title, unit, xLabels, series, reference, stacked, ma
       .map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
       .reverse()
       .join('L')}Z`;
+  const labels = series.length <= MAX_END_LABELS
+    ? series.flatMap((s, k) => {
+      const values = drawn[k]!;
+      const i = lastIndex(values);
+      return i >= 0 ? [{ id: s.id, label: s.endLabel ?? s.id, x: x(i), y: y(values[i]!) }] : [];
+    })
+    : [];
 
   return (
     <div className="chart">
@@ -146,12 +155,11 @@ export function LineChart({ title, unit, xLabels, series, reference, stacked, ma
             ),
           )}
         {series.filter((s) => !stacked || s.overlay).map(line)}
-        {series.length <= MAX_END_LABELS &&
-          endLabels(series.map((s, k) => ({ id: s.id, i: lastIndex(drawn[k]!), vals: drawn[k]! })).filter((l) => l.i >= 0).map((l) => ({ id: l.id, x: x(l.i), y: y(l.vals[l.i]!) })), PAD.t + 4, H - PAD.b).map((l) => (
-            <text key={`l-${l.id}`} x={l.x + 6} y={l.y + 4} fontSize={11} fill="var(--text)">
-              {l.id}
-            </text>
-          ))}
+        {endLabels(labels, PAD.t + 4, H - PAD.b).map((l) => (
+          <text key={`l-${l.id}`} x={l.x + 6} y={l.y + 4} fontSize={11} fill="var(--text)">
+            {l.label}
+          </text>
+        ))}
         {(markers ?? []).map((m, k) =>
           m.kind === 'WLM' ? (
             <line key={k} x1={x(m.i)} x2={x(m.i)} y1={PAD.t} y2={PAD.t + 5} stroke="var(--muted)" strokeWidth={1} />

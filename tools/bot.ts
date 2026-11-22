@@ -8,22 +8,24 @@
 //   --tune rejectedSkipTicks=0,maxProjectionsPerInterval=24   override POLICY_ADJUST for this run (tools/tune.ts)
 
 import { packOf } from '../src/content/packs';
-import { advance, chooseDraft, newRun, overallTrust, startDay } from '../src/game/run';
+import { chooseDraft, newRun, overallTrust, startDay } from '../src/game/run';
+import { advanceHours } from '../src/game/advance';
 import type { RunState } from '../src/game/types';
 import { FACETS, facetsOf } from '../src/game/types';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
-import { instanceClock } from '../src/sim/core/step';
+import { instanceClock } from '../src/sim/core/clock';
 import { STRATEGIES } from './strategies';
 import { decideTfp } from '../src/game/tfp';
 import { writeSpectateFile } from './spectateFile';
 import { buyTool, noteReportOpened } from '../src/game/tools';
 import { INSIGHT, TOOLS } from '../src/content/tools';
 
-import { arg } from './args';
+import { arg, flag, num } from './args';
 import { applyTune } from './tune';
 import { addTrace, candidateDump, dumpDay, emptyHour, hourLines } from './botTrace';
 import { setWlmTraceSink } from '../src/sim/wlm/adjust';
 import { clockText } from './playCore';
+import { SAVE_VERSION } from '../src/game/runFile';
 
 const pack = packOf(arg('scenario', 'midwest'));
 const scenario = pack.scenario;
@@ -37,7 +39,7 @@ const bot = STRATEGIES[botName];
 if (!bot) throw new Error(`Unknown bot ${botName}; have ${Object.keys(STRATEGIES).join(', ')}`);
 
 /** `--spectate runs/<name>.json [--pace 2]`: write the run after every simulated hour for `?spectate=<name>`. */
-const spectatePath = process.argv.includes('--spectate') ? arg('spectate', 'runs/bot.json') : null;
+const spectatePath = flag('spectate') ? arg('spectate', 'runs/bot.json') : null;
 const paceSec = Number(arg('pace', '0'));
 const spectateLog: { cmd: string; text?: string }[] = [];
 let seenChanges = 0;
@@ -48,7 +50,7 @@ function spectate(r: RunState) {
   seenChanges = r.changes.length;
   if (fresh.length) spectateLog.push({ cmd: 'note', text: `${botName}: ${fresh.join('; ')}` });
   spectateLog.push({ cmd: 'advance', text: `${botName} day ${r.day + 1} ${r.phase}` });
-  writeSpectateFile(spectatePath, { version: 1, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
+  writeSpectateFile(spectatePath, { version: SAVE_VERSION, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
   if (paceSec > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, paceSec * 1000);
 }
 
@@ -57,7 +59,7 @@ function spectate(r: RunState) {
  * Opens the day's capped number of reports each briefing and buys tools in catalog order (cheap tier 1 first, as
  * the playtesters did) whenever the next one is affordable; `toolDays` says when CICS_MON (playtest finding D) came.
  */
-const reader = process.argv.includes('--reader');
+const reader = flag('reader');
 const READER_KINDS = ['WLMGL', 'PARTITION', 'CF', 'DASD', 'SYSINFO', 'DELAY', 'CPC'];
 const READER_ORDER = TOOLS.filter((t) => !t.comingSoon).map((t) => t.id);
 const toolDays: Record<string, number> = {};
@@ -75,9 +77,9 @@ function readerBriefing(r: RunState): RunState {
 
 const tuneSpec = arg('tune', '');
 const tune = tuneSpec ? applyTune(tuneSpec) : null;
-const showChanges = process.argv.includes('--changes');
-const traceDay = process.argv.includes('--trace-day') ? Number(arg('trace-day', '0')) : null;
-const dumpPrefix = process.argv.includes('--dump') ? arg('dump', '') : null;
+const showChanges = flag('changes');
+const traceDay = flag('trace-day') ? num('trace-day', 0) : null;
+const dumpPrefix = flag('dump') ? arg('dump', '') : null;
 const dumpOn = dumpPrefix ? dumpDay(dumpPrefix) : null;
 if (traceDay !== null && !(traceDay >= 1)) throw new Error('--trace-day takes a played day, 1 or more');
 if (dumpPrefix !== null && dumpOn === null) throw new Error("--dump takes '<system> D<day> <clock prefix>', e.g. 'PRDA D29 10:0'");
@@ -109,7 +111,7 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
     run = startDay(run, content);
     spectate(run);
     while (run.phase === 'LIVE') {
-      run = advance(run, scenario, content, 360);
+      run = advanceHours(run, content, 1);
       if (traced) {
         for (const l of hourLines(clockText(run.sim.tick), hour, run, scenario)) console.log(l);
         Object.assign(hour, emptyHour());
@@ -142,7 +144,7 @@ console.log(`month ${run.sim.cost.month + 1} to date: $${Math.round(run.reports.
 void chooseDraft;
 
 // One machine-readable summary line for tools/sweep.ts.
-if (process.argv.includes('--json')) {
+if (flag('json')) {
   const reason = run.endReason ?? '';
   const cause = run.phase === 'VICTORY' ? 'victory' : /trust/i.test(reason) ? 'trust' : /batch/i.test(reason) ? 'batch' : /opex|outsourc/i.test(reason) ? 'opex' : run.phase === 'GAMEOVER' ? 'other' : 'unfinished';
   const byMech: Record<string, number> = {};

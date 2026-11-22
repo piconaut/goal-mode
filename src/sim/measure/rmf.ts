@@ -35,7 +35,8 @@ export interface LparIntervalAcc {
   deliveredIcf: number;
   overhead: number;
   capped: number;
-  wlmCapped?: number;
+  /** Ticks WLM considered to cap (soft cap in force), for Partition Data WLM%. */
+  wlmCapTicks?: number;
   prsmDelay: number;
   mvsBusy?: number;
   msu: number;
@@ -128,18 +129,18 @@ export interface CpuRecord {
   /** Average physical CP engines dispatched for this LPAR. */
   physicalEngines: number;
   logicalBusyPct: number;
-  /** RMF MVS BUSY (absent in old saves): non-wait share of unparked online time, ready-but-undispatched included. */
-  mvsBusyPct?: number;
+  /** RMF MVS BUSY: non-wait share of unparked online time, ready-but-undispatched included. */
+  mvsBusyPct: number;
   overheadPct: number;
   cappedPct: number;
-  /** Time WLM soft-capped the partition (Partition Data WLM%, RMF Report Analysis p.401). */
+  /** Percentage of the interval WLM capped the partition (Partition Data WLM%; SMF70NSW ÷ SMF70DSA). */
   wlmCappingPct?: number;
   prsmDelayPct: number;
   msuAvg: number;
   r4ha: number;
   definedCapacityMsu: number | null;
-  /** PR/SM absolute capping limit on the CP pool, in engines (absent in old saves). */
-  absoluteCapEngines?: number | null;
+  /** PR/SM absolute capping limit on the CP pool, in engines; null when the partition has none. */
+  absoluteCapEngines: number | null;
   ziipEngines: number;
   icfEngines: number;
 }
@@ -236,7 +237,7 @@ export function accumulateTick(
       deliveredIcf: a.deliveredIcf + (icf?.deliveredEngines ?? 0),
       overhead: a.overhead + (cp?.overheadFrac ?? 0),
       capped: a.capped + (cp?.cappedFrac ?? 0),
-      wlmCapped: (a.wlmCapped ?? 0) + (cp?.softCappedFrac ?? 0),
+      wlmCapTicks: (a.wlmCapTicks ?? 0) + (cp?.softCapInForce ? 1 : 0),
       prsmDelay: a.prsmDelay + (cp?.prsmDelayFrac ?? 0),
       mvsBusy: (a.mvsBusy ?? 0) + (cp?.mvsBusyFrac ?? 0),
       msu: a.msu + l.msuRate,
@@ -529,7 +530,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       mvsBusyPct: (100 * (a.mvsBusy ?? 0)) / n,
       overheadPct: (100 * a.overhead) / n,
       cappedPct: (100 * a.capped) / n,
-      wlmCappingPct: (100 * (a.wlmCapped ?? 0)) / n,
+      wlmCappingPct: (100 * (a.wlmCapTicks ?? 0)) / n,
       prsmDelayPct: (100 * a.prsmDelay) / n,
       msuAvg: a.msu / n,
       r4ha: ctx.r4haByLpar[a.lparId] ?? 0,

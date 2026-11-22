@@ -20,9 +20,9 @@ usual.
 ## 1. Review
 
 Do the review exactly as `.claude/agents/pr-reviewer.md` describes (read it first): setup in throwaway worktrees
-(never switch branches in the main checkout), checks 1–9, review-loop finding IDs (`B1…` blocking, `N1…`
-non-blocking; on a follow-up, mark each previous ID fixed / not fixed and continue the numbering). Skip its
-"Post the review" step: you post one combined report at the end (step 5).
+(never switch branches in the main checkout), checks 1–11, the finding IDs from `pr-reviewer`'s **full review
+mode** (`B1…` blocking, `N1…` non-blocking; on a follow-up, mark each previous ID fixed / not fixed and continue the
+numbering). Skip its "Post the review" step: you post one combined report at the end (step 5).
 
 Differences from pr-reviewer:
 
@@ -40,7 +40,8 @@ Mechanical (fix it): a missing or wrong unit/realism test for code the PR adds; 
 add (cite book and page); a missing `// FICTIONAL:` / `// APPROX:` comment or moving an invented number into
 `src/content/`; naming/units conventions; a local bug with an obvious fix (edge case, NaN, off-by-one, missing
 `initState` field); a layering or determinism violation with a local fix; a merge conflict with `dev` you can
-resolve without guessing intent; a failing test caused by any of these; UI build errors.
+resolve without guessing intent; a failing test caused by any of these; UI build errors; a **dependants** finding
+(pr-reviewer check 11: set the named BACKLOG.md entries' status as the finding says).
 
 Out of scope (hold it): the **backlog rule** finding on a `dev-loop` PR (pr-reviewer check 10; the author closes
 it); anything that changes what the PR is meant to do; a false claim about the PR's main feature;

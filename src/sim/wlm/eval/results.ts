@@ -1,6 +1,7 @@
 // Result stage: server health per role, then every slice's granted engines, sampled
 // states, response time and (unless this is a projection) its SLA attainment.
 
+import { MAX_QUEUE_RATIO } from '../../../content/wlm/tuning';
 import { lognormCdf } from '../../core/math';
 import { TICK_SEC } from '../../core/units';
 import type { IoClass } from '../../io/dasd';
@@ -9,14 +10,12 @@ import { ioUsingSec } from './io';
 import { SRV } from './prepare';
 import type { IoService, LparEvalInput, PreparedLpar, SliceResult } from './types';
 
-const MAX_QUEUE_RATIO = 50;
-
 export interface SliceHealth {
   want: number[];
   got: number[];
   health: number[];
   queueRatio: number[];
-  roleHealth: Record<string, { health: number; queueRatio: number }>;
+  roleHealth: Record<string, { health: number; queueRatio: number; capped?: boolean }>;
   /** Roles whose address spaces are managed as transaction servers (their CPU counts as the classes' CPU delay). */
   srvRoles: Record<string, true>;
 }
@@ -27,7 +26,7 @@ export function healthByRole(input: LparEvalInput, prepared: PreparedLpar, grant
   const n = slices.length;
   const { sliceCp, sliceZi, sliceCut, sliceAgg } = prepared;
   const { dres, cpG, ziG, iipcpG, overflowCut } = grants;
-  const roleHealth: Record<string, { health: number; queueRatio: number }> = {};
+  const roleHealth: Record<string, { health: number; queueRatio: number; capped?: boolean }> = {};
   const srvRoles: Record<string, true> = {};
   const want = new Array<number>(n);
   const got = new Array<number>(n);
@@ -47,7 +46,14 @@ export function healthByRole(input: LparEvalInput, prepared: PreparedLpar, grant
     if (s.kind === 'AS' && s.role) {
       if (prepared.order[a]!.endsWith(SRV)) srvRoles[s.role] = true;
       const prev = roleHealth[s.role];
-      if (!prev || health[i]! < prev.health) roleHealth[s.role] = { health: health[i]!, queueRatio: queueRatio[i]! };
+      // capped: this period's CPU was withheld by a resource-group or discretionary cap, the way a player starves a
+      // server (RF-09); an image-wide shortage is not a cap and keeps the bounded-delay form.
+      if (!prev || health[i]! < prev.health) {
+        const capped = sliceCut[i]! + (overflowCut?.[i] ?? 0) > 1e-9;
+        // Only a capped role carries the flag, so an uncapped tick's state is the shape it always had (old saves
+        // and runs read it as not capped: the bounded-delay form, RF-09).
+        roleHealth[s.role] = { health: health[i]!, queueRatio: queueRatio[i]!, ...(capped ? { capped: true } : {}) };
+      }
     }
   }
   return { want, got, health, queueRatio, roleHealth, srvRoles };

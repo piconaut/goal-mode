@@ -1,39 +1,43 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, pinRelation } from '../../src/game/evidence';
-import { advance, newRun, startDay } from '../../src/game/run';
+import { advance } from '../../src/game/run';
 import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/types';
+import { midwestContent, midwestNoonRbank } from '../helpers/fixtureCache';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import type { WorkManagerSamples } from '../../src/sim/wlm/reporting';
+import { truthOf } from '../helpers/truth';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 const HOUR = 360;
 let regressed: RunState;
 let hourKey: string;
 
 beforeAll(() => {
-  const noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * HOUR);
-  regressed = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 3 }] }, MIDWEST, content, HOUR);
+  regressed = midwestNoonRbank();
   const h = regressed.smfHours.at(-1)!;
   hourKey = `${h.day}:${h.hourOfDay}`;
 });
 
-const incident = (r: RunState, over: Partial<Incident> = {}): Incident => ({
-  id: 999,
-  workloadId: 'RBANK',
-  day: 0,
-  startTick: r.sim.tick - HOUR,
-  endTick: null,
-  hours: 1,
-  worstAttainmentPct: 80,
-  truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' },
-  rca: null,
-  trustLost: 0,
-  ...over,
-});
+const incident = (r: RunState, over: Partial<Incident> = {}): Incident => {
+  const workloadId = over.workloadId ?? 'RBANK';
+  return {
+    id: 999,
+    workloadId,
+    day: 0,
+    startTick: r.sim.tick - HOUR,
+    endTick: null,
+    hours: 1,
+    worstAttainmentPct: 80,
+    truth: truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'),
+    subjects: incidentSubjects(r, MIDWEST, workloadId, over.day ?? 0),
+    rca: null,
+    trustLost: 0,
+    ...over,
+  };
+};
 
-const cause = (mechanism: Mechanism, trigger: Trigger) => ({ truth: { mechanism, trigger } });
+const cause = (mechanism: Mechanism, trigger: Trigger) => ({ truth: truthOf(mechanism, trigger) });
 
 function pin(r: RunState, req: Parameters<typeof addPin>[2]): RunState {
   const out = addPin(r, MIDWEST, req);

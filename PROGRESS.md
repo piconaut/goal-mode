@@ -10,7 +10,51 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-16: PROGRESS history deleted (CL-42).
+- 2026-11-22: CI `citations` passes at once on the `dev` → `main` milestone PR (user decision): its lines were gated on their PRs into `dev` or predate the rule; milestone #459 opened.
+- 2026-11-21: CL-30 split policy adjustment into a per-call context, trial assessment, candidate/donor selection and trace/delay helpers; public imports and existing tests stay unchanged.
+- 2026-11-21: CL-35 split investigation subcommands into `tools/inspect/`; the dispatcher keeps its CLI and public exports, with implementation statements and tests unchanged.
+- 2026-11-21: PR-25 citation gate accepts a printed-page token only in the parenthesis directly after its PDF page run, using the same rule for wrapped lines.
+- 2026-11-21: CL-49 current-hour Db2/CICS evidence labels start at :00 through capture time; closed-hour labels, values and judging timestamps unchanged (SPEC §10).
+- 2026-11-21: CL-48 PROCU's game-only class summary shows EAppl CP once, with its IIPCP subset and zIIP column; all evidence metrics remain available, job columns unchanged (SPEC §8).
+- 2026-11-21: CL-47 sick-AOR event severity scales the absolute failure fraction from zero (Story 0.245, Normal 0.35, Hard/Ironman 0.4375), capped at 1; other modifier scaling unchanged (SPEC §11.2).
+- 2026-11-21: RT-33 CAPPING also for a resource-group cap on the judged host: CAP delay ≥ 5 % on the hurt period or its server period, or a group-capped server role; trigger POLICY, cause `none:CAPPING:<host>:rg:<group>`; a DELAY_CAP pin alone proves it; no shipped policy has resource groups, so compare is identical (#449).
+- 2026-11-21: RT-32 CPU verdict judged on the host with the most CPU-wait excess and the pool that queued, capacity vs priority by displaceable CPU (importance-free; the hurt work, its servers and at-risk SLA work excluded), shared with the CPU_PRIORITY proof; R-13 → CPU_PRIORITY/POLICY; sweeps in band, bots unchanged (#447).
+- 2026-11-21: CI `citations` reads a PDF label wrapped onto the line above (the #446 false positive) (#448).
+- 2026-11-21: RT-16 build design (docs/rt-16-design.md; Q7a … Q7e accepted, split into RT-16, RT-32, RT-33) and RT-16 reporting-only CPU accounting: CPU wait by workload per image, CP/zIIP/IIPCP by period, server role and workload, CAP-delay samples, capped server-role ticks, zIIP busy; goldens regenerated, `npm run compare --drop` identical (#446).
+- 2026-11-21: agent RCA playtest (four bots, 8 days each, one per scenario plus Midwest Hard); RT-16 and RT-17 unblocked by the user (Q6, Q7), RT-16 first; findings filed as RT-28 … RT-31, PT-48, PT-49 (#445).
+- 2026-11-21: CL-62 note on the archived WLM audit that its page citations predate the PDF-index rule; list `page-citations` finished and removed (#443).
+- 2026-11-21: CL-61 `src/sim/hw/pools.ts` capping comment names `cappedFrac` as the sim's own measure; RMF PDF p.401 cited only for WLM% (#442).
+- 2026-11-21: CL-60 docs/research.md citations labelled `PDF p.N (printed M)` from each page's footer; labels match their `#page=` links (#441).
+- 2026-11-21: CL-59 PR gate `citations` (`tools/ci/citations.ts`): added lines may not carry a bare page citation, and a `PDF p.N` link label must match its `#page=` (#439).
+- 2026-11-21: BACKLOG CL-59…CL-62, a smaller scope for the page-citation rule than the closed #436: a CI check on new citations, the research.md ledger, one wrong pools.ts citation, a note on the archived audit (#437; moved to list `page-citations` in #438).
+- 2026-11-20: CLAUDE.md citation convention: PDF page index, labelled, printed page in parentheses, edition named (#435).
+- 2026-11-20: RF-09 a server role whose own cap left it under 10 % of its demand carries only its granted share: its dependents complete that share of their arrivals and the rest time out, their CPU falling with completions (Db2 MSTR/DBM1 hold commits and getpages); the bounded delay stays above the threshold and for image-wide shortages (SPEC §5.6, §17, docs/research.md) (#433).
+- 2026-11-20: RF-07 every batch job that ends is one WLMGL/SMF 30 ended transaction with its queue-plus-elapsed response time in its ending period and report class, whatever the goal (velocity/discretionary classes no longer show ENDED 0); Monitor III ended rate and the `smf30-vs-wlmgl` identity cover every goal type; buckets stay for RT goals (docs/research.md, SPEC §17) (#432).
+- 2026-11-20: RF-06 Partition Data WLM% is the share of the interval the soft cap was in force (SMF70NSW ÷ SMF70DSA), not the share of demand it removed (that stays CAPPED); Monitor III WLM Capping % shows the instant state; new `LparPoolRuntime.softCapInForce`, identity restored (docs/research.md, SPEC §17) (#431).
+- 2026-11-19: CL-18 one game command layer (`src/game/commands.ts`) shared by the browser worker and the play CLI, with the validation/wording drift between them resolved (#427).
+- 2026-11-19: RF-01 CPU Activity report renders the capacity-change reason (`CHANGE REASON=NONE | POWERSAVE | MACHINE`) in its header; Partition Data drops the line; clue texts, codex entry, SPEC §17 and docs/research.md updated (#428).
+- 2026-11-19: RF-04 velocity floor moved to `src/content/wlm/tuning.ts` `VELOCITY_FLOOR` (0.1 %, FICTIONAL); velocity PI capped at 10 × goal, percentile projections extrapolate past 4.0 — which outweighs the other depends on starvation; no near-zero PI bound found in the WLM books checked (zos-docs: ieaw100 p.70-73, sg246472 p.54-56) (#429).
+- 2026-11-20: RF-02 Db2 SMF 101 view drops the `DBAT queue ms/txn` column; new Db2 statistics (DISPLAY DDF) view shows the cumulative count of DBAT requests that waited per member per hour; `DBAT_QUEUE` evidence pin reads it from there; Codex entry, SPEC §17 and docs/research.md updated (#430).
+- 2026-11-19: PT-17 browser saves carry their live day's start state and actions, so `inspect wlm --at` replays any time in the current day (cost: the save doubles, measured in the PR).
+- 2026-11-19: PR-24 CPU-by-service-class chart gives every displayed period a distinct colour (#425).
+- 2026-11-18: PT-15 Monitor III chart picker (per-viewer, stored), CP busy labels with a % of its CPC option, and a CPU-by-service-class chart (#423).
+- 2026-11-18: PT-14 Monitor III CPC report groups by processor type (*CP, *IIP, *ICF) with PHYSICAL lines in the browser and `play mon3 CPC` (#422).
+- 2026-11-18: PT-12 TFP offer per-product terms and run-rate projection in Finance and `play finance` (#421).
+- 2026-11-18: PR-23 reconciled the merged PT-11 description with the shipped CoD/hardware changes (#420).
+- 2026-11-18: PR-22 CoD deactivation button follows the handler phases (#419).
+- 2026-11-18: PT-11 live lead-time hardware plans without emergency trust; CoD deactivates from tomorrow (#417); review reconciled IBM sources, content tunables, live wording and tested overlapping-lease billing through early and original expiry.
+- 2026-11-18: PT-10 saved-policy "Activate now" and "Load into editor" in browser and play CLI (#416); review reconciled SPEC and the research ledger with the shipped actions and checked IBM's installed-policy requirement.
+- 2026-11-18: PT-08 CICS short-on-storage alert metric and region subject; evaluation requires active CICS monitoring (#415).
+- 2026-11-18: PR-21 Monitor III splits read from decayed components; sysplex rows sum their systems and reporting preserves source accumulators (#413).
+- 2026-11-18: PR-20 separates consecutive no-trial candidate streaks from trial-search assessment episodes in `inspect … wlm-stats` (#411); simulation behaviour unchanged.
+- 2026-11-18: PR-09 automated jsdom coverage for run-file and confirmation dialog lifecycles (#410).
+- 2026-11-17: `pr-review-loop` retired; `pr-fix-loop` is the only review loop (CL-44, #391).
+- 2026-11-17: `cleanup` list reviewed: CL-28/29/31/32/34/43 dropped, CL-27 and CL-36 narrowed, CL-10 moved to
+  `pr-followups` as PR-21, CL-44 unblocked (no scheduled task runs `pr-review-loop`).
+- 2026-11-16: round 3 finding: a starved Db2 only slows its dependents by a bounded factor (BACKLOG RF-09).
+- 2026-11-16: playtest round 3 (RCA truth and WLM) started on preview `3da33f5`; `playtest-companion` now publishes an
+  interactive checklist artifact per round ([round 3](https://claude.ai/artifact/4kPyWy6vcipRe76UwbVsA4)).
+- 2026-11-16: milestone #363 merged to `main`; release and preview artifacts rebuilt. PROGRESS history deleted (CL-42, #364).
 - 2026-11-15: codebase survey filed as BACKLOG `cleanup` CL-11 … CL-45 (#362).
 - 2026-11-15: RCA truth: RT-13 proof recipes (#357), RT-14 card footprints (#359), RT-15 grouping by cause (#361).
 - 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
@@ -27,12 +71,13 @@ Recent work, one line each (details in the PRs and Git history):
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published builds** (republish on request):
   - **Release (main):** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-    link"), "GOAL MODE (release · main 0008a76)", rebuilt 2026-11-10 from `main` at `0008a76` (merge of #260).
+    link"), "GOAL MODE (release · main 4a3a590)", rebuilt 2026-11-16 from `main` at `4a3a590` (merge of #363).
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
-    "GOAL MODE (preview · dev a77884a)", built 2026-11-13 from `dev` at `a77884a` (#338).
+    "GOAL MODE (preview · dev 3da33f5)", built 2026-11-16 from `dev` at `3da33f5` (#364; the same game as the
+    release, since #364 changed docs only).
 - **Latest verified dev:** `71a0685` (#288); 83 test files / 913 tests pass (single-worker `vitest`, 2026-11-11).
-- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `1300e69`, 2026-11-10):** Midwest `bde6d147471ece9f`;
-  Harbourline `ec94548d8283d76c`; Revenue `fb563b38750d988f`. Host timings vary; use adjacent comparisons rather than
+- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `8501087`, 2026-11-16; unchanged at `3da33f5`):** Midwest
+  `ff6e21b2171a2586`; Harbourline `ad8889b13fe355cd`; Revenue `59a35d5be8f3e367`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
@@ -57,8 +102,8 @@ Recent work, one line each (details in the PRs and Git history):
 **D1. Targeted fixes unlocked by a correct RCA.** An event's cheap operations fix (e.g. `MOBILE_BACKOFF` for a Db2
 retry storm) is offered only once the player has pinned proof of the cause; generic levers stay open, and wrong
 guesses cost something. Design, notes and user decisions: [docs/rca-design.md](docs/rca-design.md) §5 (on the truth
-model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; next a human playtest; RT-16 …
-RT-21 are parked until it; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm cannot
+model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; RT-16 and RT-17 unblocked after an agent playtest
+(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm cannot
 yet be told from a demand surge in any report, so RT-23 researches a discriminator and its fix stays ungated.
 
 ### WLM policy adjustment audit (2026-11-10 … 2026-11-13): closed
@@ -127,7 +172,8 @@ level or a separate toggle.
   Harbourline −3.7 %, Midwest −7.6 %, Revenue −6.9 % (7 pairs each). The re-profile puts `evaluateLpar` as the largest
   remaining share (25–27 %): option 3's trigger. Option 2 (RMF/state copying, ~13 %) still waits for the user.
   Option 1 in total: about −10 % Harbourline, −14 % Midwest, −20 % Revenue. Leftovers (classification results and
-  period indices in the plan, two commands the plan test lists but never runs) are BACKLOG CL-07, measure-first.
+  period indices in the plan) were measured in CL-07 (2026-11-16, #378): under 1 % of the profile, so no plan fields
+  were added; the plan test now runs `RESTART_JOB` and `SET_PRICING`.
 - Evidence and current proposal: [docs/headless-performance.md](docs/headless-performance.md), raw results in
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 
@@ -198,6 +244,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Active decisions and conventions
 
+- Page citations (user decision 2026-11-20): `PDF p.N (printed p.M)` with the edition, as in CLAUDE.md "Realism
+  policy"; existing bare `p.N` citations are relabelled when touched, not mass-rewritten.
 - Batch response-time goals (user decision 2026-11-13, WT-12): a fair few installations use them despite IBM's
   advice, and players may want to try them, so they stay supported and modelled; the editor warns, it doesn't forbid.
 - RCA baselines (user decision 2026-11-15, #359 review B1): `disturbed` stays footprint-based, so collateral work's
@@ -232,12 +280,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Realism audit loop: paced audit → main-agent vetting → isolated fix → scenario sweeps; one golden-changing
   PR at a time. Agents/host adaptations: [AGENTS.md](AGENTS.md), [docs/codex.md](docs/codex.md), `.claude/agents/`.
 
-- PR review (user request 2026-11-04): a scheduled task starts a fresh session per tick (no longer strictly hourly,
-  commit 6040718) that runs `.claude/skills/pr-review-loop/`. First pass merges only a PR with no findings at all; a held PR merges once a
-  follow-up review shows every earlier finding fixed and nothing new blocking; second-pass non-blocking leftovers
-  go to BACKLOG.md list `pr-followups`. State is the hidden `pr-review-loop` marker in each review comment.
-  A follow-up whose earlier findings were all non-blocking is reviewed on Sonnet instead of Opus (user request
-  2026-11-05).
+- PR review (user request 2026-11-04): the first review loop, `pr-review-loop`, held a PR on any finding and merged
+  it after a follow-up review. Retired 2026-11-17 (CL-44): `pr-fix-loop` (below) is the only review loop.
 
 - Reviewers don't repeat CI (user request 2026-11-06): `pr-reviewer` (and `pr-fixer`, which follows its checks)
   no longer runs `npm run check` while reviewing; CI's required `check` job runs it on the merge ref, so the review
@@ -272,7 +316,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   balance, bench hashes or needs a design call holds the PR for its author with no partial fixes. Fixes must keep the
   PR head's bench hashes. A Sonnet fix-check of the fix commits replaces the second review; fixes over 150 lines
   get a full Sonnet review instead. Two failed fix-checks hold the PR. Label a PR `no-autofix` to keep it out.
-  Open: compare cost per merged PR against `pr-review-loop` over a week before retiring it.
   Fix-check widened (user request 2026-11-09): it reads the fix commits against the whole PR diff at the fix head,
   checks each fix cures the cause (not a test bent to fit) and that the triage held, and reports blocking `Missed:`
   items as a FAIL. Why: the same agent finds, triages and fixes, so the fixes got the weakest review.
@@ -291,6 +334,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   itself, so only HOLDs make the round trip. Both push fast-forward only, so a rare overlap fails one push and that
   side retries next tick. Reviewers reject a `dev-loop` PR that doesn't fix a ready BACKLOG entry (pr-reviewer check
   10, the backlog rule), and dev-loop closes a PR held on it.
+  The PR that fixes an entry also unblocks its `blocked: after` dependants (dev-loop step 5.3, pr-reviewer check 11,
+  pr-fixer fixes a miss; 2026-11-18, after CL-17 was stranded by #396 and #403).
 
 - Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
@@ -311,7 +356,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   The body also needs a "## Behaviour change" section listing the golden changes since the last merge to `main` (CI
-  `behaviour-note` gate). Each one gets a `pr-reviewer` review (base `main`, head `dev`), which it also posts on the PR
+  `behaviour-note` gate; `citations` passes at once on it, user decision 2026-11-22). Each one gets a `pr-reviewer` review (base `main`, head `dev`), which it also posts on the PR
   as a reference comment. When the verdict is MERGE and all required checks are green, merge it with a **merge commit**
   (not squash, so `dev` and `main` keep shared history); otherwise fix or comment. No human approval is needed (user
   decision 2026-10-26). NEEDS USER verdicts go to the user.

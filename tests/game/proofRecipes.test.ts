@@ -14,20 +14,24 @@ import {
   type ProofPredicate,
   type ProofRecipe,
 } from '../../src/content/evidence';
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, type EvidencePin } from '../../src/game/evidence';
 import { judgeProof, proofLines } from '../../src/game/proof';
 import { db2Accounting } from '../../src/game/smf';
-import { advance, chooseDraft, newRun, startDay, submitRca } from '../../src/game/run';
+import { advance, chooseDraft, startDay, submitRca } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../../src/game/sla';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from '../../src/game/types';
+import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { minPins } from '../helpers/proofPins';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { Command } from '../../src/sim/core/commands';
+import { truthOf } from '../helpers/truth';
+import { snapshotCpuConsumers } from '../../src/game/displaceable';
+import { allWorkloads } from '../../src/game/workloads';
+import type { HourAcc } from '../../src/game/types';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 const HOUR = 360;
 let noon: RunState;
 /** The fixture state: `day2` with a class row that only the last interval carries, new work's (a day of report
@@ -37,7 +41,7 @@ let fixtureRun: RunState;
 let day2: RunState;
 
 beforeAll(() => {
-  noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * HOUR);
+  noon = midwestNoon();
   // A critical job ABENDs at 22:00 on day 1 (JOB_ABEND's command), so the night has a failure to pin.
   const late = advance(noon, MIDWEST, content, 10 * HOUR);
   const night = advance({ ...late, pendingCommands: [{ kind: 'ABEND_JOB', critical: true }] }, MIDWEST, content, TICKS_PER_DAY);
@@ -63,8 +67,18 @@ type Kind = 'CICS' | 'DDF' | 'BATCH';
 const fixtureIncident = (r: RunState, kind: Kind, truth: Incident['truth']): Incident => {
   const workloadId = kind === 'CICS' ? 'RBANK' : kind === 'DDF' ? 'MOBILE' : 'BATCH';
   const subjects: IncidentSubjects = kind === 'BATCH'
-    ? { classes: ['BATCHPRD'], lpars: ['PROD1'], hosts: ['PROD1'], servers: [] }
+    ? { classes: ['BATCHPRD'], lpars: ['PROD1'], hosts: ['PROD1'], servers: [], serverClasses: [] }
     : incidentSubjects(r, MIDWEST, workloadId, 0);
+  // This fixture stands for an hour with a separate same-class query and an unthreatened batch consumer.
+  // Importance is deliberately absent: RT-32 proof reads the frozen eligible share, not today's policy.
+  const jobs = { MONAGENT: { used: 1, displaceable: 1 }, MQ1AMSTR: { used: 1, displaceable: 1 }, STL007: { used: 1, displaceable: 1 } };
+  const classes = Object.fromEntries(['STCLO#1', 'DDFPRD#2'].map((k) => [k, { used: 1, displaceable: 1, workloads: [] }]));
+  // Native zIIP use is a token share of each class, so a WLMGL APPL (CP + zIIP) row scaled to its CP part
+  // still clears the 10 % line, while APPL_IIP has a row to read on the zIIP pool.
+  const ziipClasses = Object.fromEntries(Object.keys(classes).map((k) => [k, { used: 0.01, displaceable: 0.01, workloads: [] as string[] }]));
+  subjects.cpu = Object.fromEntries(subjects.hosts.map((h) => [h, {
+    CP: { engines: 6, classes, jobs }, ZIIP: { engines: 6, classes: ziipClasses, jobs: {} },
+  }]));
   return { id: 999, workloadId, day: 0, startTick: r.sim.tick - HOUR, endTick: null, hours: 1, worstAttainmentPct: 80, truth, rca: null, trustLost: 0, subjects };
 };
 
@@ -93,6 +107,13 @@ function placeFor(kind: Kind, o: PredicateOption, relation: string): Pick<Eviden
   }
   if (m === 'CF_SYNC' || m === 'CF_ASYNC_PCT') return relation === 'server' ? { source: 'CF', subject: 'CF01', system: 'CF01' } : null;
   if (m.startsWith('DASD_')) return relation === 'server' ? { source: 'DASD', subject: '21', system: '*PLEX' } : null;
+  if (m === 'DBAT_QUEUE') {
+    // Db2 statistics names the member's LPAR, not the workload row.
+    const lparId = MIDWEST.world.db2[0]?.lparId;
+    return relation === 'self' && kind !== 'BATCH' && lparId !== undefined
+      ? { source: 'Db2 statistics', subject: lparId, system: '*PLEX' }
+      : null;
+  }
   if (DB2_FAMILY.has(m)) return relation === 'self' && kind !== 'BATCH' ? { source: 'Db2 101', subject: workloadId, system: '*PLEX' } : null;
   if (CICS_FAMILY.has(m)) return relation === 'self' && kind === 'CICS' ? { source: 'CICS 110', subject: workloadId, system: '*PLEX' } : null;
   if (m === 'SOS_MIN') return relation === 'server' && kind === 'CICS' ? { source: 'CICS 110', subject: 'CICSAOR1', system: '*PLEX' } : null;
@@ -178,10 +199,15 @@ describe('proof recipe vocabulary (RT-13)', () => {
     }
   });
 
-  it('lets one pin complete a recipe only where its row shows both facts: a cost per transaction beside its rate', () => {
+  it('lets one pin complete a recipe only where its row shows both facts: a cost per transaction beside its rate, or the cap\'s own delay', () => {
     const single = CLAIMS.filter((c) => minPins(recipeOf(c).predicates).pins < 2);
-    expect(single.sort()).toEqual(['CHANGE_REGRESSION', 'DEMAND_SURGE']);
-    for (const c of single) expect(minPins(recipeOf(c).predicates).options.some((o) => o.reading === 'rate'), c).toBe(true);
+    expect(single.sort()).toEqual(['CAPPING', 'CHANGE_REGRESSION', 'DEMAND_SURGE']);
+    for (const c of single) {
+      // A cost row carries its rate beside it; a CAP-delay row (RT-33) is the cap's symptom and its proof, since WLMGL
+      // CAP delay is capping delay and not CPU delay (z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.540 (printed 500)).
+      const choices = minPins(recipeOf(c).predicates).options;
+      expect(choices.some((o) => o.reading === 'rate') || choices.every((o) => o.metric === 'DELAY_CAP'), c).toBe(true);
+    }
   });
 
   it('makes every option satisfiable by a pin of the row it reads, on some incident', () => {
@@ -193,7 +219,8 @@ describe('proof recipe vocabulary (RT-13)', () => {
         // A tied option needs predicate 0 shown on the same row.
         const anchor = o.sameWork ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999) : undefined;
         if (o.sameWork && !anchor) return false;
-        const inc = fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+        const inc = fixtureIncident(fixtureRun, kind, truthOf('CPU_PRIORITY', 'POLICY'));
+        if (o.displaceable && o.metric === 'APPL_IIP') inc.basis = { lparId: 'PROD1', cpcId: 'CPCA', cpcBusyPct: 100, lparBusyPct: 100, donorPct: 0, full: false, pool: 'ZIIP' };
         const proof = judgeProof(fixtureRun, MIDWEST, [inc], MECHANISMS.includes(claim as Mechanism) ? claim as Mechanism : 'CPU_PRIORITY',
           TRIGGERS.includes(claim as Trigger) ? claim as Trigger : 'POLICY', anchor ? [anchor, pin] : [pin]);
         const check = MECHANISMS.includes(claim as Mechanism) ? proof.mechanism : proof.trigger;
@@ -209,7 +236,7 @@ describe('proof recipe vocabulary (RT-13)', () => {
     const done = KINDS.some((kind) => {
       const pins = fixturePins(fixtureRun, kind, recipeOf(claim).predicates);
       if (!pins) return false;
-      const inc = fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+      const inc = fixtureIncident(fixtureRun, kind, truthOf('CPU_PRIORITY', 'POLICY'));
       const judge = (ps: EvidencePin[]) => {
         const r = judgeProof(fixtureRun, MIDWEST, [inc], isMech ? claim as Mechanism : 'CPU_PRIORITY', isMech ? 'POLICY' : claim as Trigger, ps);
         return isMech ? r.mechanism : r.trigger;
@@ -228,8 +255,7 @@ describe('proof recipe vocabulary (RT-13)', () => {
  * holds the design question. The pairs a shipped card can produce are marked in the BACKLOG entry. */
 const FOUR_PIN_PAIRS = [
   'CPU_CAPACITY×RUNAWAY_WORK', 'CPU_CAPACITY×BATCH_OVERLAP', 'CPU_CAPACITY×APPLICATION_ERROR', 'CPU_PRIORITY×HARDWARE_FAULT',
-  'CPU_PRIORITY×APPLICATION_ERROR', 'CAPPING×RUNAWAY_WORK', 'CAPPING×BATCH_OVERLAP', 'CAPPING×HARDWARE_FAULT',
-  'CAPPING×APPLICATION_ERROR', 'DEPENDENCY×RUNAWAY_WORK', 'DEPENDENCY×BATCH_OVERLAP', 'DEPENDENCY×APPLICATION_ERROR',
+  'CPU_PRIORITY×APPLICATION_ERROR', 'DEPENDENCY×RUNAWAY_WORK', 'DEPENDENCY×BATCH_OVERLAP', 'DEPENDENCY×APPLICATION_ERROR',
   'LOCK_CONTENTION×RUNAWAY_WORK', 'LOCK_CONTENTION×APPLICATION_ERROR', 'CF_SERVICE×RUNAWAY_WORK', 'CF_SERVICE×BATCH_OVERLAP',
   'CF_SERVICE×APPLICATION_ERROR', 'QR_TCB×RUNAWAY_WORK', 'QR_TCB×BATCH_OVERLAP', 'QR_TCB×HARDWARE_FAULT',
   'QR_TCB×APPLICATION_ERROR', 'THREAD_LIMIT×BATCH_OVERLAP', 'ROUTING×BATCH_OVERLAP', 'IO×RUNAWAY_WORK',
@@ -246,8 +272,8 @@ describe('documented values (RT-13)', () => {
     const order = Object.fromEntries(CLAIMS.map((c) => [c, recipeOf(c).predicates.map((p) => p.label.split(/[:(]/)[0]!.trim())]));
     expect(order).toEqual({
       CPU_CAPACITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'the processor full'],
-      CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a displaceable consumer on that host'],
-      CAPPING: ['CPU delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
+      CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a consumer WLM could have taken CPU from'],
+      CAPPING: ['CPU delay ≥ 10 % or CAP delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
       DEPENDENCY: ['the server slow', 'the hurt class\'s own CPU delay < 10 %'],
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
@@ -296,7 +322,7 @@ describe('tier-0/1 paths (RT-13)', () => {
       if (!pins) return false;
       expect(pins.every((p) => ['WLMGL', 'CPC', 'PROCU'].includes(p!.source)), claim).toBe(true);
       const isMech = MECHANISMS.includes(claim as Mechanism);
-      const r = judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' })],
+      const r = judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, kind, truthOf('CPU_PRIORITY', 'POLICY'))],
         isMech ? claim as Mechanism : 'CPU_PRIORITY', isMech ? 'POLICY' : claim as Trigger, pins as EvidencePin[]);
       return (isMech ? r.mechanism : r.trigger).complete;
     });
@@ -323,10 +349,21 @@ describe('tier-0/1 paths (RT-13)', () => {
 // Replays: real report rows from a midwest day, a change pushed at noon and an hour run on.
 
 describe('proofs from replayed incidents (RT-13)', () => {
-  const after = (mod: 'cpu' | 'rate', key: string, value: number, hours = 1): RunState =>
-    advance({ ...day2, pendingCommands: [{ kind: 'SET_MODIFIER', mod, key, value }] }, MIDWEST, content, hours * HOUR);
-  const mobileIncident = (r: RunState, truth: Incident['truth']): Incident =>
-    ({ ...fixtureIncident(r, 'DDF', truth), subjects: incidentSubjects(day2, MIDWEST, 'MOBILE', day2.day) });
+  const observedHours = new WeakMap<RunState['sim'], HourAcc>();
+  const after = (mod: 'cpu' | 'rate', key: string, value: number, hours = 1): RunState => {
+    const beforeClose = advance({ ...day2, pendingCommands: [{ kind: 'SET_MODIFIER', mod, key, value }] }, MIDWEST, content, hours * HOUR - 1);
+    const result = advance(beforeClose, MIDWEST, content, 1);
+    observedHours.set(result.sim, beforeClose.hour!);
+    return result;
+  };
+  const mobileIncident = (r: RunState, truth: Incident['truth']): Incident => {
+    const inc = fixtureIncident(r, 'DDF', truth);
+    const h = observedHours.get(r.sim);
+    if (!h) return inc;
+    const workloads = allWorkloads(MIDWEST, r);
+    return { ...inc, subjects: snapshotCpuConsumers(r, MIDWEST, h, workloads.find((w) => w.id === 'MOBILE')!, workloads,
+      incidentSubjects(r, MIDWEST, 'MOBILE', r.day)) };
+  };
 
   it('reads an ended rate against the same interval on earlier days, so the morning ramp is not a surge', () => {
     const i = last(day2);
@@ -336,7 +373,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     expect(p.rate!.baseline).toBe(yesterday.wlm.find((w) => w.lparId === 'PROD2' && w.scKey === 'DDFPRD#1')!.endPerSec);
     expect(Math.abs(p.rate!.value / p.rate!.baseline! - 1)).toBeLessThan(PROOF.normalBand);
     // Unchanged work at noon proves neither trigger.
-    const inc = mobileIncident(day2, { mechanism: 'CPU_CAPACITY', trigger: 'POLICY' });
+    const inc = mobileIncident(day2, truthOf('CPU_CAPACITY', 'POLICY'));
     for (const t of ['DEMAND_SURGE', 'CHANGE_REGRESSION'] as const) expect(judgeProof(day2, MIDWEST, [inc], 'CPU_CAPACITY', t, pins).trigger.complete, t).toBe(false);
   });
   const pinAll = (r: RunState, reqs: Parameters<typeof addPin>[2][]): { run: RunState; pins: EvidencePin[] } => {
@@ -356,7 +393,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const p = pins[0]!;
     expect(p.value / p.baseline!).toBeGreaterThan(PROOF.regressionRatio);
     expect(p.text).toMatch(/CP ms\/txn .* at \d+\.?\d* \/s$/);
-    const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' });
+    const inc = mobileIncident(run, truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'));
     expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'CHANGE_REGRESSION', pins).trigger.complete).toBe(true);
     REPLAYED.add('CHANGE_REGRESSION');
     expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'DEMAND_SURGE', pins).trigger).toMatchObject({ complete: false });
@@ -367,7 +404,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const { run, pins } = pinAll(r, [{ source: 'WLMGL', index: last(r), system: 'PROD1', scKey: 'DDFPRD#1', metric: 'CPU_PER_TXN' }]);
     const p = pins[0]!;
     expect(p.rate!.value / p.rate!.baseline!).toBeGreaterThan(PROOF.surgeRatio);
-    const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'DEMAND_SURGE' });
+    const inc = mobileIncident(run, truthOf('CPU_CAPACITY', 'DEMAND_SURGE'));
     expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'DEMAND_SURGE', pins).trigger.complete).toBe(true);
     REPLAYED.add('DEMAND_SURGE');
     expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'CHANGE_REGRESSION', pins).trigger.complete).toBe(false);
@@ -379,7 +416,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const i = last(r);
     const delay = { source: 'WLMGL' as const, index: i, system: 'PROD2', scKey: 'DDFPRD#1', metric: 'DELAY_CPU' as const };
     const full = pinAll(r, [delay, { source: 'CPC', index: i, lparId: 'PROD2', metric: 'CPC_BUSY' }]);
-    const inc = mobileIncident(full.run, { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' });
+    const inc = mobileIncident(full.run, truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'));
     expect(judgeProof(full.run, MIDWEST, [inc], 'CPU_CAPACITY', 'CHANGE_REGRESSION', full.pins).mechanism.complete).toBe(true);
     REPLAYED.add('CPU_CAPACITY');
     expect(judgeProof(full.run, MIDWEST, [inc], 'CPU_PRIORITY', 'CHANGE_REGRESSION', full.pins).mechanism.complete).toBe(false);
@@ -393,7 +430,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
       { source: 'WLMGL', index: j, system: 'PROD2', scKey: 'DDFPRD#1', metric: 'DELAY_CPU' },
       { source: 'WLMGL', index: j, system: 'PROD2', scKey: 'DDFPRD#2', metric: 'APPL_CP' },
     ]);
-    const adhoc = mobileIncident(hog.run, { mechanism: 'CPU_PRIORITY', trigger: 'RUNAWAY_WORK' });
+    const adhoc = mobileIncident(hog.run, truthOf('CPU_PRIORITY', 'RUNAWAY_WORK'));
     const pr = judgeProof(hog.run, MIDWEST, [adhoc], 'CPU_PRIORITY', 'RUNAWAY_WORK', hog.pins);
     expect(pr.mechanism.complete).toBe(true);
     REPLAYED.add('CPU_PRIORITY');
@@ -410,7 +447,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     // Day 2, 20 minutes into the open hour of Db2 accounting.
     const db2 = pinAll(advance(day2, MIDWEST, content, 120), [{ source: 'DB2', hour: 'current', workloadId: 'MOBILE', metric: 'ENDED_RATE' }]);
     for (const [run, pins] of [[wlm.run, wlm.pins], [db2.run, db2.pins]] as const) {
-      const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'NEW_WORKLOAD' });
+      const inc = mobileIncident(run, truthOf('CPU_CAPACITY', 'NEW_WORKLOAD'));
       expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates.find((x) => /no history/.test(x.label))!.met).toBe(false);
     }
   });
@@ -420,7 +457,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const index = day2.sim.rmf.intervals.findIndex((iv) => iv.endTick === 18 * HOUR);
     expect(day2.sim.rmf.intervals[index]!.wlm.some((w) => w.lparId === 'PROD1' && w.scKey === 'BATCHPRD#1')).toBe(true);
     const { run, pins } = pinAll(day2, [{ source: 'WLMGL', index, system: 'PROD1', scKey: 'BATCHPRD#1', metric: 'APPL' }]);
-    const inc = { ...mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'NEW_WORKLOAD' }), startTick: 17 * HOUR, endTick: 18 * HOUR };
+    const inc = { ...mobileIncident(run, truthOf('CPU_CAPACITY', 'NEW_WORKLOAD')), startTick: 17 * HOUR, endTick: 18 * HOUR };
     expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates.find((x) => /no history/.test(x.label))!.met).toBe(false);
   });
 
@@ -430,8 +467,8 @@ describe('proofs from replayed incidents (RT-13)', () => {
     expect(out.run.pins.at(-1)).toMatchObject({ metric: 'JOB_APPL', subject: 'MONAGENT', serviceClass: 'STCMED' });
   });
 
-  it('judges a PROCU job by the service class its row shows: a batch job is displaceable, a started task above the work is not', () => {
-    const inc = fixtureIncident(fixtureRun, 'CICS', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+  it('judges a PROCU job by its snapshot: happy batch and same-importance non-server work are displaceable', () => {
+    const inc = fixtureIncident(fixtureRun, 'CICS', truthOf('CPU_PRIORITY', 'POLICY'));
     const job = (subject: string, serviceClass?: string): EvidencePin => ({
       id: 5000, source: 'PROCU', metric: 'JOB_APPL', subject, system: 'PROD1', tick: fixtureRun.sim.rmf.intervals.at(-1)!.endTick,
       value: 115, text: 'job', ...(serviceClass ? { serviceClass } : {}),
@@ -439,10 +476,24 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const consumer = (p: EvidencePin) => judgeProof(fixtureRun, MIDWEST, [inc], 'CPU_PRIORITY', 'POLICY', [p]).mechanism.predicates[1]!.met;
     // STL007, a critical batch job (BATCHPRD, importance 4), against RBANK's ONLHI (importance 1).
     expect(consumer(job('STL007', 'BATCHPRD'))).toBe(true);
-    // A started task in STCHI (importance 1) is not below the work; without a class the job's address space decides.
-    expect(consumer(job('MQ1AMSTR', 'STCHI'))).toBe(false);
+    // MQ does not serve RBANK. Its equal importance is not a reason to exclude it.
+    expect(consumer(job('MQ1AMSTR', 'STCHI'))).toBe(true);
     expect(consumer(job('MONAGENT'))).toBe(true);
-    expect(consumer(job('STL007'))).toBe(false);
+    expect(consumer(job('STL007'))).toBe(true);
+    expect(consumer(job('UNKNOWN'))).toBe(false);
+  });
+
+  it('reads a batch class CP row against the image CPs on a zIIP-judged incident', () => {
+    // PROD1 has 6 CPs and 2 zIIPs: 30 % of one engine is 15 % of the zIIPs but only 5 % of the CPs.
+    const inc = { ...fixtureIncident(fixtureRun, 'CICS', truthOf('CPU_PRIORITY', 'BATCH_OVERLAP')),
+      basis: { lparId: 'PROD1', cpcId: 'CPCA', cpcBusyPct: 100, lparBusyPct: 100, donorPct: 0, full: false, pool: 'ZIIP' as const } };
+    const batchRow = (value: number): EvidencePin => ({
+      id: 5001, source: 'WLMGL', metric: 'APPL', subject: 'BATCHPRD#1', system: 'PROD1', tick: fixtureRun.sim.rmf.intervals.at(-1)!.endTick,
+      value, text: 'batch',
+    });
+    const batchRunning = (p: EvidencePin) => judgeProof(fixtureRun, MIDWEST, [inc], 'CPU_PRIORITY', 'BATCH_OVERLAP', [p]).trigger.predicates[1]!.met;
+    expect(batchRunning(batchRow(30))).toBe(false);
+    expect(batchRunning(batchRow(61))).toBe(true);
   });
 
   it('gives an open-hour Db2 101 cost pin the same hour yesterday as its rate baseline', () => {
@@ -458,7 +509,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
       { source: 'MON3', system: 'PROD2', scKey: 'DDFPRD#2', metric: 'APPL_CP' },
     ]);
     expect(pins[1]!.source).toBe('PROCU');
-    const inc = mobileIncident(run, { mechanism: 'CPU_PRIORITY', trigger: 'RUNAWAY_WORK' });
+    const inc = mobileIncident(run, truthOf('CPU_PRIORITY', 'RUNAWAY_WORK'));
     expect(judgeProof(run, MIDWEST, [inc], 'CPU_PRIORITY', 'RUNAWAY_WORK', pins).mechanism.complete).toBe(true);
   });
 
@@ -471,7 +522,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
       { source: 'WLMGL', index: last(r), system: 'PROD2', scKey: 'DDFPRD#1', metric: 'CPU_PER_TXN' },
       { source: 'WLMGL', index: last(r), system: 'PROD1', scKey: 'ONLHI#1', metric: 'ENDED_RATE' },
     ]);
-    const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' });
+    const inc = mobileIncident(run, truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'));
     const proof = judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'CHANGE_REGRESSION', pins).trigger;
     // The cost doubled on DDFPRD#1, but its own rate moved too; ONLHI#1's normal rate is another class's.
     expect(proof.predicates[0]!.met).toBe(true);
@@ -494,7 +545,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     // The rate's normal is the same hour the day before.
     const yesterday = r.smfHours.find((x) => x.day === h.day - 1 && x.hourOfDay === h.hourOfDay)!;
     expect(pins[0]!.rate!.baseline).toBeCloseTo(db2Accounting(r, MIDWEST, `${yesterday.day}:${yesterday.hourOfDay}`).find((x) => x.workloadId === 'MOBILE')!.txnPerSec);
-    const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' });
+    const inc = mobileIncident(run, truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'));
     const proof = judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'CHANGE_REGRESSION', pins);
     expect(proof.trigger.predicates[0]!.met).toBe(true);
   });
@@ -519,7 +570,7 @@ describe('RCA scoring by proof (RT-13)', () => {
   };
 
   it('pays a complete recipe for the accepted mechanism three points, and both recipes strong evidence', () => {
-    const inc = fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    const inc = fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'POLICY'));
     // CPU delay (also the POLICY symptom), a displaceable class, and the work's own rate at normal.
     const pins = pinsFor(noon, 'DDF', ['CPU_PRIORITY', 'POLICY']);
     expect(pins).toHaveLength(3);
@@ -530,11 +581,11 @@ describe('RCA scoring by proof (RT-13)', () => {
     expect(rca.strong).toBe(true);
     expect(rca.points).toBe(5 + PROOF.recipePoints);
     expect(after.insight - before.insight).toBe(5 + PROOF.recipePoints + EVIDENCE.strongInsight);
-    expect(proofLines(rca.proof!)[0]).toMatch(/^Mechanism CPU_PRIORITY proven: ✓ CPU or zIIP delay .*; ✓ a displaceable consumer/);
+    expect(proofLines(rca.proof!)[0]).toMatch(/^Mechanism CPU_PRIORITY proven: ✓ CPU or zIIP delay .*; ✓ a consumer WLM could have taken CPU from/);
   });
 
   it('pays the mechanism recipe without the strong bonus when the trigger recipe is incomplete', () => {
-    const inc = fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    const inc = fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'POLICY'));
     const { before, after, rca } = file(inc, pinsFor(noon, 'DDF', ['CPU_PRIORITY']), 'CPU_PRIORITY', 'POLICY');
     expect(rca.evidencePoints).toBe(PROOF.recipePoints);
     expect(rca.strong).toBeUndefined();
@@ -542,7 +593,7 @@ describe('RCA scoring by proof (RT-13)', () => {
   });
 
   it('pays half a point for one predicate, the old non-specific weight (A9: two delay rows are not a proof)', () => {
-    const inc = fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    const inc = fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'POLICY'));
     const delay = pinFor(noon, 'DDF', MECHANISM_RECIPES.CPU_PRIORITY.predicates[0].options[0]!, 3000)!;
     const zIIP = { ...delay, id: 3001, metric: 'DELAY_ZIIP' as const, subject: 'DDFPRD#2' };
     const { rca } = file(inc, [delay, zIIP], 'CPU_PRIORITY', 'POLICY');
@@ -553,23 +604,23 @@ describe('RCA scoring by proof (RT-13)', () => {
 
   it('pays nothing for a proven claim the truth does not accept, and no strong bonus for a wrong trigger', () => {
     const pins = pinsFor(noon, 'DDF', ['CPU_PRIORITY', 'POLICY']);
-    const wrongMech = file(fixtureIncident(noon, 'DDF', { mechanism: 'IO', trigger: 'POLICY' }), pins, 'CPU_PRIORITY', 'POLICY');
+    const wrongMech = file(fixtureIncident(noon, 'DDF', truthOf('IO', 'POLICY')), pins, 'CPU_PRIORITY', 'POLICY');
     expect(wrongMech.rca.proof!.mechanism.complete).toBe(true);
     expect(wrongMech.rca.evidencePoints).toBe(0);
     expect(wrongMech.rca.strong).toBeUndefined();
-    const wrongTrig = file(fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' }), pins, 'CPU_PRIORITY', 'POLICY');
+    const wrongTrig = file(fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'DEMAND_SURGE')), pins, 'CPU_PRIORITY', 'POLICY');
     expect(wrongTrig.rca.evidencePoints).toBe(PROOF.recipePoints);
     expect(wrongTrig.rca.strong).toBeUndefined();
   });
 
   it('ignores pins outside the incident window', () => {
-    const inc = fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    const inc = fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'POLICY'));
     const pins = pinsFor(noon, 'DDF', ['CPU_PRIORITY']).map((p) => ({ ...p, tick: inc.startTick - EVIDENCE.windowHours * HOUR - 1 }));
     expect(file(inc, pins, 'CPU_PRIORITY', 'POLICY').rca.evidencePoints).toBe(0);
   });
 
   it('pools a group\'s incidents: one pin per incident can complete the recipe', () => {
-    const a = fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    const a = fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'POLICY'));
     const b = { ...fixtureIncident(noon, 'CICS', a.truth), id: 1000, rcaGroup: 999 };
     const ddfDelay = pinFor(noon, 'DDF', MECHANISM_RECIPES.CPU_PRIORITY.predicates[0].options[0]!, 4000)!;
     // A less important class on PROD1, displaceable for RBANK's ONLHI as for MOBILE's DDFPRD.
@@ -581,7 +632,7 @@ describe('RCA scoring by proof (RT-13)', () => {
   });
 
   it('files no proof without pins, so an RCA without evidence keeps its old record', () => {
-    const inc = fixtureIncident(noon, 'DDF', { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    const inc = fixtureIncident(noon, 'DDF', truthOf('CPU_PRIORITY', 'POLICY'));
     const { rca } = file(inc, [], 'CPU_PRIORITY', 'POLICY');
     expect(rca.proof).toBeUndefined();
     expect(rca.evidencePoints).toBe(0);
@@ -608,7 +659,7 @@ describe('every recipe from a replayed incident (RT-13)', () => {
   const last = (r: RunState) => r.sim.rmf.intervals.length - 1;
   const incidentOn = (r: RunState, workloadId: string): Incident => ({
     id: 999, workloadId, day: r.day, startTick: r.sim.tick - HOUR, endTick: null, hours: 1, worstAttainmentPct: 80,
-    truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' }, rca: null, trustLost: 0,
+    truth: truthOf('CPU_PRIORITY', 'POLICY'), rca: null, trustLost: 0,
     subjects: incidentSubjects(r, MIDWEST, workloadId, r.day),
   });
   /** Each claim's recipe complete over the pins (for an incident on `workloadId`), recorded as replayed. */
@@ -705,7 +756,7 @@ describe('every recipe from a replayed incident (RT-13)', () => {
     const night = x.reports.find((d) => d.day === 0)!.batch!;
     const inc: Incident = {
       id: 999, workloadId: 'BATCH', day: 0, startTick: 12 * HOUR, endTick: TICKS_PER_DAY, hours: 12, worstAttainmentPct: 0,
-      truth: { mechanism: 'JOB_FAILURE', trigger: 'APPLICATION_ERROR' }, rca: null, trustLost: 0,
+      truth: truthOf('JOB_FAILURE', 'APPLICATION_ERROR'), rca: null, trustLost: 0,
       subjects: incidentSubjects(x, MIDWEST, 'BATCH', 0, night),
     };
     proves(x, inc, pins, ['JOB_FAILURE']);

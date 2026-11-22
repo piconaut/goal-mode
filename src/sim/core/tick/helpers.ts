@@ -13,19 +13,11 @@ import { ACC_DECAY, goalPi, goalInfo, type ScpState } from '../../wlm/runtime';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
 import type { CpcConfig, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
-import { DAY_SEC, TICK_SEC } from '../units';
-
-/** Seconds after a played day's 06:00 start → wall-clock text. */
-export function instanceClock(secAfterStart: number): string {
-  const s = Math.round(secAfterStart + 6 * 3600) % DAY_SEC;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const dayOffset = secAfterStart >= DAY_SEC - 6 * 3600 ? '+1' : '';
-  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${dayOffset}`;
-}
+import { TICK_SEC } from '../units';
 
 // A running job is classified every tick; remember the last answer per job definition (the service
 // definition is replaced, never edited, so identity is a safe key; classify itself is pure).
-export const jobClassCache = new WeakMap<object, { def: object; lparId: string; res: ReturnType<typeof classify> }>();
+const jobClassCache = new WeakMap<object, { def: object; lparId: string; res: ReturnType<typeof classify> }>();
 export function classifyJob(def: SimState['wlm']['definition'], jobDef: JobRuntime['def'], lparId: string): ReturnType<typeof classify> {
   const hit = jobClassCache.get(jobDef);
   if (hit && hit.def === def && hit.lparId === lparId) return hit.res;
@@ -34,7 +26,7 @@ export function classifyJob(def: SimState['wlm']['definition'], jobDef: JobRunti
   return res;
 }
 
-export const byIdCache = new WeakMap<readonly WorkloadDef[], Record<string, WorkloadDef>>();
+const byIdCache = new WeakMap<readonly WorkloadDef[], Record<string, WorkloadDef>>();
 export function byIdOf(workloads: readonly WorkloadDef[]): Record<string, WorkloadDef> {
   let m = byIdCache.get(workloads);
   if (!m) byIdCache.set(workloads, (m = Object.fromEntries(workloads.map((w) => [w.id, w]))));
@@ -115,14 +107,14 @@ export function updateRouting(s: SimState, scenario: Scenario): SimState {
 }
 
 // What CICSPlex SM sees of a region: last tick's normal response and abend rate for this work there.
-export function regionStat(s: SimState, w: WorkloadDef, lparId: string): RegionStat {
+function regionStat(s: SimState, w: WorkloadDef, lparId: string): RegionStat {
   const k = wlLparKey(w.id, lparId);
   // No normal completions (all timed out, or no traffic yet) reads as the timeout, never as instant.
   const rt = s.env.rtByWorkloadLpar[k] ?? 0;
   return { lparId, rtSec: rt > 0 ? rt : w.timeoutSec, failFrac: s.env.failByWorkloadLpar?.[k] ?? 0 };
 }
 
-export function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {
+function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {
   const lt = s.last.lpars.find((l) => l.lparId === lparId);
   const pools = s.lpars.find((l) => l.id === lparId)?.pools ?? [];
   const avail = (p: PoolType) => pools.find((x) => x.pool === p)?.availableEffectiveEngines ?? 0;
@@ -144,7 +136,7 @@ export function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): Rou
 // identity so slice-template caches stay warm until something actually changes.
 // Same scenario + run additions ⇒ same workload content per id; only routing differs (slice-template scope).
 export const workloadScope = new WeakMap<readonly WorkloadDef[], object>();
-export const wlCache = new WeakMap<Scenario, WeakMap<readonly WorkloadDef[], WeakMap<object, WorkloadDef[]>>>();
+const wlCache = new WeakMap<Scenario, WeakMap<readonly WorkloadDef[], WeakMap<object, WorkloadDef[]>>>();
 export function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   let a = wlCache.get(scenario);
   if (!a) wlCache.set(scenario, (a = new WeakMap()));
@@ -159,7 +151,7 @@ export function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef
   return out;
 }
 
-export const asCache = new WeakMap<Scenario, WeakMap<readonly AddressSpaceDef[], AddressSpaceDef[]>>();
+const asCache = new WeakMap<Scenario, WeakMap<readonly AddressSpaceDef[], AddressSpaceDef[]>>();
 export function effectiveAddressSpaces(scenario: Scenario, s: SimState): AddressSpaceDef[] {
   let a = asCache.get(scenario);
   if (!a) asCache.set(scenario, (a = new WeakMap()));
@@ -253,7 +245,7 @@ export function idleScpTick(scKey: string, dp: number): ScpTick {
  * a percentage of the LPAR share, min(weight share, logical CPs); type 3 CPs × 100. Specialty engine use is
  * excluded (the "Include Specialty Processor Consumption" default). APPROX: type 2 ignores a soft cap
  * below the share; type 4 (MSU) and memory pools are not modelled. */
-export function resolveRgCapEngines(
+function resolveRgCapEngines(
   type: 1 | 2 | 3,
   max: number,
   cpRt: Pick<LparPoolRuntime, 'entitlementEngines'> | undefined,
@@ -429,7 +421,7 @@ export function cicsHonorPriority(
 
 /** A goal period wants its minimum at local PI > 1; discretionary work wants CPU when it has CPU delay
  * (SG24-6472 p.63, receiver cases 1–3). rgMin separately checks the group's smoothed service. */
-export function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefined, scKey: string): boolean {
+function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefined, scKey: string): boolean {
   if (!st) return false;
   const g = goalInfo(def, scKey)?.goal;
   if (!g) return false;

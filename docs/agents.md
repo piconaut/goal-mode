@@ -13,7 +13,7 @@ npm run -s play -- runs/a.json start              # start the day (BRIEFING → 
 npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 sim hours (stops early when a job abends; lists new mail)
 npm run -s play -- runs/a.json restart SET016     # restart an abended batch job from its checkpoint (only during its batch night)
 npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, classification rules, LPAR CP/zIIP counts, CICS regions
-npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
+npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CPU_ACTIVITY (alias CPU), CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
 npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables incl. PROCU jobs (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
@@ -31,6 +31,9 @@ npm run -s play -- runs/a.json buy RMF_MON3
 npm run -s play -- runs/a.json draft <id|none>    # closes the end-of-day review
 npm run -s play -- runs/a.json json '{"cmd":"change","req":{"label":"+1 CP","hardwareId":"PERM_CP"}}'
 npm run -s play -- runs/a.json json '{"cmd":"wlm","edit":{...}}'   # then: activate (or discard)
+npm run -s play -- runs/a.json policy-activate NIGHTPOL   # activate a saved policy now (emergency when live)
+npm run -s play -- runs/a.json cod-deactivate CHG7      # end an active On/Off CoD lease at 06:00 tomorrow (0.5h)
+npm run -s play -- runs/a.json policy-load NIGHTPOL       # load it into the pending editor
 ```
 
 Each call loads the run file, applies one command and saves it. Refused commands print `REFUSED: …`, exit
@@ -61,7 +64,7 @@ Change Desk (`json '{"cmd":"change","req":{"label":"…","commands":[…]}}'`), 
 A change may carry only the change-desk kinds above and their siblings (those with an engineer-hours cost); other
 `Command` kinds, a `fixId`/`hardwareId` combined with commands, and event-only fields are refused at no cost.
 
-WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Goals are
+WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Saved policies can be activated directly (`policy-activate <name>`) or loaded into the pending editor (`policy-load <name>`). Goals are
 `{"kind":"AVG","rtSec":0.5}`, `{"kind":"PCT","rtSec":0.5,"pct":90}`, `{"kind":"VEL","velocity":40}` or
 `{"kind":"DISC"}`; importance 1–5; `period` is 0-based (0 = the first period, RMF row `ONLHI#1`); qualifiers TN UI TC PK CI SY; subsystems STC JES CICS DDF TSO MQ OMVS.
 
@@ -113,9 +116,12 @@ behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receiv
 counters over a range (adjustments, candidates by outcome, trials by verdict, accepted and reversed moves, periods
 assessed on 30 adjustments without a receiver move, and the DP ladder at a clock time each day); it needs a play-CLI
 file, replays a logged `advance` only as far as the CLI ran it (an ABEND stops it), and costs about 6 s per played day.
-A play-CLI file replays from its seed and log to any past time; a browser save has no log, so `wlm` is traced forward
-from the saved moment and `wlm-stats` refuses it. Player agents must not use any of these verbs: none is something a
-player can see.
+A play-CLI file replays from its seed and log to any past time; a browser save carries its current live day's 06:00
+start state and that day's actions, so `wlm` replays to any time in its current day and is traced forward from the
+saved moment outside it; `wlm-stats` refuses a browser save. Any `play` verb that writes the file (`report`, `smf`,
+`note` and `pin` included, not only `advance` or a change) drops that trace, so run `inspect` on the browser save
+before playing it with the CLI, or on a copy. Player agents must not use any of these verbs: none is
+something a player can see.
 
 ## What an agent can see
 

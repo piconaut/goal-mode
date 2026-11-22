@@ -2,7 +2,7 @@
 // batch job analytics (SMF 30) and CPU MF counters (SMF 113), built from what the sim measures.
 
 import { DB2_PACKAGES, lsprCategory, SMF113 } from '../content/smf';
-import { clockAt, formatClock } from '../sim/core/clock';
+import { clockAt, hhmm, pad2 } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { WorkloadDef } from '../sim/workload/types';
@@ -17,17 +17,15 @@ export interface SmfHourRef {
 /** Selectable hours: the current (open) hour, then closed hours newest first. */
 export function smfHourRefs(run: RunState): SmfHourRef[] {
   const out: SmfHourRef[] = [];
-  if (run.hour && run.phase === 'LIVE') out.push({ key: 'current', label: `${hh(Math.floor(clockAt(run.sim.tick).hourOfDay))}:00 (this hour, so far)` });
-  for (const h of [...run.smfHours].reverse()) out.push({ key: `${h.day}:${h.hourOfDay}`, label: `D${h.day + 1} ${hh(h.hourOfDay)}:00–${hh((h.hourOfDay + 1) % 24)}:00` });
+  if (run.hour && run.phase === 'LIVE') out.push({ key: 'current', label: `${pad2(Math.floor(clockAt(run.sim.tick).hourOfDay))}:00 (this hour, so far)` });
+  for (const h of [...run.smfHours].reverse()) out.push({ key: `${h.day}:${h.hourOfDay}`, label: `D${h.day + 1} ${pad2(h.hourOfDay)}:00–${pad2((h.hourOfDay + 1) % 24)}:00` });
   return out;
 }
 
-const hh = (h: number) => String(h).padStart(2, '0');
-
-function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number> } | null {
-  if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC } : null;
+function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number>; dbatQueuedByLpar?: Record<string, number> } | null {
+  if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC, dbatQueuedByLpar: run.hour.dbatQueuedByLpar } : null;
   const h = run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key);
-  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}) } : null;
+  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}), ...(h.dbatQueuedByLpar ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}) } : null;
 }
 
 /** A closed hour's frozen ratio (none if the workload had no baseline yet then, e.g. a new workload's first hour);
@@ -54,8 +52,6 @@ export interface Db2AcctRow {
   cfMs: number;
   /** CPU queueing (not a class 3 suspension, but shows in class 2 not-accounted time). */
   notAccountedMs: number;
-  /** DDF: waits for a DBAT before Db2 starts the thread (queued at MAXDBAT). */
-  dbatQueueMs: number;
 }
 
 export function db2Accounting(run: RunState, scenario: Scenario, key: string): Db2AcctRow[] {
@@ -81,10 +77,28 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
           syncIoMs: perTxnMs(h, 'io'),
           cfMs: perTxnMs(h, 'cf'),
           notAccountedMs: perTxnMs(h, 'cpuQueue') + perTxnMs(h, 'ziipQueue') + perTxnMs(h, 'dependency'),
-          dbatQueueMs: w.subsystem === 'DDF' ? perTxnMs(h, 'outside') : 0,
         } satisfies Db2AcctRow,
       ];
     });
+}
+
+/** Db2 statistics (DISPLAY DDF-style): the cumulative count of DBAT requests that waited for a slot during the
+ * hour, per Db2 member. Real Db2 does not trace the wait for a thread at MAXDBAT in SMF 101; the analyst's clue is
+ * the number of work items that had to wait for a DBAT (QUEDBAT/QDSTQDBT), shown by -DISPLAY DDF DETAIL
+ * (Db2 13 Command Reference p.303; IFCID 73, Db2 13 Managing Performance p.143). The sim's queue model is
+ * unchanged - this is a reporting view only. */
+export interface Db2StatRow {
+  lparId: string;
+  ssid: string;
+  /** Cumulative count of requests that waited for a DBAT during the hour. */
+  dbatQueued: number;
+}
+
+export function db2Statistics(run: RunState, scenario: Scenario, key: string): Db2StatRow[] {
+  const d = hourData(run, key);
+  if (!d) return [];
+  const byLpar = d.dbatQueuedByLpar ?? {};
+  return scenario.world.db2.map((m) => ({ lparId: m.lparId, ssid: m.ssid, dbatQueued: byLpar[m.lparId] ?? 0 }));
 }
 
 export interface CicsTxnRow {
@@ -204,7 +218,7 @@ export function batchNight(run: RunState): BatchNight | null {
   return out;
 }
 
-export const nightClock = (n: BatchNight, sec: number) => formatClock(n.dayStartTick + Math.round(sec / TICK_SEC)).slice(-8, -3);
+export const nightClock = (n: BatchNight, sec: number) => hhmm(n.dayStartTick + Math.round(sec / TICK_SEC));
 
 export interface Smf113Row {
   lparId: string;

@@ -16,9 +16,9 @@ const content = { ...MIDWEST_GAME, events: [] };
 const hourStart = 7 * TICKS_PER_HOUR; // 13:00 on the first played day
 const hourEnd = hourStart + TICKS_PER_HOUR;
 
-/** A CPU-delayed MOBILE breach accumulated over 13:00–14:00, independent of sim tuning. The RETRY_STORM card is
- * built without `mechanisms` on purpose: this fixture models the pre-RT-02 lenient path, so the trigger history
- * tests stay about the hour overlap rather than the card's declared mechanisms. */
+/** A CPU-delayed MOBILE breach accumulated over 13:00–14:00, independent of sim tuning. The RETRY_STORM card declares
+ * its real CP footprint's mechanisms (cardMechanisms), so the trigger history tests stay about the hour overlap rather
+ * than the card's declared mechanisms. */
 function breachAt(tick: number): RunState {
   const run = startDay(newRun(MIDWEST, content, 7), content);
   const storm = MIDWEST_GAME.events.find((e) => e.id === 'RETRY_STORM')!;
@@ -33,7 +33,7 @@ function breachAt(tick: number): RunState {
     events: [{
       uid: 'RETRY_STORM@0', defId: storm.id, name: storm.name,
       startTick: hourStart - 72, // 12:48, as in the playtest finding
-      endTick: hourEnd + TICKS_PER_HOUR, trigger: storm.trigger, affects: storm.affects,
+      endTick: hourEnd + TICKS_PER_HOUR, trigger: storm.trigger, affects: storm.affects, mechanisms: cardMechanisms(storm) ?? [],
       endCommands: storm.end, started: true, ended: false,
     }],
   };
@@ -63,10 +63,10 @@ describe('incident trigger history', () => {
 });
 
 describe('card mechanisms', () => {
-  const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
+  const hour: HourAcc = { ...newHour(0), ticks: 1 };
   const cardOf = (defId: string, over: Partial<ActiveEvent> = {}): ActiveEvent => {
     const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
-    return { uid: `${defId}@1`, defId, name: def.name, startTick: 0, endTick: 10, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def), endCommands: [], started: true, ended: false, ...over };
+    return { uid: `${defId}@1`, defId, name: def.name, startTick: 0, endTick: 10, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: [], started: true, ended: false, ...over };
   };
 
   it('U-2: a 30-hour CPU regression does not take an I/O incident from the DASD fault', () => {
@@ -82,10 +82,12 @@ describe('card mechanisms', () => {
     expect(triggerOf('MOBILE', 'LOCK_CONTENTION', [cardOf('RETRY_STORM')], clash, false, NO_SCOPE)).toBe('BATCH_OVERLAP');
   });
 
-  it('every card in the three decks with non-empty affects declares a footprint resource (RT-14)', () => {
+  it('every card in the three decks that can hurt work declares a footprint resource (RT-14)', () => {
+    // A card with no resource declares no mechanism (and now blames nothing); one that reaches work or a region must
+    // say what it causes, or it would silently stop being a cause.
     const decks = [MIDWEST_GAME, HARBOURLINE_GAME, REVENUE_GAME];
     const missing = decks.flatMap((d) => d.events
-      .filter((e) => e.affects.length > 0 && !e.resource)
+      .filter((e) => (e.affects.length > 0 || e.reach !== undefined) && !e.resource)
       .map((e) => e.id));
     expect(missing).toEqual([]);
   });

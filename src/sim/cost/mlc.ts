@@ -43,6 +43,12 @@ export interface CostState {
   peaks: ProductPeak[];
   /** Hourly product MSU values for the current month (for the SCRT-style report). */
   hourly: Record<string, number[]>;
+  /** MSU-hours actually consumed this month, per product (CP MSU integrated over time, so it differs
+   * from the R4HA samples above: those are a 4-hour average limited by DC). Absent on states written
+   * by builds before consumption was tracked. */
+  usage?: Record<string, number>;
+  /** Hours of played time that `usage` covers this month (resets with it). */
+  usageHours?: number;
   bills: Bill[];
   /** Present once TFP is in force. */
   tfp?: TfpState;
@@ -56,6 +62,8 @@ export const newCost = (products: readonly ProductDef[]): CostState => ({
   month: 0,
   peaks: products.map((p) => ({ product: p.id, peakMsu: 0, peakTick: 0 })),
   hourly: Object.fromEntries(products.map((p) => [p.id, [] as number[]])),
+  usage: Object.fromEntries(products.map((p) => [p.id, 0])),
+  usageHours: 0,
   bills: [],
 });
 
@@ -134,6 +142,21 @@ export function startTfp(cost: CostState, terms: TfpTerms, tick: number): CostSt
   };
 }
 
+/** Add one tick of actual consumption to the month's usage (CP MSU only). Runs for every tick, TFP or
+ * not, so the TFP offer can show what the month has really used rather than the R4HA samples. */
+export function accrueUsage(cost: CostState, products: readonly ProductDef[], msuByLpar: Readonly<Record<string, number>>, tickSec: number): CostState {
+  // A state written before usage existed can't be completed from what is left: keep it absent (the
+  // TFP offer then labels its usage as an R4HA estimate) rather than counting only the hours since load.
+  if (!cost.usage) return cost;
+  const usage = { ...cost.usage };
+  for (const p of products) {
+    let msu = 0;
+    for (const l of p.lpars) msu += msuByLpar[l] ?? 0;
+    usage[p.id] = (usage[p.id] ?? 0) + (msu * tickSec) / 3600;
+  }
+  return { ...cost, usage, usageHours: (cost.usageHours ?? 0) + tickSec / 3600 };
+}
+
 /** Accrue one tick of consumption (CP MSU only: zIIP work isn't chargeable under TFP either). */
 export function accrueTfp(cost: CostState, products: readonly ProductDef[], msuByLpar: Readonly<Record<string, number>>, tickSec: number): CostState {
   const tfp = cost.tfp;
@@ -169,6 +192,8 @@ export function closeMonth(cost: CostState, products: readonly ProductDef[]): Co
     month: cost.month + 1,
     peaks: cost.peaks.map((pk) => ({ product: pk.product, peakMsu: 0, peakTick: 0 })),
     hourly: Object.fromEntries(Object.keys(cost.hourly).map((k) => [k, [] as number[]])),
+    usage: Object.fromEntries(cost.peaks.map((pk) => [pk.product, 0])),
+    usageHours: 0,
     bills: [...cost.bills, bill],
   };
   if (cost.priceMult !== undefined) next.priceMult = cost.priceMult;

@@ -3,6 +3,7 @@
 //
 //   PR_BODY="..." npx tsx tools/ci/behaviourNote.ts <base-ref>
 import { execFileSync } from 'node:child_process';
+import { isMain } from '../args';
 
 const GOLDEN_FILE = 'tests/golden/hashes.json';
 
@@ -18,7 +19,7 @@ export function behaviourNote(body: string): string {
   return /^(none|n\/a|-)?\.?$/i.test(text) ? '' : text;
 }
 
-if (process.argv[1]?.endsWith('behaviourNote.ts')) {
+if (isMain(import.meta.url)) {
   const baseRef = process.argv[2];
   if (!baseRef) throw new Error('usage: behaviourNote.ts <base-ref>');
   if (!goldensChanged(baseRef)) {

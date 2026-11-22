@@ -1,13 +1,12 @@
-import type { GameContent } from '../game/run';
+import { defineGame } from './defineGame';
 import { MIDWEST_EVENTS, MIDWEST_STORY } from './events/midwest-events';
 
 /** FICTIONAL budgets for the Midwest Mutual run. */
-export const MIDWEST_GAME: GameContent = {
+export const MIDWEST_GAME = defineGame({
   events: MIDWEST_EVENTS,
   story: MIDWEST_STORY,
   opexBudgetMonthly: 780_000,
   capexQuarter: 1_500_000,
-  maxDays: 40,
   // Story keeps the WLM and PR/SM flaws (the diagnosis) but hands over the infrastructure ones fixed.
   startingFixes: {
     STORY: [
@@ -16,4 +15,4 @@ export const MIDWEST_GAME: GameContent = {
       { flaw: 'F11', label: 'RMF records every 15 minutes', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] },
     ],
   },
-};
+});
