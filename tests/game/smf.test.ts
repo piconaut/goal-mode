@@ -72,6 +72,9 @@ describe('vs base (PT-13)', () => {
     const disturbed = advance({ ...base, events: [card] }, MIDWEST, content, HOUR);
     expect(quiet.baselines.RBANK).toBeDefined();
     expect(disturbed.baselines.RBANK).toBeUndefined();
+    // Nor its clock-hour slot (RT-17).
+    expect(quiet.hourBaselines?.RBANK).toBeDefined();
+    expect(disturbed.hourBaselines?.RBANK).toBeUndefined();
   });
 
   it('folds a met hour into its clock-hour slot and freezes "vs base" against that slot (RT-17)', () => {
@@ -81,6 +84,9 @@ describe('vs base (PT-13)', () => {
     const closed = r.smfHours.at(-1)!;
     expect(closed.hourOfDay).toBe(12);
     expect(r.hourBaselines?.RBANK?.['12']?.cpu).toBeGreaterThan(0);
+    // The slot is an EWMA of weight 0.5 over days: half the old slot, half this hour.
+    const wh = closed.workloads.RBANK!;
+    expect(r.hourBaselines!.RBANK!['12']!.cpu).toBeCloseTo(0.5 * 0.001 + 0.5 * ((wh.parts.cpu ?? 0) / wh.completions), 12);
     // With the slot (0.001 s per transaction) the ratio is tens; the rolling baseline (1 s) would put it under 0.1.
     expect(closed.cpuVsBase!.RBANK!).toBeGreaterThan(1);
     // A workload with no slot at that hour reads the rolling EWMA; an unknown one reads nothing.

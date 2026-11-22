@@ -134,6 +134,9 @@ describe('hour-of-day baselines and the delay floor (RT-17)', () => {
     expect(judge(parts, {}, 0.1)).toBe('CPU_PRIORITY');
     // The old ranking would have named the lock: a budget small enough for 2.9 ms to clear 10 % shows it.
     expect(judge(parts, {}, 0.02)).toBe('LOCK_CONTENTION');
+    // At the floor itself a delay group still explains the miss; just under it, none does.
+    expect(judge({ lock: 0.05 }, {}, 0.5)).toBe('LOCK_CONTENTION');
+    expect(judge({ lock: 0.0499 }, {}, 0.5)).toBe('CPU_PRIORITY');
   });
 
   it('accepts a second delay group at a third of the excess, and none under the floor', () => {
