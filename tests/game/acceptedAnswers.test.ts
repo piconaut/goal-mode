@@ -132,6 +132,15 @@ describe('accepted answer sets (RT-07)', () => {
     expect(fresh.accepted.triggers).toEqual(['NEW_WORKLOAD']);
   });
 
+  it('accepts a co-dominant delay group beside the primary (RT-17)', () => {
+    const out = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', coDominant: [{ mechanism: 'IO', why: '40.0 % of the delay excess grew beside the primary' }] }));
+    expect(out.accepted.mechanisms).toContain('IO');
+    expect(out.notes.IO).toBe('40.0 % of the delay excess grew beside the primary');
+    // An answer the truth already carries is not offered twice.
+    const same = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', coDominant: [{ mechanism: 'CPU_PRIORITY', why: 'never shown' }] }));
+    expect(same.notes.CPU_PRIORITY).toBeUndefined();
+  });
+
   it('names the cause: the blamed card, new work, or what was short', () => {
     expect(truthCause(ctx({ events: [card('POWER_CAP')], trigger: 'HARDWARE_FAULT' }))).toBe('POWER_CAP@1');
     expect(truthCause(ctx({ isNew: true, trigger: 'NEW_WORKLOAD' }))).toBe('new:MOBILE');

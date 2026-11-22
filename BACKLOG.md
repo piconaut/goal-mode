@@ -118,28 +118,17 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-17 · Healthy baseline per hour of day
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q6: yes for this entry; RT-19 and RT-20 stay parked). Agent
-playtest 2026-11-21 evidence: Harbourline seed 37 MKTORD at 318/s and 345/s against 133–204/s in other hours was
-judged not ≥ 1.25 × "recent normal" (the daily peaks feed the rolling baseline); RT-18's surge test reads this slot.
-
-One baseline per workload per clock hour (EWMA over days), with the rolling EWMA as fallback until a slot has data;
-co-dominant groups (≥ ⅓ of the excess) are accepted; a floor of 10 % of the SLA budget below which no delay group
-wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done when: R-6's and R-15's 20:00
-`LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
-
 ### RT-29 · A complete proof for a mechanism the truth does not accept
-`list: rca-truth · status: blocked: design (after RT-17) · priority: high · size: M · area: game`
+`list: rca-truth · status: blocked: design · priority: high · size: M · area: game`
 
 Source: agent playtest 2026-11-21 (runs not committed). Harbourline seed 37 D4 INC35: both THREAD_LIMIT predicates
 green (CICS 110 MXT wait 6762 ms/txn, CPU per transaction ×1.01), primary `QR_TCB/POLICY`, reply "THREAD_LIMIT proven,
 but it was not the cause, so it earns nothing"; the same MXT-queue symptom was QR_TCB on D3/D4 and CPU_PRIORITY on
 D2/D3, and on D1 one hour gave INC1 QR_TCB and INC2 CPU_PRIORITY. Midwest Hard seed 54 D3 INC22: CF02 sync service
 1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗", apparently because CF02 has always
-been slow (a standing misconfiguration is its own baseline). Part of this is RT-17's (co-dominant groups) and RT-19's
-(THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the two repros after RT-17;
+been slow (a standing misconfiguration is its own baseline). Part of this was RT-17's (co-dominant groups, since
+merged) and RT-19's (THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the
+two repros now that RT-17 has landed;
 what remains needs a design call: accept a mechanism whose complete recipe (including its ruling-out half) holds on the
 incident's own rows and window, or keep it at zero with a reply that says which number made the primary win; and
 whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.

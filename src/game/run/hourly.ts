@@ -1,4 +1,5 @@
 import { PLANNER } from '../../content/planner';
+import { SLOT_BASELINE_DECAY } from '../../content/sla';
 import { clockAt } from '../../sim/core/clock';
 import { msuPerCp } from '../../sim/hw/cpc';
 import { streamRng } from '../../sim/core/rng';
@@ -9,13 +10,14 @@ import { SERVER_KEY } from '../../sim/wlm/holders';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { accumulateCpuGrant, accumulateCpuGrants, accumulateCpuWaits } from '../hourAccounting';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { activeIn, addHour, capacityBasis, cappingVerdict, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { activeIn, addHour, capacityBasis, cappingVerdict, clockHourOf, coDominantGroups, cpuMechanismOf, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, slotBaseline, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
 import { hostImages } from '../footprint';
 import {
   type CapacityDay,
   type HourAcc,
   type Incident,
   type IncidentTruth,
+  type Mechanism,
   type RunState
 } from '../types';
 import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
@@ -227,16 +229,20 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   const trust = { ...r.trust };
   let incidents = [...r.incidents];
   const baselines = { ...r.baselines };
+  const hourBaselines = { ...(r.hourBaselines ?? {}) };
   const hourStart = r.sim.tick - TICKS_PER_HOUR;
   const hourEnd = r.sim.tick;
   const workloads = allWorkloads(scenario, r);
+  // The hour's clock-hour baseline, or the rolling EWMA until that slot has a met, undisturbed hour (RT-17).
+  const hourSlot = clockHourOf(hourStart);
+  const baseOf = (workloadId: string) => slotBaseline(hourBaselines, baselines, workloadId, hourSlot);
   // "vs base" is frozen now, against the baseline that was in force during this hour: later clean hours move the
   // EWMA, and a past row's ratio must not move with it (PT-13). SMF 110 performance data is completed at task end
   // (CICS TS 6 Monitoring CICS p.19) and SMF 101 accounting written at thread end (Db2 13 Managing Performance p.144).
   const cpuVsBase: Record<string, number> = {};
   for (const w of workloads) {
     const wh = h.workloads[w.id];
-    const base = baselines[w.id]?.cpu ?? 0;
+    const base = baseOf(w.id).cpu ?? 0;
     if (!wh || wh.completions <= 0 || base <= 0) continue;
     cpuVsBase[w.id] = (perTxnParts(wh).cpu ?? 0) / base;
   }
@@ -269,7 +275,14 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
       metHour.push(w.id);
-      if (!disturbed(w.id)) baselines[w.id] = updateBaseline(baselines[w.id], parts);
+      if (!disturbed(w.id)) {
+        // The rolling EWMA stays the fallback; the clock-hour slot is what judges this hour of the day (RT-17).
+        baselines[w.id] = updateBaseline(baselines[w.id], parts);
+        hourBaselines[w.id] = {
+          ...(hourBaselines[w.id] ?? {}),
+          [String(hourSlot)]: updateBaseline(hourBaselines[w.id]?.[String(hourSlot)], parts, SLOT_BASELINE_DECAY),
+        };
+      }
       if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
       continue;
     }
@@ -299,7 +312,10 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
         return cls ? classGroup(cls) : null;
       };
       const serverRoles = [...new Set([...(w.servers ?? []).map((s) => s.role), ...(w.hostRole ? [w.hostRole] : [])])].sort();
-      const cpu = { workloadId: w.id, baseline: baselines[w.id] ?? {}, subjects, serverRoles,
+      const base = baseOf(w.id);
+      // A discretionary class has no response-time goal: no floor, as before RT-17.
+      const slaRtSec = 'rtSec' in w.sla ? w.sla.rtSec : 0;
+      const cpu = { workloadId: w.id, baseline: base, subjects, serverRoles, slaRtSec,
         groupOf: classGroup, roleGroupOf: roleGroup,
         // IIPHONORPRIORITY=NO means CPs never examine eligible work:
         // SA23-1380-60 PDF p.430 (printed 394). A service class with Honor Priority=NO gets no CP help
@@ -311,7 +327,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
             r.sim.wlm.definition.classes.find((c) => c.id === cls)?.honorPriority === false;
         }).map((h) => h.lparId),
       };
-      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts, cpu);
+      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, base, h, hosts, cpu);
       const cpuSide = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'].includes(mechanism);
       const basis = cpuSide ? capacityBasis(h, hosts, cpu) : null;
       // The cap that decided a CAPPING hour is the incident's cause, whatever host the basis picked on a legacy hour.
@@ -322,6 +338,12 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           if (cap.group !== null) basis.capGroup = cap.group;
         }
       }
+      // A second delay group with a third of the excess is an accepted answer too (RT-17, §4.2(2)). The CPU group is
+      // mapped to the answer the CPU drill-down would give, as the primary does.
+      const coDominant = coDominantGroups(parts, base, slaRtSec, cpuSide ? 'CPU' : mechanism).map(({ group, sharePct }) => ({
+        mechanism: group === 'CPU' ? cpuMechanismOf(h, hosts, cpu) : (group as Mechanism),
+        why: `${sharePct.toFixed(1)} % of the delay excess grew beside the primary`,
+      }));
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
       const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });
@@ -329,6 +351,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
         workloadId: w.id, mechanism, trigger, hour: h, events: r.events, basis, hosts,
         servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew,
         ...(cpuSide ? { cpu: cpuAlternates(h, hosts, cpu) } : {}),
+        ...(coDominant.length ? { coDominant } : {}),
       };
       const { accepted, notes } = acceptedAnswers(ctx);
       const truth: IncidentTruth = {
@@ -338,7 +361,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       };
       let aiops: Hypothesis[] | undefined;
       if (toolOn(r, 'AIOPS')) {
-        aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
+        aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, base), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
       }
       const inc: Incident = {
         id: r.nextId,
@@ -376,5 +399,5 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
     ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
   }].slice(-SMF_HOURS_KEPT);
-  return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
+  return { ...r, trust, incidents, baselines, hourBaselines, smfHours, hour: newHour(r.sim.tick) };
 }

@@ -5,6 +5,7 @@ import { lsprCategory } from '../../src/content/smf';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { addPin } from '../../src/game/evidence';
 import { batchNight, cicsMonitoring, db2Accounting, db2Statistics, smf113, smfHourRefs } from '../../src/game/smf';
+import { slotBaseline } from '../../src/game/sla';
 import type { RunState } from '../../src/game/types';
 import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
@@ -71,6 +72,26 @@ describe('vs base (PT-13)', () => {
     const disturbed = advance({ ...base, events: [card] }, MIDWEST, content, HOUR);
     expect(quiet.baselines.RBANK).toBeDefined();
     expect(disturbed.baselines.RBANK).toBeUndefined();
+    // Nor its clock-hour slot (RT-17).
+    expect(quiet.hourBaselines?.RBANK).toBeDefined();
+    expect(disturbed.hourBaselines?.RBANK).toBeUndefined();
+  });
+
+  it('folds a met hour into its clock-hour slot and freezes "vs base" against that slot (RT-17)', () => {
+    // A slot for 12:00 far below the rolling baseline: the closed hour's ratio must read the slot.
+    const r0 = { ...noon, hourBaselines: { RBANK: { '12': { cpu: 0.001 } } }, baselines: { ...noon.baselines, RBANK: { ...noon.baselines.RBANK, cpu: 1 } } };
+    const r = advance(r0, MIDWEST, content, HOUR);
+    const closed = r.smfHours.at(-1)!;
+    expect(closed.hourOfDay).toBe(12);
+    expect(r.hourBaselines?.RBANK?.['12']?.cpu).toBeGreaterThan(0);
+    // The slot is an EWMA of weight 0.5 over days: half the old slot, half this hour.
+    const wh = closed.workloads.RBANK!;
+    expect(r.hourBaselines!.RBANK!['12']!.cpu).toBeCloseTo(0.5 * 0.001 + 0.5 * ((wh.parts.cpu ?? 0) / wh.completions), 12);
+    // With the slot (0.001 s per transaction) the ratio is tens; the rolling baseline (1 s) would put it under 0.1.
+    expect(closed.cpuVsBase!.RBANK!).toBeGreaterThan(1);
+    // A workload with no slot at that hour reads the rolling EWMA; an unknown one reads nothing.
+    expect(slotBaseline(r.hourBaselines, r.baselines, 'RBANK', 0).cpu).toBeGreaterThan(0);
+    expect(slotBaseline(r.hourBaselines, r.baselines, 'NOPE', 12)).toEqual({});
   });
 });
 

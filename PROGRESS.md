@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: RT-17 one healthy baseline per workload per clock hour (EWMA 0.5 over days, rolling EWMA as fallback) feeds the mechanism judgement, the CPU drill-down, AIOps and the frozen SMF "vs base" ratio; a delay group with ≥ ⅓ of the excess is accepted, and under 10 % of the response-time goal none explains the miss, so the 20:00 lock incidents (R-6, R-15) read as CPU.
 - 2026-11-22: Per-PR timing of the November sim changes, the regressions it found and the remaining targets are in docs/headless-performance-options.md ("Results: November regressions").
 - 2026-11-22: Per-tick WLM period records start with their sustained-demand fields, keeping one object shape through the evaluator (#295 regression; hash-neutral).
 - 2026-11-22: RT-28 a grouped RCA reply names each distinct member primary with the workloads whose truth it is and attributes every accepted reason to its victim; a single incident's reply is unchanged.
