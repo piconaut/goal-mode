@@ -374,6 +374,10 @@ export interface RunState {
   nightHour?: HourAcc | null;
   /** EWMA of healthy-hour response-time parts per workload (incident baselines). */
   baselines: Record<string, Record<string, number>>;
+  /** EWMA of the same parts per workload per clock hour of day (0–23), folded only from met, undisturbed hours;
+   *  `baselines` is the rolling fallback until a slot has data (RT-17, docs/rca-design.md §4.2(1)). Absent in saves
+   *  from before RT-17, which then read the rolling baseline everywhere. */
+  hourBaselines?: Record<string, Record<string, Record<string, number>>>;
   incidents: Incident[];
   reports: DayReport[];
   inbox: Message[];

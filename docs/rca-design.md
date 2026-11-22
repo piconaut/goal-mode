@@ -523,6 +523,14 @@ Sources of accepted answers:
    and add to the accepted set whatever the same rules give for the hour with the worst attainment. Truth is then
    final when the incident closes; an RCA filed while it is open is judged when it closes.
 
+**Built as RT-17 (2026-11-22):** items 1 and 2. `RunState.hourBaselines` holds one EWMA per workload per clock hour
+(weight 0.5, `SLOT_BASELINE_DECAY`), folded in `closeHour` from the same met, undisturbed hours; `slotBaseline` falls
+back to the rolling `baselines`, so a save from before RT-17 behaves as it did. The slot is what judges its hour
+(`mechanismOf`), what the CPU drill-down reads, what the AIOps ranking reads, and what the frozen SMF "vs base" ratio
+divides by. `DELAY_FLOOR_FRAC = 0.1` and `CO_DOMINANT_SHARE = ⅓` are in `game/sla.ts`; a co-dominant group is an
+accepted answer, with the CPU group mapped to the capacity/priority verdict. Items 3–5 stay with RT-19, RT-20 and the
+incident-long set.
+
 ### 4.3 The CPU split
 
 **Built in RT-32:** host excess is `max(0, cp + ziip + backlog − workload CPU baseline × completions)`;

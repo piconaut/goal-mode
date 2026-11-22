@@ -7,6 +7,7 @@ import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { WorkloadDef } from '../sim/workload/types';
 import { allWorkloads } from './workloads';
+import { clockHourOf, slotBaseline } from './sla';
 import type { RunState, WorkloadHour } from './types';
 
 export interface SmfHourRef {
@@ -57,12 +58,13 @@ export interface Db2AcctRow {
 export function db2Accounting(run: RunState, scenario: Scenario, key: string): Db2AcctRow[] {
   const d = hourData(run, key);
   if (!d) return [];
+  const hourOf = key === 'current' ? clockHourOf(run.sim.tick) : Number(key.split(':')[1]);
   return allWorkloads(scenario, run)
     .filter(usesDb2)
     .flatMap((w) => {
       const h = d.workloads[w.id];
       if (!h || h.completions <= 0) return [];
-      const base = run.baselines[w.id];
+      const base = slotBaseline(run.hourBaselines, run.baselines, w.id, hourOf);
       const cpuMs = perTxnMs(h, 'cpu');
       return [
         {
@@ -122,12 +124,13 @@ export interface CicsTxnRow {
 export function cicsMonitoring(run: RunState, scenario: Scenario, key: string): CicsTxnRow[] {
   const d = hourData(run, key);
   if (!d) return [];
+  const hourOf = key === 'current' ? clockHourOf(run.sim.tick) : Number(key.split(':')[1]);
   return allWorkloads(scenario, run)
     .filter((w) => w.subsystem === 'CICS')
     .flatMap((w) => {
       const h = d.workloads[w.id];
       if (!h || h.completions <= 0) return [];
-      const base = run.baselines[w.id];
+      const base = slotBaseline(run.hourBaselines, run.baselines, w.id, hourOf);
       const cpuMs = perTxnMs(h, 'cpu');
       return [
         {

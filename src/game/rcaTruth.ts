@@ -28,6 +28,8 @@ export interface TruthContext {
   /** The capacity figures behind a CPU verdict, as recorded on the incident. */
   basis?: CapacityBasis | null;
   cpu?: { mechanisms: Mechanism[]; overflowBlocked: boolean };
+  /** Delay groups with at least a third of the excess beside the primary (RT-17, §4.2(2)). */
+  coDominant?: readonly { mechanism: Mechanism; why: string }[];
   /** The window the cards must overlap: the incident's hour, or a batch night (18:00 to the day end). */
   window?: { startTick: number; endTick: number };
   /** The images the work runs on, for the cause's host. */
@@ -52,6 +54,7 @@ const pct = (x: number) => `${x.toFixed(1)} %`;
  *  - a card that lowered the processor's capacity adds CPU_CAPACITY;
  *  - a CPU verdict inside the §4.3 band adds the other side of the capacity/priority split;
  *  - DEPENDENCY on a server whose own image was short of CPU adds CPU_PRIORITY;
+ *  - a co-dominant delay group adds its mechanism (RT-17, §4.2(2));
  *  - with no card to blame, GROWTH and POLICY are both accepted.
  */
 export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth, 'accepted'>> & { notes: Record<string, string> } {
@@ -125,6 +128,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   }
 
   for (const m of ctx.cpu?.mechanisms ?? []) offerMechanism(m, m === 'ROUTING' ? 'one host carried at least two thirds of the CPU excess while another had room' : 'a substantial co-host contributed this CPU verdict');
+  for (const d of ctx.coDominant ?? []) offerMechanism(d.mechanism, d.why);
   if (ctx.cpu?.overflowBlocked || b?.overflowBlocked) offerTrigger('POLICY', 'zIIP work could not overflow while the host CPs had room');
 
   // Server waits: when a transaction class misses its goal, WLM finds the regions serving it through the topology and
