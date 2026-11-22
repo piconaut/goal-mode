@@ -304,10 +304,12 @@ after filing; it did not make them less arbitrary.
 - **The baseline is the last few hours, not "normal for this time".** The EWMA (×0.8 per closed healthy hour) is
   dominated by the previous five hours, across midnight. A component with a daily cycle "grows" every day: lock wait
   rises when batch starts. R-6 and R-15 both produce `LOCK_CONTENTION/GROWTH` at 20:00 for a growth of 3 ms. An
-  analyst compares with the same time on a normal day.
+  analyst compares with the same time on a normal day. **Fixed by RT-17:** the clock-hour slot is what judges its
+  hour, with the rolling EWMA only as the fallback until the slot has a met hour.
 - **Absolute seconds, no floor.** The largest growth wins however small. U-12: nothing grew (a failure-only miss with
   no card) → `DEPENDENCY`, the first group whose growth is zero. U-13: new work with no baseline → the largest
-  healthy component.
+  healthy component. **Fixed by RT-17:** a total growth under 10 % of the response-time goal leaves no delay group
+  explaining the miss, so those hours take the CPU verdict instead.
 - **The thread limit's own share is understated.** THREAD_LIMIT is credited with the queue the arrivals would build
   at their *unqueued* service time (SPEC §10 calls this APPROX). R-15: MAXDBAT 20 at 20:00, DBAT queue +201 ms,
   reference queue +1.6 ms, lock +3.0 ms → `LOCK_CONTENTION/GROWTH`. The 12:00 incident of the same run is correctly
@@ -506,7 +508,8 @@ Sources of accepted answers:
    base" columns read the same slot. This removes the daily cycle from "growth" (the 20:00 lock incidents).
 2. **Shares, a floor, and co-dominance.** Excess per group = growth against the slot baseline, floored at zero.
    The primary is the largest. Any other group with at least a third of the total excess is accepted. If the total
-   excess is under 10 % of the SLA's response-time budget, no delay group explains the miss: go to step 4.
+   excess is under 10 % of the SLA's response-time budget, no delay group explains the miss: the CPU verdict stands
+   (§4.3).
 3. **Causal order: symptoms never win.**
    - Slot queues (MXT, DBAT): credit THREAD_LIMIT with the queue the arrivals would build at their **baseline hold
      time** (slot baseline of in-region time), not at the unqueued service time. A limit that is too low for normal

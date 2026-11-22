@@ -221,7 +221,7 @@ export function coDominantGroups(
 ): { group: string; sharePct: number }[] {
   const groups = groupExcess(parts, baseline);
   const total = groups.reduce((a, [, excess]) => a + Math.max(0, excess), 0);
-  if (total < DELAY_FLOOR_FRAC * slaRtSec) return [];
+  if (total <= 0 || total < DELAY_FLOOR_FRAC * slaRtSec) return [];
   return groups
     .filter(([g, excess]) => g !== primaryGroup && excess >= CO_DOMINANT_SHARE * total)
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
