@@ -278,7 +278,7 @@ describe('documented values (RT-13)', () => {
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
       QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'little waiting for a slot or on the CPU'],
-      THREAD_LIMIT: ['queued for a slot', "the work's cost did not rise"],
+      THREAD_LIMIT: ['queued for a slot', 'the work ran no slower'],
       ROUTING: ['transactions failed', 'the work itself unchanged'],
       IO: ['I/O waits on the hurt work', 'DASD itself slow'],
       STORAGE: ['storage waits', 'the hurt class\'s own CPU delay < 10 %'],
