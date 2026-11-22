@@ -31,8 +31,8 @@ import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
 import { buildView } from './view';
 import { MECHANISMS, TRIGGERS } from './sla';
-import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from './run/rca';
-import { TRIGGER_LABEL, triggerLabel } from '../content/rca';
+import { alsoAcceptedOf, groupAcceptedOf, primaryTextOf, rcaGroupOf } from './run/rca';
+import { TRIGGER_LABEL } from '../content/rca';
 import { EVIDENCE } from '../content/evidence';
 import { proofLines } from './proof';
 import { idText } from './ids';
@@ -138,12 +138,11 @@ export function applyGameCommand(
       if (missing.length && !pins.length) return no('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without evidence.');
       if (missing.length) return no(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${pins.map((p) => idText('pin', p.id)).join(' ')}`);
       const r = submitRca(run, cmd.incidentId, cmd.mechanism, cmd.trigger, sc, cmd.evidenceIds ?? []);
-      // One RCA covers the group: its primary is the lead's and its accepted answers are the union of the members'
-      // (RT-15, docs/rca-design.md §4.5).
+      // One RCA covers the group: its accepted answers are the union of the members', and the header names each
+      // distinct primary with its workloads, each accepted reason with its victim (RT-15, RT-28, §4.5).
       const group = rcaGroupOf(r.incidents, cmd.incidentId);
       const covered = group.filter((i) => i.id !== cmd.incidentId && i.rca).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === cmd.incidentId)?.rca;
-      const t = group[0]!.truth;
       const accepted = groupAcceptedOf(group);
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
@@ -154,7 +153,7 @@ export function applyGameCommand(
       const proof = rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : '';
       return yes(
         r,
-        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. Mechanism ${accepted.mechanisms.includes(cmd.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cmd.trigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}`,
+        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. Mechanism ${accepted.mechanisms.includes(cmd.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cmd.trigger) ? 'right' : 'wrong'} (primary ${primaryTextOf(group)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}`,
       );
     }
     case 'PIN':

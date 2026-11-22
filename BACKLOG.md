@@ -130,20 +130,6 @@ co-dominant groups (≥ ⅓ of the excess) are accepted; a floor of 10 % of the 
 wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done when: R-6's and R-15's 20:00
 `LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
 
-### RT-28 · A grouped RCA reply says which victim each line is about
-`list: rca-truth · status: ready · priority: high · size: S · area: game`
-
-Source: agent playtest 2026-11-21, Midwest seed 11 D8 INC11 (run not committed). The reply's header names the lead's
-primary (`CPU_PRIORITY/Change regression`, RBANK), while the explanation comes from the member whose truth matches the
-filed mechanism (`src/game/run/rca.ts` `explainInc`: MOBILE, `CPU_CAPACITY`) and reads "MOBILE: … the machine, not the
-policy, was short", so the reply seems to contradict itself. The accepted reasons are the union of the members'
-(`groupAcceptedOf`) without naming whose they are, so RBANK, the REBIND's direct victim, reads as accepted "as a
-neighbour". Harbourline seed 37 D8 INC63 shows the same header/explanation clash. Change: when members' primaries
-differ, the header names each distinct primary with its workloads, and every accepted reason names the member it came
-from. After RT-32 because RT-32 rewrites `mechanismExplanation`. Done when: a test with a two-member group whose
-members have different primaries shows both primaries and per-member reasons, and a single incident's reply is
-unchanged (`npm run compare` reporting-only).
-
 ### RT-29 · A complete proof for a mechanism the truth does not accept
 `list: rca-truth · status: blocked: design (after RT-17) · priority: high · size: M · area: game`
 
@@ -160,7 +146,7 @@ whether "slow" for CF/DASD compares against a peer or a configuration norm rathe
 Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
 
 ### RT-30 · RCA reply wording: what was accepted, what was proven, and every pin
-`list: rca-truth · status: blocked: after RT-28 · priority: high · size: M · area: game`
+`list: rca-truth · status: ready · priority: high · size: M · area: game`
 
 Source: agent playtest 2026-11-21, all four runs. Changes:
 - "Mechanism right" beside "✗ not proven" (Midwest seed 11 INC11; Midwest Hard seed 54 INC27, INC31; Harbourline

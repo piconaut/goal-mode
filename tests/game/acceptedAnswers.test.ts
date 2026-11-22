@@ -157,6 +157,47 @@ describe('accepted answer sets (RT-07)', () => {
     expect(out.text).toContain('Mechanism right, trigger right');
     expect(out.text).toContain('5 points');
     expect(out.text).toContain('also accepted: CPU_CAPACITY (the machine may have been the constraint)');
+    // A single incident has one primary, so its header carries no workload.
+    expect(out.text).toContain('(primary CPU_PRIORITY/Hardware fault)');
+  });
+
+  it('a two-victim group names each primary with its workload and each reason with its victim (RT-28)', () => {
+    const file = newPlayFile(3);
+    const incident = (id: number, workloadId: string, truth: ReturnType<typeof truthOf>, rcaGroup?: number) => ({
+      id, workloadId, day: 0, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80,
+      truth, subjects: EMPTY_SUBJECTS, rca: null, trustLost: 0, ...(rcaGroup === undefined ? {} : { rcaGroup }),
+    });
+    const run = {
+      ...file.run,
+      incidents: [
+        incident(7, 'RBANK', truthOf('CPU_PRIORITY', 'POLICY')),
+        incident(8, 'CARDAUTH', truthOf('CPU_CAPACITY', 'POLICY', {
+          accepted: { mechanisms: ['CPU_CAPACITY', 'DEPENDENCY'], triggers: ['POLICY'] },
+          notes: { DEPENDENCY: 'its Db2 connection was short' },
+        }), 7),
+      ],
+      nextId: 9,
+    };
+    const out = applyPlayCommand({ ...file, run }, { cmd: 'rca', incidentId: 7, mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    expect(out.ok, out.text).toBe(true);
+    expect(out.text).toContain('(primary CPU_PRIORITY/Policy or configuration: RBANK; CPU_CAPACITY/Policy or configuration: CARDAUTH)');
+    expect(out.text).toContain('also accepted: CPU_CAPACITY; DEPENDENCY (CARDAUTH: its Db2 connection was short)');
+    // The reply is the group's: the member's incident carries it too.
+    expect(out.file.run.incidents[1]!.rca!.points).toBe(5);
+    // A group whose members agree keeps the one-primary header, but a reason still names the member whose hour gave it.
+    const agreed = {
+      ...run,
+      incidents: [
+        incident(7, 'RBANK', truthOf('CPU_PRIORITY', 'POLICY', {
+          accepted: { mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY'], triggers: ['POLICY'] },
+          notes: { CPU_CAPACITY: 'the machine may have been the constraint' },
+        })),
+        incident(8, 'CARDAUTH', truthOf('CPU_PRIORITY', 'POLICY'), 7),
+      ],
+    };
+    const agreedOut = applyPlayCommand({ ...file, run: agreed }, { cmd: 'rca', incidentId: 7, mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
+    expect(agreedOut.text).toContain('(primary CPU_PRIORITY/Policy or configuration);');
+    expect(agreedOut.text).toContain('also accepted: CPU_CAPACITY (RBANK: the machine may have been the constraint)');
   });
 
   it('a closed hour records the accepted set and scores a defensible alternate in full', () => {

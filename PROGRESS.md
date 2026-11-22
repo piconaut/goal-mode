@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: RT-28 a grouped RCA reply names each distinct member primary with the workloads whose truth it is and attributes every accepted reason to its victim; a single incident's reply is unchanged.
 - 2026-11-22: PT-48 play CLI pins name an RMF interval by the id `report` shows for CF and DASD as well as WLMGL and CPC (CF and DASD read the id as an array position), interval pins are labelled with the interval's range, and a CF/DASD pin without an id says it read the latest interval; a past PROCU pin stays refused because the CLI's `--at` history keeps no job rows.
 - 2026-11-22: CF Activity accumulation shares a pass over structure samples and updates each subchannel's private row once per tick.
 - 2026-11-22: Per-system CF accounting shares service calculations at each site within a tick and still records each system's own request rate.

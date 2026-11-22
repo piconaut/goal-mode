@@ -470,6 +470,10 @@ truth: {
 - Scoring: an accepted mechanism scores 3 and an accepted trigger 2, as the primary does today. The post-RCA reply
   names the primary and says "also accepted: …" with one line of reasoning each, so the review teaches the fuller
   picture. Trust reward as today (≥ 3 points → full).
+- **Built as RT-28**: a group's reply names each distinct member primary with the workloads whose truth it is, and
+  each accepted reason with the victim it came from, so the header and the explanation cannot seem to contradict
+  each other. A single incident reads as before; a group whose members agree keeps the one-primary header, and its
+  reasons still name their victim.
 - *Contributing causes* are accepted answers. A contributing cause that could not be seen in player data is not
   accepted, and by the same test it should not be the primary either.
 - A **family credit** of 1 point for the right resource with the wrong refinement (a CPU answer for a CPU incident

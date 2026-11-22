@@ -2,7 +2,7 @@
 
 import { EVIDENCE } from '../../content/evidence';
 import { triggerLabel } from '../../content/rca';
-import { rcaGroupOf } from '../../game/run/rca';
+import { primaryTextOf, rcaGroupOf } from '../../game/run/rca';
 import { hhmm } from '../../sim/core/clock';
 import { TICKS_PER_HOUR } from '../../sim/core/units';
 import type { ViewModel } from '../../game/view';
@@ -48,7 +48,7 @@ export function Review({ v, game, investigate }: { v: ViewModel; game: GameHandl
                 {linked(i.id)}: you said {i.rca!.mechanism}/{triggerLabel(i.rca!.trigger)}
               </span>
               <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
-                +{i.rca!.points} (was {i.truth.mechanism}/{triggerLabel(i.truth.trigger)})
+                +{i.rca!.points} (was {primaryTextOf(rcaGroupOf(v.incidents, i.id))})
               </span>
             </div>
             {i.rca!.explain && (
