@@ -218,7 +218,7 @@ credited with the queue at the baseline hold time, not the unqueued time (R-15).
 THREAD_LIMIT). Done when: R-15's 20:00 incident is THREAD_LIMIT/POLICY and R-14 is one CAPPING group.
 Cross-note (WLM audit 2026-11-10): WT-09 (server periods) and WT-10 (waits are not delays) change the same
 per-period split of region CPU wait and other waits; do this entry after them and share one split
-(docs/archive/wlm-audit-2026-11.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust.ts`: `managedDelays` (CPU,
+(docs/archive/wlm-audit-2026-11.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust/delays.ts`: `managedDelays` (CPU,
 zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
@@ -391,17 +391,6 @@ from one field-spec table (additive, optional, decayed). `addScp` runs every tic
 generate the code, or measure that a table loop stays within budget. No behaviour change; label
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
-
-### CL-30 · Split `policyAdjust`
-`list: cleanup · status: ready · priority: low · size: L · area: sim`
-
-Source: codebase survey (2026-11-16). `policyAdjust` in `src/sim/wlm/adjust.ts` is about 500 lines (368–868) with
-about 25 closures (`instPi`, `projectionBase`, `runaways`, `backlogCut`, `violatesCpuCritical`, `periodDonor`, `assess`,
-`candidates`, …). Change: build an explicit adjustment context once; move `assess` and the candidate and donor
-selection into their own modules (`src/sim/wlm/adjust/`); move the trace types and `setWlmTraceSink` (lines about
-113–205) and the delay-share helpers (about 24–75) to their own files. No logic change. PR-19 changed donor
-selection in this function and has merged (#400). Done when: bench hashes are unchanged; `npm run compare` shows no
-difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unchanged.
 
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
