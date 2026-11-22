@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { incidentSubjects, type EvidencePin } from '../../src/game/evidence';
+import { hourBaseNote, pinVerdictLines, type ProofResult } from '../../src/game/proof';
 import { newRun } from '../../src/game/run';
 import type { CapacityBasis, Incident, RunState } from '../../src/game/types';
 import { applyPlayCommand, newPlayFile } from '../../tools/playCore';
@@ -113,5 +114,55 @@ describe('RCA reply wording (RT-30)', () => {
     expect(out.ok, out.text).toBe(true);
     expect(out.text).toContain('Mechanism IO not accepted');
     expect(out.text).toContain('Mechanism IO: proven, and it earns nothing: it was not the cause');
+  });
+
+  it('adds no hour note when the clock hour itself is over the line', () => {
+    const basis: CapacityBasis = { lparId: 'PROD1', cpcId: 'CPCA', lparBusyPct: 80, cpcBusyPct: 91, donorPct: 12, full: true };
+    const out = file(state([
+      pin(1, { value: 25 }),
+      pin(2, { source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCA', system: 'CPCA', value: 92 }),
+    ], { basis }), 'CPU_CAPACITY');
+    expect(out.ok, out.text).toBe(true);
+    expect(out.text).not.toContain('The truth reads the clock hour');
+    expect(out.file.run.incidents[0]!.rca!.hourNote).toBeUndefined();
+  });
+});
+
+describe('RT-30 reply helpers', () => {
+  const check = (claim: ProofResult['mechanism']['claim'], pinIds: number[][]): ProofResult['mechanism'] => ({
+    claim, complete: pinIds.every((x) => x.length > 0), predicates: pinIds.map((ids, k) => ({ label: `p${k}`, met: ids.length > 0, pinIds: ids })),
+  });
+  const label = (id: number) => `PIN${id}`;
+
+  it('names the clause each pin counted for, and says a consistent pin that met no predicate fits but proves nothing', () => {
+    const proof: ProofResult = { mechanism: check('CPU_CAPACITY', [[1, 2], []]), trigger: check('POLICY', [[2, 3], []]) };
+    const lines = pinVerdictLines(proof, [
+      { pinId: 1, text: '', relevance: 1, why: '' },
+      { pinId: 2, text: '', relevance: 1, why: '' },
+      { pinId: 3, text: '', relevance: 1, why: '' },
+      { pinId: 4, text: '', relevance: 0.5, why: 'unused' },
+      { pinId: 5, text: '', relevance: 0, why: 'value is unremarkable' },
+    ], label);
+    expect(lines).toEqual([
+      'PIN1 counted for the mechanism',
+      'PIN2 counted for the mechanism and trigger',
+      'PIN3 counted for the trigger',
+      'PIN4 did not count: it fits the cause but proves no predicate',
+      'PIN5 did not count: value is unremarkable',
+    ]);
+  });
+
+  it('writes the hour note only for a met pin over the line in an hour under it, on the CPC or the LPAR', () => {
+    const proof: ProofResult = { mechanism: check('CPU_CAPACITY', [[1, 2]]), trigger: check('POLICY', [[]]) };
+    const cpc = pin(1, { source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCA', system: 'CPCA', value: 90.1 });
+    const lpar = pin(2, { source: 'CPC', metric: 'LPAR_BUSY', subject: 'PROD1', system: 'PROD1', value: 95 });
+    const basis = (cpcBusyPct: number, lparBusyPct: number): CapacityBasis => ({ lparId: 'PROD1', cpcId: 'CPCA', lparBusyPct, cpcBusyPct, donorPct: 0, full: false });
+    expect(hourBaseNote(proof, [cpc], basis(87.1, 80))).toContain('CPC CPCA averaged 87.1 % busy');
+    expect(hourBaseNote(proof, [cpc], basis(90, 80))).toBeNull();
+    expect(hourBaseNote(proof, [lpar], basis(95, 88))).toContain('LPAR PROD1 averaged 88.0 % busy');
+    expect(hourBaseNote(proof, [lpar], basis(95, 90))).toBeNull();
+    // A pin that met no predicate, or an incident with no recorded basis, gets no note.
+    expect(hourBaseNote({ ...proof, mechanism: check('CPU_CAPACITY', [[]]) }, [cpc], basis(87.1, 80))).toBeNull();
+    expect(hourBaseNote(proof, [cpc], undefined)).toBeNull();
   });
 });
