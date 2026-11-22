@@ -1449,7 +1449,7 @@ short of CPU adds CPU_PRIORITY; and an incident with no card to blame accepts GR
 visible data separates growth that crossed the headroom from a configuration without headroom. Authentication from an
 accepted mechanism earns evidence points too. The reply names the primary and gives one line for each other accepted
 answer; when a group's members have different primaries it names each distinct primary with the workloads whose truth
-it is, and each reason names the victim it came from (RT-28). Every truth carries its accepted set
+it is, and in any group each reason names the victim it came from (RT-28). Every truth carries its accepted set
 (`acceptedAnswers`), and the primary is always part of it.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
