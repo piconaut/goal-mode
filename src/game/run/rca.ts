@@ -56,7 +56,8 @@ export function groupAcceptedOf(group: readonly Incident[]): {
 }
 
 /** The group's answers that are not the lead's primary, each with its reason: the reply's "also accepted" (RT-07).
- *  A reason belongs to one victim's hour, so in a group it names the victim it came from (RT-28). */export function alsoAcceptedOf(group: readonly Incident[]): { answer: Mechanism | Trigger; why?: string }[] {
+ *  A reason belongs to one victim's hour, so in a group it names the victim it came from (RT-28). */
+export function alsoAcceptedOf(group: readonly Incident[]): { answer: Mechanism | Trigger; why?: string }[] {
   const lead = group[0];
   if (!lead) return [];
   const accepted = groupAcceptedOf(group);
