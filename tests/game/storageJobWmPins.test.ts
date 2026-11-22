@@ -152,7 +152,7 @@ describe('WLMGL work-manager states (RT-11)', () => {
     const p = r.pins.at(-1)!;
     expect(p.subject).toBe('ONLHI#1');
     expect(p.value).toBeCloseTo(60);
-    expect(p.text).toMatch(/^WLMGL D1 \d\d:\d\d PROD1 ONLHI#1 LOCK state 60\.0%/);
+    expect(p.text).toMatch(/^WLMGL D1 \d\d:\d\d–\d\d:\d\d PROD1 ONLHI#1 LOCK state 60\.0%/);
     expect(verdict(r, incident(r, cause('LOCK_CONTENTION', 'BATCH_OVERLAP'))).relevance).toBe(1);
     expect(verdict(r, incident(r, cause('CPU_PRIORITY', 'POLICY'))).relevance).toBe(0);
   });

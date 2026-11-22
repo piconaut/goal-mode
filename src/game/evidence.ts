@@ -77,7 +77,8 @@ export type PinRequest =
   /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
   | { source: 'BATCH'; day: number; metric: EvidenceMetric };
 
-type Located = Omit<EvidencePin, 'id' | 'text'>;
+/** An interval pin also carries the interval's first tick, so its label shows the range `report` shows (PT-48). */
+type Located = Omit<EvidencePin, 'id' | 'text'> & { fromTick?: number };
 
 /** The CLI's Monitor III history keeps PI, CPU, the ended rate and the delay shares per class, and PR/SM delay and
  * capping per image: the busier CPC metrics are not in it. */
@@ -206,7 +207,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const baselineOf = (m: EvidenceMetric) => median(rowsFor(m).map(rowOf).map((r) => (r ? wlmMetric(r, m) : null)).filter(NUM));
       const baseline = baselineOf(req.metric);
       const rate = req.metric === 'CPU_PER_TXN' ? { rate: withBaseline(w.endPerSec, baselineOf('ENDED_RATE')) } : {};
-      return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, ...withBaseline(value, baseline), ...rate };
+      return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, fromTick: iv.startTick, ...withBaseline(value, baseline), ...rate };
     }
     case 'MON3': {
       const m = mon3(req.tick);
@@ -255,14 +256,14 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
             .map((x) => x.cpcBusy.find((y) => y.cpcId === cpcId && y.pool === 'CP'))
             .map((y) => (y === undefined ? null : req.metric === 'CPC_BUSY' ? y.physicalBusyPct : 100 - (y.capacityAdjustmentPct ?? 100)))
             .filter(NUM));
-          return { source: 'CPC', metric: req.metric, subject: cpcId, system: cpcId, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+          return { source: 'CPC', metric: req.metric, subject: cpcId, system: cpcId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
         }
         const value = cpuMetric(r, req.metric)!;
         const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
           .map((x) => x.cpu.find((y) => y.lparId === req.lparId))
           .map((y) => (y === undefined ? null : cpuMetric(y, req.metric)))
           .filter(NUM));
-        return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+        return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
       }
       const m = mon3(req.tick);
       if (typeof m === 'string') return m;
@@ -293,7 +294,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       };
       const value = req.metric === 'CF_SYNC' ? c.syncUs : c.asyncPct;
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
-      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
     }
     case 'DASD': {
       const index = req.index ?? sim.rmf.intervals.length - 1;
@@ -310,7 +311,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (value === null)
         return req.lcuId === 'ALL' ? 'The ALL VOLUMES row has DISC only: pin an LCU for IOSQ or response time' : 'No such LCU row';
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
-      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
     }
     case 'DB2': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
@@ -348,7 +349,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     case 'PROCU': {
       const m = mon3(req.tick);
       if (typeof m === 'string') return m;
-      if (!m.view.procJobs) return 'This Monitor III range keeps no job rows; pin the job from the current view';
+      if (!m.view.procJobs) return 'This Monitor III range keeps no job rows: the play CLI\'s --at history keeps classes and LPARs only; pin the job from the current view';
       const j = m.view.procJobs.find((x) => x.system === req.system && x.jobname === req.jobname);
       if (!j) return 'No such job row';
       // PROCU's EAppl % CP: enclave CPU included, 100 = one engine (RMF Report Analysis p.189).
@@ -450,6 +451,8 @@ const fmtValue = (m: EvidenceMetric, v: number) => {
 
 // Closed SMF hours end on the boundary; a current-hour pin covers only :00 through now.
 function pinWhen(p: Located, req: PinRequest): string {
+  // An RMF interval pin is about the whole interval, so label it as `report` does (PT-48).
+  if (p.fromTick !== undefined) return `${formatClock(p.fromTick).slice(0, -3)}–${hhmm(p.tick)}`;
   if (p.source === 'Db2 101' || p.source === 'CICS 110' || p.source === 'Db2 statistics') {
     const startTick = 'hour' in req && req.hour === 'current'
       ? Math.floor(p.tick / TICKS_PER_HOUR) * TICKS_PER_HOUR
@@ -470,7 +473,9 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest, histo
   if (typeof loc === 'string') return { run, ok: false, message: loc };
   const pins = run.pins ?? [];
   if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
-  const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc, req) };
+  // fromTick shapes the label only: a pin stores its end tick, as it always has (saves and the UI read `tick`).
+  const { fromTick, ...fields } = loc;
+  const pin: EvidencePin = { ...fields, id: run.nextId, text: pinText({ ...fields, ...(fromTick !== undefined ? { fromTick } : {}) }, req) };
   return { run: placePin(run, pin), ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
 }
 
