@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-22: Per-tick WLM period records start with their sustained-demand fields, keeping one object shape through the evaluator (#295 regression; hash-neutral).
 - 2026-11-22: RT-28 a grouped RCA reply names each distinct member primary with the workloads whose truth it is and attributes every accepted reason to its victim; a single incident's reply is unchanged.
 - 2026-11-22: PT-48 play CLI pins name an RMF interval by the id `report` shows for CF and DASD as well as WLMGL and CPC (CF and DASD read the id as an array position), interval pins are labelled with the interval's range, and a CF/DASD pin without an id says it read the latest interval; a past PROCU pin stays refused because the CLI's `--at` history keeps no job rows.
 - 2026-11-22: CF Activity accumulation shares a pass over structure samples and updates each subchannel's private row once per tick.
@@ -69,7 +70,6 @@ Recent work, one line each (details in the PRs and Git history):
 - 2026-11-13 … 11-14: RT-10 and RT-11 pin sources (#344, #345); RT-08 capping as share of the hour (#342); RT-25
   validator (#341).
 - 2026-11-13: `wlm-truth` closed (WT-11, WT-12, WT-16, WT-17; WT-14 dropped); docs/wlm-design.md is the living design.
-- 2026-11-10 … 11-12: WLM policy adjustment rebuilt (WT-04 … WT-10, RF-03) and lookup plans (CL-05, CL-06); milestone #340.
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).

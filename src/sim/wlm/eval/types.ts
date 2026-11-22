@@ -277,6 +277,10 @@ export const emptyScpTick = (scKey: string, dp: number): ScpTick => ({
   failed: 0,
   rtSumSec: 0,
   buckets: emptyBuckets(),
+  // Present from the start: periodTicks adds to them for nearly every period, and adding them later gives the
+  // per-tick objects a second hidden class in the evaluator's hot loops.
+  demandCp: 0,
+  demandZi: 0,
 });
 
 export interface LparEvalResult {
