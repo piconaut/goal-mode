@@ -68,7 +68,7 @@ export interface RmfAcc {
   /** Keyed by name, or name|SEC for a duplexed secondary copy. */
   cfStructures: Record<string, { name?: string; role?: 'PRIM' | 'SEC'; type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
   /** Per connected system and CF (Subchannel Activity), keyed system|cf: request-weighted sums of its CF service. */
-  cfSystems?: Record<string, { system?: string; cfLparId?: string; distKm: number; rate: number; syncSecW: number; asyncW: number; serviceSecW: number; ticks: number; /** Synchronous requests and their service time (absent in an interval begun by an older save). */ syncReq?: number; syncReqSecW?: number }>;
+  cfSystems?: Record<string, CfSystemAcc>;
   /** Per structure copy and connected system (Structure Activity), keyed name|role|system. */
   cfStructSystems?: Record<string, CfStructSystemAcc>;
   /** Report classes, keyed lpar|name (only once the policy assigns any). */
@@ -77,6 +77,20 @@ export interface RmfAcc {
 
 /** Structure name, then PRIM before SEC. */
 const byNameRole = (a: string, ar: string | undefined, b: string, br: string | undefined) => (a !== b ? (a < b ? -1 : 1) : (ar ?? '') < (br ?? '') ? -1 : (ar ?? '') > (br ?? '') ? 1 : 0);
+
+interface CfSystemAcc {
+  system?: string;
+  cfLparId?: string;
+  distKm: number;
+  rate: number;
+  syncSecW: number;
+  asyncW: number;
+  serviceSecW: number;
+  ticks: number;
+  /** Synchronous requests and their service time (absent in an interval begun by an older save). */
+  syncReq?: number;
+  syncReqSecW?: number;
+}
 
 export interface CfStructSystemAcc {
   name: string;
@@ -264,91 +278,123 @@ export function accumulateTick(
     lc[l.id] = { ios: a.ios + l.iops, iosqW: a.iosqW + l.iops * l.iosqSec, discW: a.discW + l.iops * l.discSec, rtW: a.rtW + l.iops * l.rtSec, aliasesPerHot: a.aliasesPerHot + l.aliasesPerHotVolume, ticks: a.ticks + 1 };
   }
   const c = { ...acc.cf };
+  const cs = { ...(acc.cfStructures ?? {}) };
   for (const r of cf) {
     const a = c[r.lparId] ?? { busy: 0, rate: 0, sync: 0, async: 0, service: 0, ticks: 0 };
     // Requests to secondary copies are CF requests too: fold them into the CF's rate and averages.
-    let rate = r.requestRate;
-    let sync = r.syncSec;
-    let async = r.asyncFrac;
-    let service = r.serviceSec;
-    if (r.secondaries) {
-      const all = [...r.structures, ...r.secondaries];
-      rate = all.reduce((x, st) => x + st.requestRate, 0);
-      if (rate > 0) {
-        sync = all.reduce((x, st) => x + st.requestRate * st.syncSec, 0) / rate;
-        async = all.reduce((x, st) => x + st.requestRate * st.asyncFrac, 0) / rate;
-        service = all.reduce((x, st) => x + st.requestRate * st.serviceSec, 0) / rate;
-      }
-    }
+    const copies = r.secondaries;
+    const structures = copies ? [...r.structures, ...copies] : r.structures;
+    let rate = copies ? 0 : r.requestRate;
+    let syncW = 0;
+    let asyncW = 0;
+    let serviceW = 0;
     // Request-weighted, as RMF's averages are per request: time-averaging the per-tick averages would let a quiet
     // tick count as much as a busy one, and the CF line would not be the weighted figure of its structure lines.
     const weighted = a.ticks === 0 || a.syncReq !== undefined;
     let syncReq = 0;
     let syncSecW = 0;
     let serviceSecW = 0;
-    if (weighted) {
-      for (const st of r.secondaries ? [...r.structures, ...r.secondaries] : r.structures) {
-        const syncRate = st.requestRate * (1 - st.asyncFrac);
-        syncReq += syncRate;
-        syncSecW += syncRate * st.syncSec;
-        serviceSecW += st.requestRate * st.serviceSec;
-      }
-    }
-    c[r.lparId] = {
-      busy: a.busy + r.busyFrac,
-      rate: a.rate + rate,
-      sync: a.sync + sync,
-      async: a.async + async,
-      service: a.service + service,
-      ticks: a.ticks + 1,
-      ...(weighted ? { syncReq: (a.syncReq ?? 0) + syncReq, syncSecW: (a.syncSecW ?? 0) + syncSecW, serviceSecW: (a.serviceSecW ?? 0) + serviceSecW } : {}),
-    };
-  }
-  const cs = { ...(acc.cfStructures ?? {}) };
-  for (const r of cf) {
-    for (const st of [...(r.structures ?? []), ...(r.secondaries ?? [])]) {
-      const key = st.role === 'SEC' ? `${st.name}|SEC` : st.name;
-      const a = cs[key] ?? { type: st.type, cfLparId: st.cfLparId, rate: 0, syncReq: 0, syncSecW: 0, serviceSecW: 0, ticks: 0 };
+    for (const st of structures) {
       const syncRate = st.requestRate * (1 - st.asyncFrac);
+      const syncTime = syncRate * st.syncSec;
+      const serviceTime = st.requestRate * st.serviceSec;
+      if (copies) {
+        rate += st.requestRate;
+        syncW += st.requestRate * st.syncSec;
+        asyncW += st.requestRate * st.asyncFrac;
+        serviceW += serviceTime;
+      }
+      if (weighted) {
+        syncReq += syncRate;
+        syncSecW += syncTime;
+        serviceSecW += serviceTime;
+      }
+      const key = st.role === 'SEC' ? `${st.name}|SEC` : st.name;
+      const prev = cs[key];
       cs[key] = {
         name: st.name,
         ...(st.role ? { role: st.role } : {}),
         type: st.type,
         cfLparId: st.cfLparId,
-        rate: a.rate + st.requestRate,
-        syncReq: a.syncReq + syncRate,
-        syncSecW: a.syncSecW + syncRate * st.syncSec,
-        serviceSecW: a.serviceSecW + st.requestRate * st.serviceSec,
-        ticks: a.ticks + 1,
+        rate: (prev?.rate ?? 0) + st.requestRate,
+        syncReq: (prev?.syncReq ?? 0) + syncRate,
+        syncSecW: (prev?.syncSecW ?? 0) + syncTime,
+        serviceSecW: (prev?.serviceSecW ?? 0) + serviceTime,
+        ticks: (prev?.ticks ?? 0) + 1,
       };
     }
+    const averageCopies = copies && rate > 0;
+    c[r.lparId] = {
+      busy: a.busy + r.busyFrac,
+      rate: a.rate + rate,
+      sync: a.sync + (averageCopies ? syncW / rate : r.syncSec),
+      async: a.async + (averageCopies ? asyncW / rate : r.asyncFrac),
+      service: a.service + (averageCopies ? serviceW / rate : r.serviceSec),
+      ticks: a.ticks + 1,
+      ...(weighted ? { syncReq: (a.syncReq ?? 0) + syncReq, syncSecW: (a.syncSecW ?? 0) + syncSecW, serviceSecW: (a.serviceSecW ?? 0) + serviceSecW } : {}),
+    };
   }
   let sy = acc.cfSystems;
   let ss = acc.cfStructSystems;
   if (cfSys) {
     sy = { ...(sy ?? {}) };
     ss = { ...(ss ?? {}) };
-    for (const id of Object.keys(cfSys).sort()) {
-      const touched = new Set<string>();
-      for (const x of cfSys[id]!.byStructure ?? []) {
-        const k = `${x.name}|${x.role ?? ''}|${id}`;
-        const b = ss[k] ?? { name: x.name, type: x.type, ...(x.role ? { role: x.role } : {}), cfLparId: x.cfLparId, system: id, rate: 0, syncReq: 0, syncSecW: 0, asyncReq: 0, asyncSecW: 0, ticks: 0 };
-        const syncRate = x.requestRate * (1 - x.asyncFrac);
-        const asyncRate = x.requestRate * x.asyncFrac;
-        ss[k] = { ...b, cfLparId: x.cfLparId, rate: b.rate + x.requestRate, syncReq: b.syncReq + syncRate, syncSecW: b.syncSecW + syncRate * x.syncSec, asyncReq: b.asyncReq + asyncRate, asyncSecW: b.asyncSecW + asyncRate * x.asyncSec, ticks: b.ticks + 1 };
-        // Subchannel Activity: this system's requests to that CF, over every structure copy there.
-        const sk = `${id}|${x.cfLparId}`;
-        const a = sy[sk] ?? { system: id, cfLparId: x.cfLparId, distKm: 0, rate: 0, syncSecW: 0, asyncW: 0, serviceSecW: 0, ticks: 0 };
-        const bySync = a.rate === 0 || a.syncReq !== undefined;
-        sy[sk] = {
-          ...a, distKm: x.distKm, rate: a.rate + x.requestRate, syncSecW: a.syncSecW + x.requestRate * x.syncSec, asyncW: a.asyncW + x.requestRate * x.asyncFrac, serviceSecW: a.serviceSecW + x.requestRate * x.serviceSec, ticks: a.ticks + (touched.has(sk) ? 0 : 1),
-          ...(bySync ? { syncReq: (a.syncReq ?? 0) + syncRate, syncReqSecW: (a.syncReqSecW ?? 0) + syncRate * x.syncSec } : {}),
+    addCfSystemSamples(cfSys, sy, ss);
+  }
+  return { ...acc, ticks: acc.ticks + 1, lockIndexSum: (acc.lockIndexSum ?? 0) + lockIndex, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
+}
+
+/** Copy each subchannel on its first sample so later samples can update the same row. */
+function addCfSystemSamples(
+  cfSys: Readonly<Record<string, CfSystemResult>>,
+  systemTotals: Record<string, CfSystemAcc>,
+  structureTotals: Record<string, CfStructSystemAcc>,
+): void {
+  for (const id of Object.keys(cfSys).sort()) {
+    const channels = new Map<string, CfSystemAcc>();
+    for (const sample of cfSys[id]!.byStructure ?? []) {
+      const structureKey = `${sample.name}|${sample.role ?? ''}|${id}`;
+      const previous = structureTotals[structureKey];
+      const role = previous ? previous.role : sample.role;
+      const syncRate = sample.requestRate * (1 - sample.asyncFrac);
+      const asyncRate = sample.requestRate * sample.asyncFrac;
+      structureTotals[structureKey] = {
+        name: previous?.name ?? sample.name,
+        type: previous?.type ?? sample.type,
+        ...(role ? { role } : {}),
+        cfLparId: sample.cfLparId,
+        system: previous?.system ?? id,
+        rate: (previous?.rate ?? 0) + sample.requestRate,
+        syncReq: (previous?.syncReq ?? 0) + syncRate,
+        syncSecW: (previous?.syncSecW ?? 0) + syncRate * sample.syncSec,
+        asyncReq: (previous?.asyncReq ?? 0) + asyncRate,
+        asyncSecW: (previous?.asyncSecW ?? 0) + asyncRate * sample.asyncSec,
+        ticks: (previous?.ticks ?? 0) + 1,
+      };
+      // Subchannel Activity: this system's requests to that CF, over every structure copy there.
+      let channel = channels.get(sample.cfLparId);
+      if (!channel) {
+        const channelKey = `${id}|${sample.cfLparId}`;
+        const prior = systemTotals[channelKey];
+        channel = prior ? { ...prior } : {
+          system: id, cfLparId: sample.cfLparId, distKm: 0, rate: 0, syncSecW: 0, asyncW: 0, serviceSecW: 0, ticks: 0,
         };
-        touched.add(sk);
+        channel.ticks++;
+        systemTotals[channelKey] = channel;
+        channels.set(sample.cfLparId, channel);
+      }
+      const bySync = channel.rate === 0 || channel.syncReq !== undefined;
+      channel.distKm = sample.distKm;
+      channel.rate += sample.requestRate;
+      channel.syncSecW += sample.requestRate * sample.syncSec;
+      channel.asyncW += asyncRate;
+      channel.serviceSecW += sample.requestRate * sample.serviceSec;
+      if (bySync) {
+        channel.syncReq = (channel.syncReq ?? 0) + syncRate;
+        channel.syncReqSecW = (channel.syncReqSecW ?? 0) + syncRate * sample.syncSec;
       }
     }
   }
-  return { ...acc, ticks: acc.ticks + 1, lockIndexSum: (acc.lockIndexSum ?? 0) + lockIndex, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
 }
 
 // `${lparId}|${scKey}` without building a new string every tick.
