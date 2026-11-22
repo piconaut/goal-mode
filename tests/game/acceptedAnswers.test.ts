@@ -163,7 +163,7 @@ describe('accepted answer sets (RT-07)', () => {
       cmd: 'rca', incidentId: 7, mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT',
     });
     expect(out.ok).toBe(true);
-    expect(out.text).toContain('Mechanism right, trigger right');
+    expect(out.text).toContain('Mechanism CPU_CAPACITY accepted, trigger Hardware fault accepted (primary CPU_PRIORITY/Hardware fault)');
     expect(out.text).toContain('5 points');
     expect(out.text).toContain('also accepted: CPU_CAPACITY (the machine may have been the constraint)');
     // A single incident has one primary, so its header carries no workload.
@@ -205,7 +205,7 @@ describe('accepted answer sets (RT-07)', () => {
       ],
     };
     const agreedOut = applyPlayCommand({ ...file, run: agreed }, { cmd: 'rca', incidentId: 7, mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
-    expect(agreedOut.text).toContain('(primary CPU_PRIORITY/Policy or configuration);');
+    expect(agreedOut.text).toContain('Mechanism CPU_PRIORITY accepted, trigger Policy or configuration accepted; also accepted:');
     expect(agreedOut.text).toContain('also accepted: CPU_CAPACITY (RBANK: the machine may have been the constraint)');
   });
 

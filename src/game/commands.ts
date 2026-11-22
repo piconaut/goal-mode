@@ -31,10 +31,10 @@ import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
 import { buildView } from './view';
 import { MECHANISMS, TRIGGERS } from './sla';
-import { alsoAcceptedOf, groupAcceptedOf, primaryTextOf, rcaGroupOf } from './run/rca';
-import { TRIGGER_LABEL } from '../content/rca';
+import { alsoAcceptedOf, groupAcceptedOf, groupPrimariesOf, primaryTextOf, rcaGroupOf } from './run/rca';
+import { TRIGGER_LABEL, triggerLabel } from '../content/rca';
 import { EVIDENCE } from '../content/evidence';
-import { proofLines } from './proof';
+import { hourBaseNote, pinVerdictLines, proofLines } from './proof';
 import { idText } from './ids';
 import type { Mon3PinLookup } from './mon3PinHistory';
 import type { GameContent } from './run/shared';
@@ -151,9 +151,23 @@ export function applyGameCommand(
       const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
       const evidence = rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : '';
       const proof = rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : '';
+      // The answer and the proof are different things (RT-30): the truth accepts the answer (or not), and the pins
+      // prove the recipe (or not). An accepted answer that is not the lead's primary says so.
+      const mechAccepted = accepted.mechanisms.includes(cmd.mechanism);
+      const trigAccepted = accepted.triggers.includes(cmd.trigger);
+      const lead = group[0]!;
+      // Name the primary when the filed answer is not it, and always when the members' primaries differ (RT-28).
+      const offPrimary = cmd.mechanism !== lead.truth.mechanism || cmd.trigger !== lead.truth.trigger;
+      const showPrimary = offPrimary || groupPrimariesOf(group).length > 1;
+      const answer = `Mechanism ${cmd.mechanism} ${mechAccepted ? 'accepted' : 'not accepted'}, trigger ${triggerLabel(cmd.trigger)} ${trigAccepted ? 'accepted' : 'not accepted'}${showPrimary ? ` (primary ${primaryTextOf(group)})` : ''}`;
+      // Every filed pin is listed, with why the ones that met no predicate did not count, and the hour note when a
+      // pin met a line the hour average misses (RT-30).
+      const pinLines = rca ? pinVerdictLines(rca.proof, rca.evidence ?? [], (id) => idText('pin', id)) : [];
+      const pinsLine = pinLines.length ? `\nPins: ${pinLines.join('; ')}` : '';
+      const hourNote = rca?.proof ? hourBaseNote(rca.proof, pins, inc.basis) : null;
       return yes(
         r,
-        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. Mechanism ${accepted.mechanisms.includes(cmd.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cmd.trigger) ? 'right' : 'wrong'} (primary ${primaryTextOf(group)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}`,
+        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. ${answer}${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}${pinsLine}${hourNote ? `\n${hourNote}` : ''}`,
       );
     }
     case 'PIN':

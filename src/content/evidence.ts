@@ -350,14 +350,14 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'QR TCB wait ≥ 5 ms/txn (CICS 110), or the READY state past twice its normal (WLMGL)',
     options: [notable('QR_WAIT', SELF), notable('WM_READY', SELF)],
   }, {
-    label: 'not the task limit or the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
+    label: 'little waiting for a slot or on the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
     options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
   }] },
   THREAD_LIMIT: { predicates: [{
     label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
-    label: 'not slower work holding the slots: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
+    label: 'the work\'s cost did not rise: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
     options: [...COST_NORMAL, below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
   }] },
   ROUTING: { predicates: [{
@@ -382,7 +382,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'critical jobs ABENDed (SMF 30)',
     options: [at('JOB_ABEND', 1, SELF)],
   }, {
-    label: 'they failed rather than ran late: the jobs\' CPU or I/O wait < 25 % (SMF 30)',
+    label: 'little of the lost time was CPU or I/O wait: the jobs\' CPU or I/O wait < 25 % (SMF 30)',
     options: [below('JOB_CPU', PROOF.jobWaitPct, SELF), below('JOB_IO', PROOF.jobWaitPct, SELF)],
   }] },
 };
@@ -403,7 +403,7 @@ export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
     label: 'the same work costs more: CPU per transaction ≥ 1.3 × its normal (WLMGL CP ms/txn, Db2 101, CICS 110)',
     options: [ratio('CPU_PER_TXN', PROOF.regressionRatio, SELF_OR_COMPETITOR), ratio('CPU_VS_BASE', PROOF.regressionRatio, SELF)],
   }, {
-    label: 'not more of it: that work\'s ended/s within ±15 % of normal',
+    label: 'the volume did not grow: that work\'s ended/s within ±15 % of normal',
     options: [same(normal('ENDED_RATE', SELF_OR_COMPETITOR)), same(normal('CPU_PER_TXN', SELF_OR_COMPETITOR, 'rate')), same(normal('CPU_VS_BASE', SELF, 'rate'))],
   }] },
   RUNAWAY_WORK: { predicates: [{
@@ -413,7 +413,7 @@ export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
       at('JOB_APPL', PROOF.runawayPoints, ['server', 'competitor']),
     ],
   }, {
-    label: 'without more work to show for it: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
+    label: 'its work did not grow: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
     options: [same(normal('ENDED_RATE', ['competitor'])), ...COST_NORMAL],
   }] },
   BATCH_OVERLAP: { predicates: [{

@@ -2,6 +2,8 @@
 
 import { EVIDENCE } from '../../content/evidence';
 import { triggerLabel } from '../../content/rca';
+import { idText } from '../../game/ids';
+import { pinVerdictLines } from '../../game/proof';
 import { primaryTextOf, rcaGroupOf } from '../../game/run/rca';
 import { hhmm } from '../../sim/core/clock';
 import { TICKS_PER_HOUR } from '../../sim/core/units';
@@ -57,12 +59,12 @@ export function Review({ v, game, investigate }: { v: ViewModel; game: GameHandl
               </div>
             )}
             <AlsoAccepted group={rcaGroupOf(v.incidents, i.id)} />
-            {(i.rca!.evidence ?? []).map((e) => (
-              <div key={e.pinId} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
-                {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
+            {pinVerdictLines(i.rca!.proof, i.rca!.evidence ?? [], (id) => idText('pin', id)).map((line, k) => (
+              <div key={k} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+                {line}
               </div>
             ))}
-            {i.rca!.proof && <ProofView proof={i.rca!.proof} />}
+            {i.rca!.proof && <ProofView proof={i.rca!.proof} pins={v.pins} basis={i.basis} />}
             {(i.rca!.evidencePoints ?? 0) > 0 && (
               <div style={{ fontSize: 12, paddingLeft: 12 }}>
                 Evidence +{i.rca!.evidencePoints}

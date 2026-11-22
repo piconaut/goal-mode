@@ -1513,6 +1513,13 @@ predicate shown earns 0.5 (`PROOF.partialPoints`, a lone non-specific pin's old 
 the filed, accepted trigger on top makes the evidence **strong** (+5 Insight). Two delay rows of the work's own class
 no longer reach strong evidence for any CPU incident (A9). The reply ticks each predicate and names the pins that met
 it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, absent when no pin was attached).
+**Reply wording (RT-30):** the answer and the proof are separate. The reply says the filed mechanism and trigger are
+`accepted` or `not accepted`, and an accepted alternate adds `(primary …)`; each recipe then says `proven` or `your
+pins did not prove it`. A failed predicate is worded as the fact the pin must show and quotes the closest related
+pinned reading. Every filed pin is listed as counted or with why it did not count (wrong window or subject, value
+inside normal, or consistent but proving no predicate). When a pin met a CPU line the hour average misses, the reply
+says the truth reads the clock hour (RT-31 decides which time base is right). The RCA card renders the same text from
+the same functions (`recipeHeading`, `predicateText`, `pinVerdictLines`, `hourBaseNote`).
 Notable recipes: CPU_CAPACITY reads a full processor (CPC/image busy ≥ 90 %, or a capacity adjustment), CPU_PRIORITY a
 displaceable consumer (a less important period, or a job, at ≥ 10 % of the image), CAPPING a capped image or CAP delay;
 DEMAND_SURGE is the ended rate ≥ 1.25 × its normal at a flat CPU per transaction, and a change regression the reverse
