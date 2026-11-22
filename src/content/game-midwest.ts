@@ -29,7 +29,7 @@ export const MIDWEST_GAME = defineGame({
     BOOKING: 'Chris Novak (branch systems)',
   },
   calendarFacts: [
-    { id: 'payday', text: 'Payday is the 15th: everyone checks their balance and moves money that day, mostly from their phones.' },
+    { id: 'payday', text: 'Paydays are the 1st and the 15th: everyone checks their balance and moves money on those days, mostly from their phones.' },
     { id: 'monthend', text: 'Month end (29th–30th) adds about a third more reporting batch on top of the usual night.' },
     { id: 'weekend', text: 'Weekends are quiet for branches, but mobile traffic hardly drops.' },
   ],

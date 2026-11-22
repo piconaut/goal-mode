@@ -34,7 +34,7 @@ export const HARBOURLINE_GAME = defineGame({
   },
   calendarFacts: [
     { id: 'trading', text: 'Trading days burst around the 09:30 open and again before the 16:00 close, and the floor notices every slow second.' },
-    { id: 'payday', text: 'Payday is the 15th: card spending and mobile banking both jump, and the contact centre hears about it the next morning.' },
+    { id: 'payday', text: 'Paydays are the 1st and the 15th: card spending and mobile banking both jump, and the contact centre hears about it the next morning.' },
     { id: 'monthend', text: 'Month end brings the settlement and reporting runs on top of the usual night.' },
     { id: 'weekend', text: 'Weekends are quiet on the trading floor, but cards and mobile hardly drop.' },
   ],
