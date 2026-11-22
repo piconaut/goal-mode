@@ -936,7 +936,7 @@ cannot pick an entry before its prerequisites are merged.
    is still judged capacity and bots buy CPs on it), then hour-of-day baselines (RT-17); the playtest's findings
    RT-28 … RT-31 follow them. **Still parked until the human playtest (RT-18 … RT-21):** fallback triggers (RT-18),
    server CPU and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
-4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and Q9, and PT-20's design call.
+4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and PT-20's design call.
 
 D1 depends on RT-05, RT-07, RT-12, RT-13 and RT-14. It does not depend on RT-16 … RT-21, because unlocking is
 judged against accepted sets and recipes, not against the primary label.
@@ -953,5 +953,5 @@ judged against accepted sets and recipes, not against the primary label.
 | Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
 | Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21); build detail and Q7a … Q7e (accepted as recommended, 2026-11-21) in [rt-16-design.md](rt-16-design.md) | RT-16, RT-32, RT-33 |
 | Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately; open | RT-22, RT-24 |
-| Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Open | RT-23 |
+| Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Yes; research settled 2026-11-21: SMF 101 rollback share (`QWACABRT`), commit-only retries out of scope; RT-23 ready | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |

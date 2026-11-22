@@ -245,12 +245,21 @@ a problem the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT an
 incident (§5.1). Done when: browser and play CLI can open, file and review one, with tests.
 
 ### RT-23 · A discriminator for the retry storm
-`list: rca-truth · status: blocked: research (what a real analyst reads to tell retries from new demand; docs/rca-design.md §5.3, Q9) · priority: low · size: M · area: sim`
+`list: rca-truth · status: ready · priority: low · size: M · area: sim`
 
-RETRY_STORM and CAMPAIGN are the same command and identical in every report (R-5). Find the real signal with the
-`zos-docs` skill (candidates: rolled-back or abnormally ended DDF threads in Db2 accounting or statistics, connection
-timeouts; not confirmed, see §5.3), add a ledger row, then model it on the card. Until then MOBILE_BACKOFF and
-REFSTAT_BACKOFF are not gated by RT-24.
+Research settled 2026-11-21 (docs/research.md "Db2 and hardware configuration"): IBM has no retry field, but Db2
+accounting (SMF 101, IFCID 3) class 1 counts commits (`QWACCOMM`) and rollbacks (`QWACABRT`, "the number of units
+that were backed out": application program abends, rollback requests, deadlocks, operator cancels, thread abends from
+resource shortage). With DDF's default `CMTSTAT=INACTIVE` the accounting interval starts at the first SQL statement and
+ends at commit or rollback, so `QWACABRT / (QWACCOMM + QWACABRT)` per workload-hour is the documented retry signal for
+work that is backed out. Retries that commit at Db2 are indistinguishable in aggregate; telling those apart needs
+per-client identity (SMF 101 `QMDAAPPL`/`QMDAPLAT`/`QMDASUFX`, or client statistics IFCID 411/412 and the 2024
+IFCID 417, SMF type 102), which the game's SMF 100/101 views do not collect — decided out of scope.
+Change: add the rollback count to the DB2 (SMF 101) view and the Db2 statistics view, and make RETRY_STORM back out a
+share of its retried transactions (the card is `mod('rate', 'MOBILE', 2.5)` only today, so it would raise arrivals with
+no aborts). The rollback share then separates it from DEMAND_SURGE.
+Done when: RETRY_STORM and its Revenue/Harbourline variants show a rising rollback share in the DB2 view, a
+DEMAND_SURGE of the same rate does not, and tests pin both (R-5, docs/rca-design.md §5.3).
 
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
@@ -327,21 +336,24 @@ added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Mat
 sweep is recorded.
 
 ### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
-`list: realism-fixes · status: blocked: research · priority: low · size: M · area: sim`
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
-Source: cross-report invariant suite (2026-11-14; identity `soft-cap-flag`, left-out part). The Partition Data header
-shows GROUP NAME, LIMIT and `AVAILABLE`, the "long-term average of CPU service in MSUs/h which would be allowed by the
-limit of the capacity group but is not used by its members. If the value is negative, the group is capped" (RMF Report
-Analysis 3.1 p.399–400); LIMIT is flagged with `*` when the partition joined its group less than four hours ago. The
-game shows the group and its limit (Monitor III CPC header) but not the group's average, so a player cannot work out
-from any report why a group is or is not capping: the members' R4HAs do not add up to it, because the sim starts a
-new group's window empty (`newR4ha(g.id)` in `src/sim/core/tick/control.ts`), as if the group had been IPLed. In the
-suite's runs a group limit at 60 % of its members' summed R4HA never capped within an hour for that reason.
-Research first (zos-docs): how WLM builds the group's average when a group is defined or a member joins (WLM Planning
-3.1 p.46–47 says capping starts "when the 4-hour rolling average for the combined usage exceeds" the limit; whether
-that is the sum of the members' own averages is not stated on the pages read). Then: show AVAILABLE (and the `*`) on
-Partition Data and the CPC header, and build the group average as research says. Done when: the suite's `soft-cap-flag`
-reads the group's state from a report instead of the sim, and docs/research.md has the row.
+Source: cross-report invariant suite (2026-11-14; identity `soft-cap-flag`, left-out part). Research settled 2026-11-21
+(docs/research.md "Resource groups, defined capacity and group capacity"): WLM starts the four-hour window with no usage
+at IPL, so the average begins at zero; capacities may exceed the group limit "for the first four hours after an IPL and
+for the hours immediately after adding LPARs to a group or changing the group's capacity" (Planning for Sub-Capacity
+Pricing PDF p.69 (printed 53)); and a partition that joined less than four hours ago "will have a different view of
+unused group capacity and, therefore, might cap differently than existing group members", with RMF flagging its LIMIT
+with `*` (RMF Report Analysis PDF p.98 and p.400 (printed 58 and 360)). No page read says whether the combined average
+is the sum of the members' own R4HAs — the only such wording found is a vendor's display description — so do not seed a
+group window from members' R4HAs. No report prints the group's used average either: Partition Data's `AVAILABLE` is the unused side of it ("If the value is
+negative, the group is capped"), so a member's view is about `limit − AVAILABLE`.
+Change: give each member its own group-average window, zero-filled at group definition/IPL and at that member's join,
+with the group limit check reading the member's window (APPROX: inferred from the documented "different view"; the
+arithmetic is not stated); record the join tick and flag the member's LIMIT with `*` for four hours. Show `AVAILABLE`
+and the `*` on Partition Data and the Monitor III CPC header, replacing the sim-only group state.
+Done when: the suite's `soft-cap-flag` reads the group's state from a report instead of the sim,
+`tests/helpers/reportIdentities.ts` covers AVAILABLE and the `*`, and docs/research.md and SPEC §17 are updated.
 
 ## balance
 
