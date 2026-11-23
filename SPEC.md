@@ -938,8 +938,8 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   R4HA, soft capping and the bill all read that one rate, so they cannot disagree (RF-05). LPAR BUSY and physical
   busy keep the total dispatch time. A defined capacity of C MSU is a limit on effective dispatch (C ÷ MSU per CP
   engines); because the PR/SM cap acts on delivered engines, it is expressed as that limit ÷ (1 − the base PR/SM
-  overhead). The exact share for a tick is known only after allocation, so while capped the rate can sit up to the
-  rest of the overhead below the limit but never above it (APPROX). Each LPAR keeps 48 five-minute values;
+  overhead). The exact share for a tick is known only after allocation, so while the cap is applied the rate can sit
+  up to the rest of the overhead below the limit but never above it (APPROX). Each LPAR keeps 48 five-minute values;
   the **R4HA** is their average (WLM samples every 10 s and keeps the 5-minute values)
   ([value-4it: z/OS soft capping](https://www.value-4it.com/wp/?p=165)).
 - **Defined Capacity (DC)** per LPAR: when R4HA > DC, the LPAR is soft-capped to DC until R4HA
