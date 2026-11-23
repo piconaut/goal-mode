@@ -63,12 +63,37 @@ AORs" with a choice of regions). Each event registers a general operation that f
 effect, not on a card-specific fix id. Needs a design call, made together with RT-24 (D1): docs/rca-design.md §5.6
 limits which general operations may end a card.
 
-### PT-21 · Starving "Internal" work is free
-`list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
+### PT-50 · A slow TSO costs the team engineer-hours
+`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 
-TSO and ADHOC have stakeholder `Internal` and SLA `NONE`. DEV batch is non-critical with `lockIntensity` 0, so capped or
-discretionary work costs nothing (a lever with no cost). Candidates: an Internal trust facet or inbox escalation when
-TSO/ADHOC degrade; capped work holding Db2 locks or ENQs (enqueue promotion); sysprog TSO during incidents.
+Source: PT-21 (playtest round 2; design decided 2026-11-23, user). TSO and ADHOC have stakeholder `Internal` and SLA
+`NONE`, so capping them or making them discretionary frees CPU at no cost, which breaks the CLAUDE.md guardrail
+"every lever needs a cost". The real cost of a slow TSO falls on the people who use it, including the player's own
+sysprogs. Change: a game-rule response goal on TSO's first period in each scenario's content (not an SLA, no
+incident, no penalty in the SLA score). While its hour attainment misses over a sustained window (a tunable, e.g. two
+consecutive clock hours), operations that consume engineer-hours cost more (a `// FICTIONAL:` multiplier in
+`content/`), the Change Desk and operation dialogs show the surcharge and why, and the inbox gets one developer
+complaint per episode naming the TSO response time. The clue path: RMF WLMGL for the TSO class shows the response time
+against the goal. Also a Codex note on why TSO is usually first-period-short and importance-high in real policies.
+DEV batch stays free to starve: it runs on DEVT against its own Db2, and parking test jobs is what discretionary is
+for. Done when: a test where capping TSO past the window raises the engineer-hour cost and files one inbox item, and
+releasing it restores the price; the surcharge shows in the UI with its reason; SPEC (engineer-hours and §9) states
+the rule; the strategy bots' sweep (three scenarios) is recorded, since a bot that caps TSO now pays.
+
+### PT-51 · A starved BI query holds its Db2 locks and claims longer
+`list: playtest-fixes · status: blocked: research · priority: low · size: L · area: sim`
+
+Source: PT-21 (playtest round 2; design decided 2026-11-23, user). ADHOC runs over DDF against production Db2 on
+PROD2, so starving it has a real-world cost: a long-running query that gets little CPU holds its locks and claims
+longer, online work waits on locks, and utilities cannot drain claims. The sim cannot show this: lock contention is
+one global index built only from running batch jobs' `lockIntensity` (`src/sim/core/step.ts`), independent of how
+starved the holder is. Research first, with the zos-docs skill, cited per the realism policy: whether WLM or IRLM
+promotes a Db2 lock holder that others wait on (the sim's enqueue promotion, docs/research.md, covers ENQs, which Db2
+locks are not); how claims held by readers block a utility's drain, and what reports show it (Db2 accounting
+lock/latch suspension classes, the statistics trace's drain/claim counters, IRLM timeouts); and whether
+isolation level (CS, UR, RR) changes what a BI query holds. Then scope the model: hold time stretched by the holder's
+CPU delay, a lock contention contribution from DDF holders on the same Db2, and a clue path that names the holder.
+Done when: the research rows are in docs/research.md, and this entry is rewritten with the model and set to `ready`.
 
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
