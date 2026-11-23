@@ -73,8 +73,8 @@ Recent work, one line each (details in the PRs and Git history):
 - 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
 - 2026-11-14: agent instructions pruned of incident notes (#355); PR-04 … PR-08, PR-10 UI fixes (#348–#352, #358).
 
-- **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
-  simplified mode is planned (requirements below).
+- **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain; M9 simplified mode is planned
+  (requirements below).
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
   the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
@@ -84,10 +84,6 @@ Recent work, one line each (details in the PRs and Git history):
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
     "GOAL MODE (preview · dev 3da33f5)", built 2026-11-16 from `dev` at `3da33f5` (#364; the same game as the
     release, since #364 changed docs only).
-- **Latest verified dev:** `71a0685` (#288); 83 test files / 913 tests pass (single-worker `vitest`, 2026-11-11).
-- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `8501087`, 2026-11-16; unchanged at `3da33f5`):** Midwest
-  `ff6e21b2171a2586`; Harbourline `ad8889b13fe355cd`; Revenue `59a35d5be8f3e367`. Host timings vary; use adjacent comparisons rather than
-  old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
 
@@ -102,7 +98,6 @@ Recent work, one line each (details in the PRs and Git history):
 | M8.5–M8.6 | Tutorial, accessibility/themes/contrast, keyboard controls, sound, autosave, agent playtests and CLI fixes, draft-based Change Desk, multi-CPC views. Human/phone follow-ups remain below. |
 | M8.7 | Completed researched realism fixes are recorded in SPEC §17 and docs/research.md, including the CICS_SOS EDSA storage model (#166). |
 | M8.9 | Headless play CLI, three player personas, deterministic command logs, spectator mode and take-over saves. |
-| Maintenance | Shared storage/content/CLI helpers (#131–#136); modular Change Desk (#137), run lifecycle (#141), Monitor III (#142); circular UI imports removed (#143). |
 
 ## Remaining work
 
@@ -114,11 +109,6 @@ guesses cost something. Design, notes and user decisions: [docs/rca-design.md](d
 model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; RT-16 and RT-17 unblocked after an agent playtest
 (2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm could not
 be told from a demand surge in any report until RT-23, whose Db2 rollback share now separates them; its fix is still ungated.
-
-### WLM policy adjustment audit (2026-11-10 … 2026-11-13): closed
-
-The `wlm-truth` list is closed. Living design: [docs/wlm-design.md](docs/wlm-design.md); history:
-[docs/archive/wlm-audit-2026-11.md](docs/archive/wlm-audit-2026-11.md).
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
 
@@ -159,31 +149,14 @@ level or a separate toggle.
 
 ### M8.1 Performance
 
-- Worker budget is ≤ 4 ms/tick.
-- Revisit performance when measured sweep cost warrants it.
-- Same-host, reverse-order three-day comparisons across five revisions found current totals ~28% above M8.1
-  closure for Midwest and ~47% for Harbourline. The older revision also slowed on this host, so the reported
-  doubling is not all attributable to code. Profiles show distributed growth, including RMF.
-- PR/SM pool plans already cache configuration-only work, including entitlement, by CPC and LPAR-array identity.
-  A separate entitlement index showed no consistent day-level speedup across all three scenarios and was
-  discarded. Configuration edits must replace those objects; in-place mutation can leave cached plans stale.
-  Shared preparation is the first conditional simulation prototype; no full LPAR plan yet. Numeric-kernel work
-  requires measured ≥15% end-to-end savings and removal of the old production path in the same milestone.
-  Bot bundling (~0.18 s startup/run) is deferred; `advanceBatch` stays shelved.
-- Option 1 of [docs/headless-performance-options.md](docs/headless-performance-options.md) (a lookup plan per
-  config, hash-neutral) is scoped as BACKLOG `cleanup` CL-05 (profile, dispatch and demand; with a stop rule) and
-  CL-06 (step, policy adjustment, RMF), 2026-11-10. It should land before the `wlm-truth` core changes the hot path.
-  Option 2 (mutable engine, in-place accumulators) waits for a user decision; option 3 for a re-profile.
-- CL-05 (2026-11-10): lookup plan `src/sim/core/tick/plan.ts`; dispatch and demand by index; image evaluator inputs
-  built once per tick. Hash-neutral. Same-host paired 3-day medians: Harbourline −6.3 % (11 pairs), Midwest −6.6 %,
-  Revenue −13.8 % (5 pairs); passes the 5 % stop rule, so CL-06 is ready. Results in docs/headless-performance-options.md.
-- CL-06 (2026-11-11): CICS region topology once per plan; step and capping/policy stages read the plan. Against CL-05:
-  Harbourline −3.7 %, Midwest −7.6 %, Revenue −6.9 % (7 pairs each). The re-profile puts `evaluateLpar` as the largest
-  remaining share (25–27 %): option 3's trigger. Option 2 (RMF/state copying, ~13 %) still waits for the user.
-  Option 1 in total: about −10 % Harbourline, −14 % Midwest, −20 % Revenue. Leftovers (classification results and
-  period indices in the plan) were measured in CL-07 (2026-11-16, #378): under 1 % of the profile, so no plan fields
-  were added; the plan test now runs `RESTART_JOB` and `SET_PRICING`.
-- Evidence and current proposal: [docs/headless-performance.md](docs/headless-performance.md), raw results in
+- Worker budget is ≤ 4 ms/tick. Revisit performance when measured sweep cost warrants it.
+- PR/SM pool plans cache configuration-only work, including entitlement, by CPC and LPAR-array identity.
+  Configuration edits must replace those objects; in-place mutation can leave cached plans stale.
+- Numeric-kernel work requires measured ≥15% end-to-end savings and removal of the old production path in the same
+  milestone. Bot bundling (~0.18 s startup/run) is deferred; `advanceBatch` stays shelved.
+- [docs/headless-performance-options.md](docs/headless-performance-options.md): option 1 (lookup plan) is done;
+  option 2 (mutable engine, in-place accumulators) waits for a user decision; option 3 (`evaluateLpar`) for a re-profile.
+- Evidence: [docs/headless-performance.md](docs/headless-performance.md), raw results in
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 
 ### M8.2 Balance harness & targets
@@ -202,7 +175,6 @@ level or a separate toggle.
 - Nonblocking follow-ups: Revenue textbook day-22 PREFILL losses; Hard Harbourline expert has no victories
   in the recorded sweep before its $1.6M budget; Story Midwest textbook reaches the batch wall, while
   Story Harbourline textbook wins 18/20. Recheck before drawing new tuning conclusions.
-- Per-entry sweeps (WT-04 … WT-16, RF-03) are in their PRs and Git history.
 
 ### M8.4 Content and M8.6 playtesting/progression
 
@@ -214,28 +186,10 @@ Roadmap, not scoped: these become BACKLOG.md entries once designed.
 - Expand career unlocks: scenarios, starting tools, cosmetic titles and further levels. Current career has
   seven levels, starting perks, and Report Class Hoarder at level 7; scenario unlocks remain open.
 
-### Playtest rounds 1 and 2 (2026-11-03, 2026-11-04)
-
-Details are in Git history; open findings are BACKLOG.md entries (source "playtest round 2").
-
-### M8.7 Realism fixes
-
-Completed fixes are recorded in SPEC §17 and docs/research.md (details: `3fd1762:PROGRESS.md` and the PRs). Queued
-model changes go to BACKLOG.md list `realism-fixes`; model changes need updated goldens with a "Behaviour change"
-note, re-sweeps, and the relevant SPEC §5/§17 updates.
-
-### Realism audit loop (2026-11-02) — stopped after round 8
-
-[Durable record](docs/audit-loops/2026-11-02.md). Round 8 (Midwest seed 23) found two contained mismatches, both
-fixed and merged in #145: shared CICS Honor Priority now applies per region (all served classes must say NO,
-WLM Planning 3.1 p.122), and WLMGL APPL% CP includes IIPCP (RMF 3.1 p.534). Rounds 9 (Harbourline seed 29) and
-10 (Revenue seed 31) were planned but never ran; they are **not** scheduled. Restart with `/audit-loop` after the
-playtest if wanted.
-
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
 changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
-Hold released by the user on 2026-10-26 (was: don't start until told, 2026-10-20). Do all M9 work on a separate
+Do all M9 work on a separate
 feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Mode switch at run start (Expert / Simplified); same seed gives the same world in both modes
 - Keep the full WLM policy definition visible and editable, but offer **goal-level actions** that bundle
@@ -253,8 +207,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Active decisions and conventions
 
-- Page citations (user decision 2026-11-20): `PDF p.N (printed p.M)` with the edition, as in CLAUDE.md "Realism
-  policy"; existing bare `p.N` citations are relabelled when touched, not mass-rewritten.
 - Batch response-time goals (user decision 2026-11-13, WT-12): a fair few installations use them despite IBM's
   advice, and players may want to try them, so they stay supported and modelled; the editor warns, it doesn't forbid.
 - RCA baselines (user decision 2026-11-15, #359 review B1): `disturbed` stays footprint-based, so collateral work's
@@ -265,18 +217,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   one clear message rather than loading half-migrated.
 - The WT-06 ladder test (`tests/sim/wlm-realism.test.ts`, Midwest to D8 12:00, ~49 s) stays as it is for now (user
   decision 2026-11-16), even though it is the slowest test; test-time work (CL-11 … CL-16) leaves it alone.
-
-- Realism checks (user request 2026-11-05): work and reviews touching z/OS behaviour or report content use the
-  `zos-docs` skill and cite book + page (CLAUDE.md "Realism policy"; `pr-reviewer`/`realism-fixer` have the Skill tool;
-  PR template has a "Realism check" section).
-- Backlog (user request 2026-11-09): [BACKLOG.md](BACKLOG.md) is the only list of work agents pick up, in named
-  lists (`playtest-fixes`, `pr-followups`, `realism-fixes`, `cleanup`) with status, priority, size and area per
-  entry. This file keeps status, milestones, decisions, design directions, proposals and open questions, none of
-  which is work to start until it is scoped into a BACKLOG entry. The PR that fixes an entry deletes it. Why: the
-  old tracker mixed ready fixes with held designs and questions, so an agent told to "work through PROGRESS"
-  couldn't tell them apart. Migrated 2026-11-09 from `3fd1762:PROGRESS.md`.
-- Architecture, deterministic simulation rules, units, validation, and contribution workflow are in
-  [CLAUDE.md](CLAUDE.md); design and modeling details belong in SPEC and docs/research.md.
 - Real z/OS mechanics with fictional tunable numbers; no real LSPR/MSU/pricing data. Tick = 10 sim-seconds;
   played day = 06:00–06:00; standard run ≈40 business days with weekends auto-simulated.
 - Game randomness uses independent keyed streams for events, drafts, failures, AIOps, and inquiries.
@@ -285,79 +225,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Change Desk settings draft in place and submit as one request. Hours are per change; emergency trust/failure
   risk are per request. Operations and hardware orders keep one-click actions.
 - Harbourline's outgoing analyst handover mail was removed at the user's request; PRDA's absolute cap has no
-  day-0 inbox clue or day-1 trust grace. HMC and Partition Data expose it. This supersedes the older handover decision.
-- Realism audit loop: paced audit → main-agent vetting → isolated fix → scenario sweeps; one golden-changing
-  PR at a time. Agents/host adaptations: [AGENTS.md](AGENTS.md), [docs/codex.md](docs/codex.md), `.claude/agents/`.
-
-- PR review (user request 2026-11-04): the first review loop, `pr-review-loop`, held a PR on any finding and merged
-  it after a follow-up review. Retired 2026-11-17 (CL-44): `pr-fix-loop` (below) is the only review loop.
-
-- Reviewers don't repeat CI (user request 2026-11-06): `pr-reviewer` (and `pr-fixer`, which follows its checks)
-  no longer runs `npm run check` while reviewing; CI's required `check` job runs it on the merge ref, so the review
-  reads that result and the failing lines from its log. Kept because CI doesn't cover them: bench hashes (Harbourline
-  isn't in the goldens; determinism double-run; timing), the 10-seed review sweep (CI runs seeds 1–5 on the merge
-  ref), `vite build`, and `pr-fixer`'s pre-push `npm run check` (guards pushes to someone else's branch).
-
-- Remote sweeps (user request 2026-11-06): `.github/workflows/sweep.yml` runs `npm run sweep` on GitHub's runners,
-  sharded by seed range (default 2 seeds per job, at most 10 jobs; free for a public repo), on a push to `sweep/**` or
-  by workflow_dispatch. `npm run sweep:remote` (any agent or human with `gh`) pushes a throwaway commit (the swept
-  commit's tree plus the current sweep workflow, args in a `Sweep-Args:` trailer), waits and downloads `sweep-result` to
-  `runs/remote/<sha7>/`; the workflow deletes the branch afterwards. Arguments are whitelisted (`tools/ci/sweepPlan.ts`).
-  `audit-loop` balance sweeps use it instead of Sonnet worker sessions. Why: a 20-seed sweep takes ~30 min on a
-  session's 4 cores and starves other work (measured: 20 seeds × 3 bots of `dev` 1ec5957 in 17 min with 4 shards of 5 seeds and 8 min with 10 shards of 2, identical results both ways, every bot inside its band); a worker session costs tokens just to start and report.
-
-- Remote tests (user request 2026-11-12): `.github/workflows/test.yml` runs `npm test` (vitest) on GitHub's runners,
-  in one job, on a push to `test/**` or by workflow_dispatch. `npm run test:remote` mirrors `sweep:remote`: it pushes a
-  throwaway commit (the tested commit's tree plus the current test workflow, args in a `Test-Args:` trailer), waits, and
-  downloads `test-result` to `runs/remote-tests/<sha7>/`; the workflow deletes the branch afterwards. `--suite` (test
-  directories) or `--filter` (filename text) narrows the run through `tools/ci/testPlan.ts`; the Vitest JSON report
-  becomes one summary (`tools/ci/testReport.ts`); the run fails when a test or a whole test file fails, no report was
-  written, or nothing ran. Why: the full suite is CPU-bound, and a shared session's cores are often busy with another
-  session's sweep or repro, so `npm test` hits its 10 s hook and 30–120 s test timeouts and reports false reds (two
-  `npm run check` runs on 2026-11-12 timed out in heavy game/tools tests while another session held the cores; the same
-  files pass on a quiet box). Runners give a quiet, reproducible budget and keep the session free. CI's `check` job
-  still gates PRs on the merge ref: this is for running the suite on a committed ref without a PR or a session's cores,
-  e.g. a long golden-changing branch or a PR head you don't want to wait on.
-
-- Review-and-fix loop (user request 2026-11-06): `.claude/skills/pr-fix-loop/` with the Opus `pr-fixer` agent, as a
-  cheaper alternative to `pr-review-loop` (no author round trip, no second full review). Gate before fixing: 1–5
-  findings, all mechanical (tests, docs, citations, local bugs, conflicts); anything that changes the PR's intent,
-  balance, bench hashes or needs a design call holds the PR for its author with no partial fixes. Fixes must keep the
-  PR head's bench hashes. A Sonnet fix-check of the fix commits replaces the second review; fixes over 150 lines
-  get a full Sonnet review instead. Two failed fix-checks hold the PR. Label a PR `no-autofix` to keep it out.
-  Fix-check widened (user request 2026-11-09): it reads the fix commits against the whole PR diff at the fix head,
-  checks each fix cures the cause (not a test bent to fit) and that the triage held, and reports blocking `Missed:`
-  items as a FAIL. Why: the same agent finds, triages and fixes, so the fixes got the weakest review.
-
-- Codex native `pr-fixer` role (user request 2026-11-11): `.codex/agents/pr-fixer.toml` now adapts the existing
-  `.claude/agents/pr-fixer.md` brief for `pr-fix-loop`, registered in `.codex/config.toml`. It uses `gpt-6.1-sol`
-  at high reasoning; a fresh Codex session still must verify native role selection before relying on it.
-
-- Codex branch-workflow guard (user request 2026-11-11): `AGENTS.md` now states directly that every repository
-  change goes through a task branch and PR into `dev`; "merge into dev" means open that PR, not a direct push.
-  Auto-merge still needs explicit user authorization, as do any bypasses of the PR workflow.
-
-- Dev loop and review loop take turns (user request 2026-11-09). On a `dev-loop` PR, the latest review marker
-  decides who acts. No marker, MERGE, FIXED, or a fix-check under way: the review loop's turn. HOLD: dev-loop's turn,
-  until it pushes or posts a `dev-loop-response` comment. pr-fix-loop still fixes mechanical findings on `dev-loop` PRs
-  itself, so only HOLDs make the round trip. Both push fast-forward only, so a rare overlap fails one push and that
-  side retries next tick. Reviewers reject a `dev-loop` PR that doesn't fix a ready BACKLOG entry (pr-reviewer check
-  10, the backlog rule), and dev-loop closes a PR held on it.
-  The PR that fixes an entry also unblocks its `blocked: after` dependants (dev-loop step 5.3, pr-reviewer check 11,
-  pr-fixer fixes a miss; 2026-11-18, after CL-17 was stranded by #396 and #403).
-
+  day-0 inbox clue or day-1 trust grace. HMC and Partition Data expose it.
 - Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
   in the worker and play CLI. All three scenarios start at TRANSACTION (`tests/game/scenarioRegionMode.test.ts`).
 
 ## Branch workflow
-
-- **Dev loop (user request 2026-11-09; replaces the 2026-11-04 playtest fix loop):** a scheduled task runs
-  `/dev-loop <list>` (`.claude/skills/dev-loop/`). Each tick does one of three things: it implements the next ready
-  entry of the named BACKLOG.md list(s) and opens a PR labelled `dev-loop`; it answers the review loop's HOLD on that
-  PR; or it skips. One `dev-loop` PR is open at a time (`needs-user` ones aren't counted). Branches are
-  `dev-loop/<ID>-<slug>`. It never merges, enables auto-merge or force-pushes; the review loop merges. When the lists
-  have no ready, unclaimed entry left, it disables its scheduled task. An invalid or missing list does nothing.
 
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -395,9 +268,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX). Looked for in
   WLM Planning on 2026-11-10 ("normaliz", specialty processor service units) and not found; still open.
-- WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
-  sharing, percentile PI with few completions and backlog in projections are settled in
-  docs/research.md ("WLM policy adjustment and dispatching") and docs/archive/wlm-audit-2026-11.md §4 W15; their fixes are WT entries.
 - WLM audit: the numbers behind receiver value, the net value rule by importance and the 0.90 credit come from IBM's
   1994 patent (page-checked 2026-11-10, US 5,473,773 p.18–20) and Peter Enrico's slides; IBM's z/OS books state the
   tests without numbers, so they are the original design, not confirmed for z/OS 3.1. The skip clock's length, where the unbunched ladder sits in the
@@ -413,14 +283,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Exported saves arriving with every backslash doubled (playtest round 2, D20 export): halving them gives exactly what
   `encodeRunJson` writes, so something on the artifact host's download path doubled them (not verified). Import
   (browser and play CLI) repairs it. If it recurs, look at how the artifact host saves a Blob download.
-- Resource-group capping as an RCA mechanism: WLMGL CAP delay is resource-group and discretionary capping (RMF Report
-  Analysis p.540), so should a class held by a resource-group maximum be judged `CAPPING` (docs/rca-design.md §4.3
-  proposes yes, with the help text widened from "the image" to "the image or the class")?
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q8a and Q8b; docs/archive/wlm-audit-2026-11.md §8
-  Q1–Q9 are decided (2026-11-10). #111 Q1–Q3 are decided.
+- Waiting on the user: docs/rca-design.md §7 Q8a and Q8b.
 
 ## Known approximations and risks
 
@@ -443,9 +309,3 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - `npm run compare` (2026-11-03) backs "report-only" / "pure refactor" claims: sim state with reporting excluded, game
   state, log, every RMF report's text and records, Monitor III views, base vs head in worktrees (~20 s for three
   scenarios). `play … mon3` now prints SYSWKM too; use the play CLI for report and Monitor III questions.
-- Keep new session updates brief: current status, changed decisions, unresolved work, and latest validation.
-  Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
-- zos-docs searches (2026-11-12): map hits with `pdf_find.py --grep … --pages-only` before reading, never cut search
-  output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
-  the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
-  page says "address spaces", not "region", and the truncated hit list hid the pages around it. Rules in SKILL.md §3.
