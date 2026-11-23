@@ -179,7 +179,8 @@ export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
     const msu = members.reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
     // A limit change restarts the group window and every member's view: IBM allows the limit to be exceeded for the
     // four hours after a capacity change, as after a definition (Planning for Sub-Capacity Pricing PDF p.69
-    // (printed 53)). A state without a stored limit (a save from before RF-08) also starts afresh.
+    // (printed 53)). APPROX: the page says the limit may be exceeded for some hours, not that WLM's window restarts;
+    // the restart is the game's inference. A state without a stored limit (a save from before RF-08) also starts afresh.
     const prevLimit = prev.capping.groupLimitsMsu?.[g.id];
     const restarted = prevLimit === undefined ? prev.capping.groups.some((x) => x.id === g.id) : prevLimit !== g.limitMsu;
     const gs = stepR4ha(restarted ? newR4ha(g.id) : (prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id)), msu, g.limitMsu);
