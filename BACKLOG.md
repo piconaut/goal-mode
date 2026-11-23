@@ -240,7 +240,7 @@ on `dev` at 7fbeffa; later entries name their source.
 ## realism-fixes
 
 ### RF-05 · MSU is counted from total dispatch time, LPAR management included
-`list: realism-fixes · status: blocked: balance · priority: low · size: M · area: sim`
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
 Source: cross-report invariant suite (2026-11-14; identity `mon3-sysinfo-cpc`, left-out part). Real RMF computes a
 partition's MSU from effective dispatch time: Partition Data `MSU ACT` is the "actual consumption based on the logical
