@@ -1,7 +1,7 @@
 import type { CfSystemResult } from '../../cf/cf';
 import { accrueTfp, accrueUsage, closeMonth, recordHour } from '../../cost/mlc';
-import { groupShares, newR4ha, stepR4ha } from '../../cost/r4ha';
-import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../../measure/rmf';
+import { groupShares, groupMemberR4ha, newR4ha, R4HA_WINDOW_TICKS, stepR4ha, type R4haState } from '../../cost/r4ha';
+import { accumulateTick, closeInterval, newRmfAcc, type GroupView, type JobEndRecord } from '../../measure/rmf';
 import { msuPerCp } from '../../hw/cpc';
 import { poolKey, resolveCpc } from '../../hw/pools';
 import { policyAdjust } from '../../wlm/adjust';
@@ -29,7 +29,13 @@ export function softCap(t: TickCtx): void {
     if (r?.capped && l.definedCapacityMsu !== null) capMsu = l.definedCapacityMsu;
     const g = l.capacityGroup ? plan.groupOf[l.capacityGroup] : undefined;
     const gs = g ? prev.capping.groups.find((x) => x.id === g.id) : undefined;
-    if (g && gs?.capped) {
+    const join = g ? prev.capping.groupJoinTicks?.[g.id]?.[l.id] : undefined;
+    // A limit change restarts the window at the end of this tick (stepCapping); do not cap on the old view against
+    // the new limit in the meantime, so a raised limit takes effect at once rather than one tick late.
+    const limitChanged = g && prev.capping.groupLimitsMsu?.[g.id] !== undefined && prev.capping.groupLimitsMsu[g.id] !== g.limitMsu;
+    // Each member's own view of the group's average decides its cap (RF-08): a member that joined under four hours
+    // ago sees a lower used average and may not be capped while the others are.
+    if (g && gs && join !== undefined && !limitChanged && groupMemberR4ha(gs, join, prev.tick) > g.limitMsu) {
       const members = plan.groupMembers[g.id]!;
       const shares = groupShares(
         g.limitMsu,
@@ -154,18 +160,50 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
 /** R4HA bookkeeping and soft-cap decisions for the next tick. */
 export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
   const { prev, plan, config, lpars } = t;
+  const nextTick = prev.tick + 1;
   const msuBy: Record<string, number> = {};
   for (const l of lpars) msuBy[l.id] = l.msuRate;
   const cappingLpars = zosLpars.map((l, i) =>
     stepR4ha(atOrFind(prev.capping.lpars, i, (x) => x.id === l.id) ?? newR4ha(l.id), msuBy[l.id] ?? 0, l.definedCapacityMsu),
   );
-  const cappingGroups = config.capacityGroups.map((g) => {
-    const msu = plan.groupMembers[g.id]!.reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
-    return stepR4ha(prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id), msu, g.limitMsu);
-  });
+  // Group windows: the group's combined rate fills each member's view from that member's join (RF-08). A member
+  // joining an existing group keeps the group's slots but counts the ones before its join as zero, so its view of
+  // used capacity is lower for up to four hours. The state is rebuilt from the current configuration each tick, so a
+  // removed group or member leaves nothing behind.
+  const groupJoinTicks: Record<string, Record<string, number>> = {};
+  const groupLimitsMsu: Record<string, number> = {};
+  const cappingGroups: R4haState[] = [];
+  const groupByLpar: Record<string, GroupView> = {};
+  for (const g of config.capacityGroups) {
+    const members = plan.groupMembers[g.id] ?? [];
+    const msu = members.reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
+    // A limit change restarts the group window and every member's view: IBM allows the limit to be exceeded for the
+    // four hours after a capacity change, as after a definition (Planning for Sub-Capacity Pricing PDF p.69
+    // (printed 53)). APPROX: the page says the limit may be exceeded for some hours, not that WLM's window restarts;
+    // the restart is the game's inference. A state without a stored limit (a save from before RF-08) also starts afresh.
+    const prevLimit = prev.capping.groupLimitsMsu?.[g.id];
+    const restarted = prevLimit === undefined ? prev.capping.groups.some((x) => x.id === g.id) : prevLimit !== g.limitMsu;
+    const gs = stepR4ha(restarted ? newR4ha(g.id) : (prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id)), msu, g.limitMsu);
+    cappingGroups.push(gs);
+    groupLimitsMsu[g.id] = g.limitMsu;
+    const joins = (groupJoinTicks[g.id] ??= {});
+    for (const m of members) {
+      // A member the last state already knew keeps its join; a new one (or every member after a limit change)
+      // starts its zero-filled view at this tick.
+      const join = restarted ? prev.tick : (prev.capping.groupJoinTicks?.[g.id]?.[m.id] ?? prev.tick);
+      joins[m.id] = join;
+      const used = groupMemberR4ha(gs, join, nextTick);
+      groupByLpar[m.id] = {
+        id: g.id,
+        limitMsu: g.limitMsu,
+        availableMsu: g.limitMsu - used,
+        newLimit: nextTick - join < R4HA_WINDOW_TICKS,
+      };
+    }
+  }
   const r4haBy: Record<string, number> = {};
   for (const r of cappingLpars) r4haBy[r.id] = r.r4ha;
-  return { cappingLpars, cappingGroups, msuBy, r4haBy };
+  return { cappingLpars, cappingGroups, groupJoinTicks, groupLimitsMsu, groupByLpar, msuBy, r4haBy };
 }
 
 /** MLC: hourly SCRT-style sample, monthly bill. */
@@ -190,6 +228,7 @@ export function stepRmf(
   dasd: EnvState['dasd'],
   cf: EnvState['cf'],
   r4haBy: Record<string, number>,
+  groupByLpar: Record<string, GroupView>,
   nextTick: number,
   cfBySystem: Record<string, CfSystemResult>,
   lockIndex = 0,
@@ -214,7 +253,7 @@ export function stepRmf(
   let intervals = prev.rmf.intervals;
   const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));
   if (nextTick % intervalTicks === 0) {
-    intervals = [...intervals, closeInterval(acc, { def, config, r4haByLpar: r4haBy, jobs: jobsThisInterval, endTick: nextTick })];
+    intervals = [...intervals, closeInterval(acc, { def, config, r4haByLpar: r4haBy, groupByLpar, jobs: jobsThisInterval, endTick: nextTick })];
     if (intervals.length > RMF_KEEP) intervals = intervals.slice(intervals.length - RMF_KEEP);
     acc = newRmfAcc(nextTick);
     jobsThisInterval = [];

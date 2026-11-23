@@ -217,9 +217,23 @@ export function renderPartitionData(iv: RmfInterval): string {
     out.push(`CPC ${c.cpcId}  ${padRight(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
   }
   out.push('');
+  // A member's capacity-group view is printed only when some image is in a group (RF-08): the group's unused
+  // four-hour average (`AVAILABLE`, negative while the group caps the image) and the limit, flagged `*` when the
+  // member joined under four hours ago. Images in no group keep the report byte-identical.
+  // APPROX: real RMF prints GROUP NAME, LIMIT and AVAILABLE once, in the report header for the measured partition
+  // (RMF Report Analysis 3.1 PDF p.400 (printed 360)); this report covers every image, so they are per-row columns.
+  const grouped = iv.cpu.some((r) => r.group !== undefined);
+  const groupHead = grouped ? ' ' + padRight('GROUP', 6) + ' ' + padLeft('LIMIT', 7) + ' ' + padLeft('AVAIL', 7) : '';
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
-  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
+  out.push(`NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP${groupHead}  zIIP ENG`);
   for (const r of iv.cpu.filter((x) => x.logicalCps > 0)) {
+    const grp = grouped
+      ? [
+          ' ' + padRight(r.group ?? '-', 6),
+          padLeft(r.groupLimitMsu !== undefined ? `${r.groupLimitMsu}${r.groupLimitNew ? '*' : ''}` : '-', 7),
+          padLeft(r.groupAvailableMsu !== undefined ? r.groupAvailableMsu.toFixed(0) : '-', 7),
+        ].join(' ')
+      : '';
     out.push(
       [
         padRight(r.lparId, 8),
@@ -235,7 +249,7 @@ export function renderPartitionData(iv: RmfInterval): string {
         f(r.msuAvg, 0, 8),
         f(r.r4ha, 0, 7),
         padLeft(r.definedCapacityMsu ?? '-', 8),
-        padLeft(r.absoluteCapEngines != null ? r.absoluteCapEngines.toFixed(2) : '-', 8),
+        padLeft(r.absoluteCapEngines != null ? r.absoluteCapEngines.toFixed(2) : '-', 8) + grp,
         f(r.ziipEngines, 2, 9),
       ].join(' '),
     );

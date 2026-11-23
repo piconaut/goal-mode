@@ -11,6 +11,7 @@ import { mergeWorkManager, noResources, reportedAccs, workManagerStatePct, type 
 import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC } from '../../sim/core/units';
 import { capacityLossPct, msuPerCp } from '../../sim/hw/cpc';
+import { groupMemberR4ha, R4HA_WINDOW_TICKS } from '../../sim/cost/r4ha';
 import { classify } from '../../sim/wlm/classify';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../../sim/wlm/goals';
 import { ACC_DECAY, accPi, goalInfo, sumAcc, velDelay, velUsing, type ScpAcc } from '../../sim/wlm/runtime';
@@ -38,7 +39,12 @@ export function reportedBySystem(sim: RunState['sim']): Record<string, Record<st
 export function softCapped(sim: RunState['sim'], lparId: string): boolean {
   const l = sim.config.lpars.find((x) => x.id === lparId);
   if (sim.capping.lpars.find((x) => x.id === lparId)?.capped && l?.definedCapacityMsu != null) return true;
-  return !!l?.capacityGroup && !!sim.capping.groups.find((g) => g.id === l.capacityGroup)?.capped;
+  if (!l?.capacityGroup) return false;
+  const g = sim.config.capacityGroups.find((x) => x.id === l.capacityGroup);
+  const gs = sim.capping.groups.find((x) => x.id === l.capacityGroup);
+  if (!g || !gs) return false;
+  const join = sim.capping.groupJoinTicks?.[l.capacityGroup]?.[lparId] ?? sim.tick;
+  return groupMemberR4ha(gs, join, sim.tick) > g.limitMsu;
 }
 
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
@@ -227,6 +233,9 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       const cp = l.pools.find((p) => p.pool === 'CP');
       const r4 = sim.capping.lpars.find((x) => x.id === l.id);
       const grp = l.capacityGroup ? sim.config.capacityGroups.find((g) => g.id === l.capacityGroup) : undefined;
+      const gs = grp ? sim.capping.groups.find((g) => g.id === grp.id) : undefined;
+      const join = grp ? (sim.capping.groupJoinTicks?.[grp.id]?.[l.id] ?? sim.tick) : undefined;
+      const groupUsed = grp && gs && join !== undefined ? groupMemberR4ha(gs, join, sim.tick) : null;
       // Image Capacity: the lowest of logical-CP capacity, defined capacity and the group limit.
       const limits = [(cp ? cp.logical + cp.reserved : 0) * msuCp, l.definedCapacityMsu ?? Infinity, grp?.limitMsu ?? Infinity];
       if (cp?.absoluteCapEngines != null) limits.push(cp.absoluteCapEngines * msuCp);
@@ -242,6 +251,9 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         max4hMsu: r4 ? Math.max(0, ...r4.slots) : 0,
         group: grp?.id ?? null,
         groupLimitMsu: grp?.limitMsu ?? null,
+        ...(grp && groupUsed !== null && join !== undefined
+          ? { groupAvailableMsu: grp.limitMsu - groupUsed, groupLimitNew: sim.tick - join < R4HA_WINDOW_TICKS }
+          : {}),
       };
     });
 

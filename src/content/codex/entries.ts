@@ -273,7 +273,7 @@ export const CODEX: CodexEntry[] = [
     id: 'r4ha',
     title: 'Rolling 4-hour average (R4HA) and soft capping',
     category: 'Capacity & cost',
-    body: 'Sub-capacity software is billed on the peak rolling 4-hour average of MSU consumption, not the instantaneous peak. A defined capacity (or group capacity) soft-caps an LPAR when its R4HA exceeds the limit, saving cost at the risk of CAP delay for the work running there.',
+    body: 'Sub-capacity software is billed on the peak rolling 4-hour average of MSU consumption, not the instantaneous peak. A defined capacity soft-caps an LPAR when its own R4HA exceeds the limit, saving cost at the risk of CAP delay for the work running there. A capacity group caps each member by its own view of the group\'s average: a member that joined less than four hours ago sees it zero-filled, so Partition Data\'s AVAILABLE (the unused side, negative while the group caps the member) is higher for it and its LIMIT shows `*` until the view is full.',
     sources: [GROUP_CAP, MLC_CAPPING],
     discover: { start: true },
   },

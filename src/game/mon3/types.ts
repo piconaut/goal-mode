@@ -121,6 +121,10 @@ export interface Mon3CpcHeader {
   max4hMsu: number;
   group: string | null;
   groupLimitMsu: number | null;
+  /** The group's unused four-hour average as this member sees it (RF-08); negative while the group caps it. */
+  groupAvailableMsu?: number;
+  /** RMF flags the member's LIMIT with `*` for four hours after it joined (its view is not full). */
+  groupLimitNew?: boolean;
 }
 
 export interface Mon3Enclave {

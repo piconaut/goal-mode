@@ -25,6 +25,7 @@ export function initState(seed: number, scenario: Scenario): SimState {
     capping: {
       lpars: scenario.world.lpars.filter((l) => l.kind === 'ZOS').map((l) => newR4ha(l.id)),
       groups: scenario.world.capacityGroups.map((g) => newR4ha(g.id)),
+      ...groupJoinTicksOf(scenario),
     },
     cost: newCost(scenario.products),
     rmf: { acc: newRmfAcc(0), intervals: [], jobsThisInterval: [] },
@@ -34,6 +35,19 @@ export function initState(seed: number, scenario: Scenario): SimState {
     extraAddressSpaces: [],
     commandLog: [],
     ...routingPoliciesOf(scenario),
+  };
+}
+
+function groupJoinTicksOf(scenario: Scenario): { groupJoinTicks?: Record<string, Record<string, number>>; groupLimitsMsu?: Record<string, number> } {
+  const joins: Record<string, Record<string, number>> = {};
+  const limits: Record<string, number> = {};
+  for (const g of scenario.world.capacityGroups) {
+    limits[g.id] = g.limitMsu;
+    for (const l of scenario.world.lpars) if (l.capacityGroup === g.id) (joins[g.id] ??= {})[l.id] = 0;
+  }
+  return {
+    ...(Object.keys(joins).length > 0 ? { groupJoinTicks: joins } : {}),
+    ...(Object.keys(limits).length > 0 ? { groupLimitsMsu: limits } : {}),
   };
 }
 

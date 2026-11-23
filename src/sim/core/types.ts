@@ -297,7 +297,17 @@ export interface SimState {
   last: { lpars: LparTick[]; workloads: WorkloadTick[] };
   env: EnvState;
   batch: BatchState;
-  capping: { lpars: R4haState[]; groups: R4haState[] };
+  capping: {
+    lpars: R4haState[];
+    groups: R4haState[];
+    /** First tick each group member's zero-filled group view includes, per group then member (RF-08). Absent on
+     *  saves written by a build before RF-08 (the same save version); the first tick then starts every current
+     *  member's view from that tick. */
+    groupJoinTicks?: Record<string, Record<string, number>>;
+    /** The MSU limit each group window was accumulated under, per group (RF-08). A changed limit restarts the window
+     *  and every member's view, because IBM allows the limit to be exceeded for four hours after a capacity change. */
+    groupLimitsMsu?: Record<string, number>;
+  };
   mods: SimModifiers;
   /** Workloads added during the run (new apps, mergers). */
   extraWorkloads: WorkloadDef[];

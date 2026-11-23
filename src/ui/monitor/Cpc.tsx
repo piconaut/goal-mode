@@ -36,6 +36,7 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
             <th className="num">4h Max</th>
             <th>Group</th>
             <th className="num">Limit</th>
+            <th className="num">Available</th>
           </tr>
         </thead>
         <tbody>
@@ -48,7 +49,8 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
               <td className="num">{h.r4haMsu.toFixed(0)}</td>
               <td className="num">{h.max4hMsu.toFixed(0)}</td>
               <td>{h.group ?? 'N/A'}</td>
-              <td className="num">{h.groupLimitMsu ?? ''}</td>
+              <td className="num">{h.groupLimitMsu !== null ? `${h.groupLimitMsu}${h.groupLimitNew ? '*' : ''}` : ''}</td>
+              <td className="num">{h.groupAvailableMsu !== undefined ? h.groupAvailableMsu.toFixed(0) : ''}</td>
             </tr>
           ))}
         </tbody>

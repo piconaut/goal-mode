@@ -239,26 +239,6 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
-### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: cross-report invariant suite (2026-11-14; identity `soft-cap-flag`, left-out part). Research settled 2026-11-21
-(docs/research.md "Resource groups, defined capacity and group capacity"): WLM starts the four-hour window with no usage
-at IPL, so the average begins at zero; capacities may exceed the group limit "for the first four hours after an IPL and
-for the hours immediately after adding LPARs to a group or changing the group's capacity" (Planning for Sub-Capacity
-Pricing PDF p.69 (printed 53)); and a partition that joined less than four hours ago "will have a different view of
-unused group capacity and, therefore, might cap differently than existing group members", with RMF flagging its LIMIT
-with `*` (RMF Report Analysis PDF p.98 and p.400 (printed 58 and 360)). No page read says whether the combined average
-is the sum of the members' own R4HAs — the only such wording found is a vendor's display description — so do not seed a
-group window from members' R4HAs. No report prints the group's used average either: Partition Data's `AVAILABLE` is
-the unused side of it ("If the value is negative, the group is capped"), so a member's view is about `limit − AVAILABLE`.
-Change: give each member its own group-average window, zero-filled at group definition/IPL and at that member's join,
-with the group limit check reading the member's window (APPROX: inferred from the documented "different view"; the
-arithmetic is not stated); record the join tick and flag the member's LIMIT with `*` for four hours. Show `AVAILABLE`
-and the `*` on Partition Data and the Monitor III CPC header, replacing the sim-only group state.
-Done when: the suite's `soft-cap-flag` reads the group's state from a report instead of the sim,
-`tests/helpers/reportIdentities.ts` covers AVAILABLE and the `*`, and docs/research.md and SPEC §17 are updated.
-
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.

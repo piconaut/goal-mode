@@ -157,6 +157,13 @@ export interface CpuRecord {
   absoluteCapEngines: number | null;
   ziipEngines: number;
   icfEngines: number;
+  /** Capacity group this image belongs to (RF-08), and the group's unused four-hour average as this member sees it:
+   *  negative means the group is capping it. Absent when the image is in no group. */
+  group?: string;
+  groupLimitMsu?: number;
+  groupAvailableMsu?: number;
+  /** RMF flags the member's LIMIT with `*`: it joined under four hours ago, so its view is not full yet. */
+  groupLimitNew?: boolean;
 }
 
 export interface JobEndRecord {
@@ -536,8 +543,20 @@ export interface CloseContext {
   def: ServiceDefinition;
   config: WorldConfig;
   r4haByLpar: Readonly<Record<string, number>>;
+  /** Per member, the capacity group's view at the interval end (RF-08). */
+  groupByLpar?: Readonly<Record<string, GroupView>>;
   jobs: JobEndRecord[];
   endTick: number;
+}
+
+/** A member's capacity-group view at one moment (RF-08): the group's limit and unused four-hour average. */
+export interface GroupView {
+  id: string;
+  limitMsu: number;
+  /** `limitMsu` less the member's view of the group's used average; negative while the group caps the member. */
+  availableMsu: number;
+  /** The member joined under four hours ago: its view is zero-filled, so RMF flags the LIMIT with `*`. */
+  newLimit: boolean;
 }
 
 export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
@@ -584,6 +603,14 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       absoluteCapEngines: cp?.absoluteCapEngines ?? null,
       ziipEngines: a.deliveredZiip / n,
       icfEngines: a.deliveredIcf / n,
+      ...(ctx.groupByLpar?.[a.lparId]
+        ? {
+            group: ctx.groupByLpar[a.lparId]!.id,
+            groupLimitMsu: ctx.groupByLpar[a.lparId]!.limitMsu,
+            groupAvailableMsu: ctx.groupByLpar[a.lparId]!.availableMsu,
+            groupLimitNew: ctx.groupByLpar[a.lparId]!.newLimit,
+          }
+        : {}),
     };
   });
   const cpcBusy = ctx.config.cpcs.flatMap((c) =>
