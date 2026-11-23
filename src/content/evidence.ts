@@ -223,9 +223,10 @@ export interface PredicateOption {
   /** The pin must read the same row (image and class, or workload) as a pin meeting the recipe's first predicate: the
    * two halves of a surge or a regression describe one piece of work. */
   sameWork?: true;
-  /** This ruling-out option counts only when the first predicate was met by one of these symptoms: the queue whose
-   * nearest look-alike it rules out (RT-34). A CICS slot queue needs the QR wait, a DBAT queue its own cost, an
-   * initiator wait the jobs' CPU wait; a normal cost per transaction does not rule out QR saturation. */
+  /** The symptoms this ruling-out option rules out (RT-34). A predicate with tied options is met only when every
+   * symptom the first predicate showed, on that same incident, has a matching option: a CICS slot queue needs the QR
+   * wait, a DBAT queue its own cost, an initiator wait the jobs' CPU wait. A normal cost per transaction therefore
+   * does not rule out QR saturation. */
   rulesOut?: EvidenceMetric[];
 }
 
@@ -368,7 +369,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
-    label: 'the extra wait was the slot, not the QR TCB: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction within ±15 % of normal for a DBAT queue, or the jobs\' CPU wait < 25 % for an initiator wait',
+    label: 'the extra wait was the slot, not slower work: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction within ±15 % of normal for a DBAT queue, or the jobs\' CPU wait < 25 % for an initiator wait',
     options: [
       { ...normal('CPU_PER_TXN', SELF), rulesOut: ['DBAT_QUEUE'] },
       { ...normal('CPU_VS_BASE', SELF), rulesOut: ['DBAT_QUEUE'] },

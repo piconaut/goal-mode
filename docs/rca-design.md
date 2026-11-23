@@ -752,7 +752,9 @@ claim. Where the build differs from the table:
 - **THREAD_LIMIT's ruling-out options are tied to the symptom** that met the first predicate (`rulesOut`, RT-34): a
   CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a region) needs QR wait < 5 ms/txn on the hurt work, because tasks
   held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction; a DBAT queue needs CPU
-  per transaction normal, and an initiator wait the jobs' CPU wait < 25 %. HARDWARE_FAULT's ruling-out half stays
+  per transaction normal, and an initiator wait the jobs' CPU wait < 25 %. Every symptom the first predicate shows
+  needs its own reading on that incident, so a CICS queue beside a DBAT queue needs both; a grouped RCA's rows are
+  pooled, but a tie is per incident. HARDWARE_FAULT's ruling-out half stays
   *or*: either normal reading counts, so the recipe stays two pins. HARDWARE_FAULT's second half also accepts the
   work's own CPU delay low.
 - **Cost pins carry their row's rate** (`pin.rate`), so DEMAND_SURGE and a change regression are each provable from

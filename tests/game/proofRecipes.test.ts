@@ -185,14 +185,16 @@ function symptomFor(r: RunState, kind: Kind, pred: ProofPredicate, o: PredicateO
  * work (`sameWork`) gets a predicate-0 pin on the same row, and one tied to a symptom (`rulesOut`) gets that
  * symptom's pin. */
 function fixturePins(r: RunState, kind: Kind, preds: readonly ProofPredicate[]): EvidencePin[] | null {
-  const first = preds[0]!.options.map((o) => pinFor(r, kind, o, 1000)).find((p) => p !== null);
   for (const o of preds[1]!.options) {
     const second = pinFor(r, kind, o, 1001);
     if (!second) continue;
-    if (o.rulesOut && !first) continue;
-    if (o.rulesOut && !o.rulesOut.includes(first!.metric)) continue;
-    const anchor = o.sameWork ? anchorFor(r, kind, preds[0]!, second, 1000) : first;
-    if (anchor) return [anchor, second];
+    for (const f of preds[0]!.options) {
+      const first = pinFor(r, kind, f, 1000);
+      if (!first) continue;
+      if (o.rulesOut && !o.rulesOut.includes(f.metric)) continue;
+      const anchor = o.sameWork ? anchorFor(r, kind, preds[0]!, second, 1000) : first;
+      if (anchor) return [anchor, second];
+    }
   }
   return null;
 }
@@ -209,6 +211,14 @@ describe('proof recipe vocabulary (RT-13)', () => {
         expect(p.options.length, claim).toBeGreaterThan(0);
         for (const o of p.options) expect(EVIDENCE_METRICS[o.metric], `${claim} ${o.metric}`).toBeDefined();
       }
+    }
+  });
+
+  it('keeps a predicate either wholly tied to symptoms or wholly free', () => {
+    // A tied predicate is judged by coverage, so a free option in it would bypass the tie (RT-34).
+    for (const claim of CLAIMS) for (const p of recipeOf(claim).predicates) {
+      const tied = p.options.filter((o) => o.rulesOut);
+      expect(tied.length === 0 || tied.length === p.options.length, claim).toBe(true);
     }
   });
 
@@ -281,7 +291,11 @@ describe('THREAD_LIMIT\'s ruling-out tie (RT-34)', () => {
     expect(failed.predicates[1]!.met).toBe(false);
     expect(judge('CICS', [mxt, saturated]).predicates[1]!.met).toBe(false);
     expect(judge('CICS', [mxt, qr]).complete).toBe(true);
-    // The failed predicate names the QR line and quotes the pin that missed it.
+    // The failed predicate names the QR line and quotes the pin that missed it, not the cost reading that cannot
+    // rule out a CICS queue (RT-34).
+    const cpuOff = { ...cpu, value: 80 };
+    const withCost = judge('CICS', [mxt, saturated, cpuOff]);
+    expect(withCost.predicates[1]!.failedReading).toMatchObject({ pinId: saturated.id, metric: 'QR_WAIT', value: saturated.value });
     const reply = proofLines(judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, 'CICS', truthOf('THREAD_LIMIT', 'POLICY'))], 'THREAD_LIMIT', 'POLICY', [mxt, saturated]));
     expect(reply.join(' ')).toContain('QR wait < 5 ms/txn');
     expect(reply.join(' ')).toContain('QR wait ms/txn');
@@ -297,6 +311,32 @@ describe('THREAD_LIMIT\'s ruling-out tie (RT-34)', () => {
     const jobCpu = pin('BATCH', rec.predicates[1].options[3]!, 6201);
     expect(judge('BATCH', [init, jobCpu]).complete).toBe(true);
     expect(judge('BATCH', [init, pin('CICS', rec.predicates[1].options[2]!, 6202)]).predicates[1]!.met).toBe(false);
+  });
+
+  it('needs every met symptom ruled out: a DBAT queue beside an MXT queue does not let cost stand in for QR', () => {
+    const mxt = pin('CICS', rec.predicates[0].options[0]!, 6300);
+    // The fixture's Db2 statistics row relates as self for a CICS incident too; what matters is that both symptoms
+    // are met and each needs its own discriminator.
+    const dbat = pin('CICS', rec.predicates[0].options[1]!, 6301);
+    const cpu = pin('CICS', rec.predicates[1].options[0]!, 6302);
+    const qr = pin('CICS', rec.predicates[1].options[2]!, 6303);
+    const costOnly = judge('CICS', [mxt, dbat, cpu]);
+    expect(costOnly.predicates[0]!.met).toBe(true);
+    expect(costOnly.predicates[1]!.met).toBe(false);
+    expect(judge('CICS', [mxt, dbat, cpu, qr]).complete).toBe(true);
+  });
+
+  it('does not let a QR reading on another workload rule out this one in a grouped RCA', () => {
+    const a = fixtureIncident(fixtureRun, 'CICS', truthOf('THREAD_LIMIT', 'POLICY'));
+    const b = {
+      ...fixtureIncident(fixtureRun, 'CICS', truthOf('THREAD_LIMIT', 'POLICY')),
+      id: 1000, workloadId: 'TELLER', subjects: incidentSubjects(fixtureRun, MIDWEST, 'TELLER', fixtureRun.day), rcaGroup: 999,
+    };
+    const mxt = pin('CICS', rec.predicates[0].options[0]!, 6400);
+    const qrLow = { ...pin('CICS', rec.predicates[1].options[2]!, 6401), subject: 'TELLER' };
+    const mech = judgeProof(fixtureRun, MIDWEST, [a, b], 'THREAD_LIMIT', 'POLICY', [mxt, qrLow]).mechanism;
+    expect(mech.predicates[0]!.met).toBe(true);
+    expect(mech.predicates[1]!.met).toBe(false);
   });
 });
 
@@ -327,7 +367,7 @@ describe('documented values (RT-13)', () => {
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
       QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'little waiting for a slot or on the CPU'],
-      THREAD_LIMIT: ['queued for a slot', 'the extra wait was the slot, not the QR TCB'],
+      THREAD_LIMIT: ['queued for a slot', 'the extra wait was the slot, not slower work'],
       ROUTING: ['transactions failed', 'the work itself unchanged'],
       IO: ['I/O waits on the hurt work', 'DASD itself slow'],
       STORAGE: ['storage waits', 'the hurt class\'s own CPU delay < 10 %'],
@@ -780,9 +820,10 @@ describe('every recipe from a replayed incident (RT-13)', () => {
     proves(x, inc, [pins[0]!, pins[2]!], ['APPLICATION_ERROR']);
   });
 
-  it('INC35 shape: an MXT queue behind QR saturation is not THREAD_LIMIT (RT-34)', () => {
+  it('the RT-19 residue: a slot queue behind QR saturation cannot be proven as THREAD_LIMIT (RT-34)', () => {
     // Tasks held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction, so a
-    // normal CPU per transaction must not complete the claim.
+    // normal CPU per transaction must not complete the claim. The run's own incident here is still blamed on the
+    // low MXT limit; that class of incident stays RT-19's, and the recipe cannot prove it either way.
     const r = run([
       { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.95, maxTasks: 10 },
       { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.95, maxTasks: 10 },
@@ -796,14 +837,21 @@ describe('every recipe from a replayed incident (RT-13)', () => {
     expect(mxt.value).toBeGreaterThanOrEqual(5);
     expect(qr.value).toBeGreaterThanOrEqual(5);
     expect(Math.abs(cpu.value / cpu.baseline! - 1)).toBeLessThanOrEqual(PROOF.normalBand);
-    const inc = incidentOn(x, 'TELLER');
-    const proof = judgeProof(x, MIDWEST, [inc], 'THREAD_LIMIT', 'POLICY', pins);
+    // The replay's own incident: THREAD_LIMIT is accepted, so this is the low-limit residue, not a QR mislabel.
+    const real = x.incidents.filter((i) => i.workloadId === 'TELLER').at(-1)!;
+    expect(real.truth.mechanism).toBe('THREAD_LIMIT');
+    expect(real.truth.accepted.mechanisms).toContain('THREAD_LIMIT');
+    const proof = judgeProof(x, MIDWEST, [real], 'THREAD_LIMIT', 'POLICY', pins);
     expect(proof.mechanism.predicates[0]!.met).toBe(true);
     expect(proof.mechanism.predicates[1]!.met).toBe(false);
     expect(proof.mechanism.predicates[1]!.failedReading).toMatchObject({ metric: 'QR_WAIT', value: qr.value });
     expect(proofLines(proof).join(' ')).toContain('QR wait < 5 ms/txn');
-    // CPU per transaction alone (the INC35 reading) cannot complete it.
-    expect(judgeProof(x, MIDWEST, [inc], 'THREAD_LIMIT', 'POLICY', [mxt, cpu]).mechanism.predicates[1]!.met).toBe(false);
+    // CPU per transaction alone (the INC35 reading) cannot complete it, and QR_TCB does not fit either: the MXT
+    // queue is over its own line. The pair of failures is RT-19's to resolve.
+    expect(judgeProof(x, MIDWEST, [real], 'THREAD_LIMIT', 'POLICY', [mxt, cpu]).mechanism.predicates[1]!.met).toBe(false);
+    const qrClaim = judgeProof(x, MIDWEST, [real], 'QR_TCB', 'POLICY', pins).mechanism;
+    expect(qrClaim.predicates[0]!.met).toBe(true);
+    expect(qrClaim.predicates[1]!.met).toBe(false);
   });
 
   it('a too-low MXT with the QR wait normal is THREAD_LIMIT (RT-34)', () => {
@@ -817,7 +865,9 @@ describe('every recipe from a replayed incident (RT-13)', () => {
     ]);
     expect(pins[0]!.value).toBeGreaterThanOrEqual(5);
     expect(pins[1]!.value).toBeLessThan(5);
-    proves(x, incidentOn(x, 'TELLER'), pins, ['THREAD_LIMIT']);
+    const real = x.incidents.filter((i) => i.workloadId === 'TELLER').at(-1)!;
+    expect(real.truth.mechanism).toBe('THREAD_LIMIT');
+    proves(x, real, pins, ['THREAD_LIMIT']);
   });
 
 

@@ -43,7 +43,11 @@ export function minPins(predicates: readonly ProofPredicate[]): { pins: number; 
       return;
     }
     for (const o of predicates[k]!.options) {
-      if (k > 0 && o.rulesOut && !o.rulesOut.includes(chosen[k - 1]!.metric)) continue;
+      // Every recipe has two predicates, so the tie is to the first predicate of the recipe this one belongs to.
+      if (o.rulesOut) {
+        const first = k % 2 === 1 ? chosen[k - 1] : undefined;
+        if (!first || !o.rulesOut.includes(first.metric)) continue;
+      }
       choose(k + 1, [...chosen, o]);
     }
   };
