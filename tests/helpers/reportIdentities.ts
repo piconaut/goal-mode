@@ -18,6 +18,7 @@ import { allWorkloads } from '../../src/game/workloads';
 import { formatClock } from '../../src/sim/core/clock';
 import type { LparConfig, WorldConfig } from '../../src/sim/core/types';
 import { R4HA_SLOTS, TICKS_PER_HOUR, TICKS_PER_R4HA_SLOT, TICK_SEC } from '../../src/sim/core/units';
+import { groupMemberR4ha, R4HA_WINDOW_TICKS } from '../../src/sim/cost/r4ha';
 import { billLines, closeMonth, tfpCharge } from '../../src/sim/cost/mlc';
 import { msuPerCp } from '../../src/sim/hw/cpc';
 import { REPORT_KINDS, renderReport, renderScrt } from '../../src/sim/measure/reports';
@@ -493,11 +494,13 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'soft-cap-flag',
-    title: 'Soft capping: an image is capped exactly while its R4HA is above its defined capacity (or its group is capped), and every view says so',
+    title: 'Soft capping: an image is capped exactly while its R4HA is above its defined capacity (or its group view is over the limit), and every view says so',
     basis: 'z/OS',
     // "When this four-hour average goes over the defined capacity limit, then WLM caps the partition ... until the
     // average drops below the limit." Monitor III CPC: 4h Avg, 4h Max ("can be greater than the defined capacity").
-    source: 'WLM Planning 3.1 p.44; RMF Report Analysis 3.1 p.96–99 (Table 16)',
+    // A member's capacity-group view is Partition Data's AVAILABLE (limit − the member's four-hour average; negative
+    // while the group caps it), so the group decision is read from the report (RF-08).
+    source: 'WLM Planning 3.1 p.44; RMF Report Analysis 3.1 PDF p.399–400 (printed 359–360), PDF p.96–99 (printed 56–59)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const view = buildView({ ...o.end, tools: ['RMF_MON3'] }, run.scenario);
@@ -506,18 +509,26 @@ export const IDENTITIES: Identity[] = [
           const sys = o.mon3.systems.find((x) => x.system === r.lparId)!;
           const head = o.mon3.cpcHeaders.find((x) => x.lparId === r.lparId)!;
           const lv = view.lpars.find((x) => x.id === r.lparId)!;
-          // Decided at each 5-minute boundary, which every interval end is. A capacity group caps its members when
-          // the group's own average passes its limit. Left out: that average against the limit, which no report shows
-          // (real RMF prints the group's AVAILABLE MSU; BACKLOG RF-08), so the group's state is read from the sim.
           const l = o.end.sim.config.lpars.find((x) => x.id === r.lparId)!;
-          const group = l.capacityGroup !== null && !!o.end.sim.capping.groups.find((g) => g.id === l.capacityGroup)?.capped;
-          c.ok(sys.capped === ((r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu) || group), () => `${at(o)} ${r.lparId} capped ${sys.capped}, R4HA ${r.r4ha}, DEF CAP ${r.definedCapacityMsu}, group capped ${group}`);
+          const group = r.groupAvailableMsu !== undefined && r.groupAvailableMsu < 0;
+          c.ok(sys.capped === ((r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu) || group), () => `${at(o)} ${r.lparId} capped ${sys.capped}, R4HA ${r.r4ha}, DEF CAP ${r.definedCapacityMsu}, group AVAILABLE ${r.groupAvailableMsu}`);
           c.ok(head.group === l.capacityGroup && head.groupLimitMsu === (o.end.sim.config.capacityGroups.find((g) => g.id === l.capacityGroup)?.limitMsu ?? null), () => `${at(o)} ${r.lparId} CPC header group ${head.group} limit ${head.groupLimitMsu}`);
           c.ok(lv.capped === sys.capped, () => `${at(o)} ${r.lparId} header capped ${lv.capped}, Monitor III ${sys.capped}`);
           c.close(head.r4haMsu, r.r4ha, ROUNDING, () => `${at(o)} ${r.lparId} Monitor III 4h avg vs Partition Data R4HA`);
           c.close(lv.r4ha ?? 0, r.r4ha, ROUNDING, () => `${at(o)} ${r.lparId} header R4HA vs Partition Data`);
           c.atMost(head.r4haMsu, head.max4hMsu, ROUNDING, () => `${at(o)} ${r.lparId} 4h avg above 4h max`);
           c.close(lv.msu, sys.msu, ROUNDING, () => `${at(o)} ${r.lparId} header MSU vs Monitor III`);
+          if (l.capacityGroup === null) continue;
+          // The member's own view: the group's slots since it joined, zero-filled before, and LIMIT flagged `*`
+          // while that window is not full (four hours).
+          const g = o.end.sim.config.capacityGroups.find((x) => x.id === l.capacityGroup)!;
+          const gs = o.end.sim.capping.groups.find((x) => x.id === l.capacityGroup)!;
+          const join = o.end.sim.capping.groupJoins?.[l.capacityGroup]?.[r.lparId] ?? o.end.sim.tick;
+          c.ok(r.group === l.capacityGroup && r.groupLimitMsu === g.limitMsu, () => `${at(o)} ${r.lparId} Partition Data group ${r.group} limit ${r.groupLimitMsu}`);
+          c.close(r.groupAvailableMsu ?? NaN, g.limitMsu - groupMemberR4ha(gs, join, o.end.sim.tick), ROUNDING, () => `${at(o)} ${r.lparId} AVAILABLE vs limit − member view`);
+          c.close(head.groupAvailableMsu ?? NaN, r.groupAvailableMsu ?? NaN, ROUNDING, () => `${at(o)} ${r.lparId} CPC header AVAILABLE vs Partition Data`);
+          c.ok(r.groupLimitNew === (o.end.sim.tick - join < R4HA_WINDOW_TICKS), () => `${at(o)} ${r.lparId} LIMIT * ${r.groupLimitNew}, join age ${o.end.sim.tick - join}`);
+          c.ok(head.groupLimitNew === r.groupLimitNew, () => `${at(o)} ${r.lparId} CPC header LIMIT * ${head.groupLimitNew} vs Partition Data ${r.groupLimitNew}`);
         }
       }
     },
@@ -1311,6 +1322,8 @@ const DECAYED_PCT: Tol = { rel: 1e-6, abs: 1e-4 };
 export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'an image soft-capped by its defined capacity': (run) => run.intervals.some((o) => zos(o.config).some((l) => l.definedCapacityMsu !== null && (o.lpars[l.id]?.softCappedTicks ?? 0) > 0)),
   'an image soft-capped by its capacity group': (run) => run.intervals.some((o) => zos(o.config).some((l) => l.capacityGroup !== null && l.definedCapacityMsu === null && (o.lpars[l.id]?.softCappedTicks ?? 0) > 0)),
+  'a capacity group member whose view is not full (LIMIT *)': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.groupLimitNew === true)),
+  'a capacity group member over its limit (AVAILABLE negative)': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.groupAvailableMsu !== undefined && r.groupAvailableMsu < 0)),
   'an image capped, but not by WLM': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.cappedPct > 0 && (r.wlmCappingPct ?? 0) === 0)),
   'an hour billed under a defined capacity': (run) => run.intervals.some((o) => o.iv.endTick % TICKS_PER_HOUR === 0 && o.iv.cpu.some((r) => r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu)),
   'an hour billed under a group limit': (run) => run.intervals.some((o) => o.iv.endTick % TICKS_PER_HOUR === 0 && o.end.sim.capping.groups.some((g) => g.capped)),

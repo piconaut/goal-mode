@@ -297,7 +297,13 @@ export interface SimState {
   last: { lpars: LparTick[]; workloads: WorkloadTick[] };
   env: EnvState;
   batch: BatchState;
-  capping: { lpars: R4haState[]; groups: R4haState[] };
+  capping: {
+    lpars: R4haState[];
+    groups: R4haState[];
+    /** First tick each group member's zero-filled group view includes, per group then member (RF-08). Absent on
+     *  saves written before RF-08; the first tick then starts every current member's view from that tick. */
+    groupJoins?: Record<string, Record<string, number>>;
+  };
   mods: SimModifiers;
   /** Workloads added during the run (new apps, mergers). */
   extraWorkloads: WorkloadDef[];

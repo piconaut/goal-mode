@@ -1,7 +1,7 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_PRODUCTS, tieredMonthlyCost } from '../../src/content/pricing';
 import { accrueUsage, closeMonth, estimateMonth, newCost, recordHour, startTfp } from '../../src/sim/cost/mlc';
-import { groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
+import { groupMemberR4ha, groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
 import { initState } from '../../src/sim/core/init';
 import { effectiveDispatchEngines } from '../../src/sim/hw/cpc';
 import { step } from '../../src/sim/core/step';
@@ -164,6 +164,49 @@ describe('MLC', () => {
     expect(s1.cost.priceMult).toBe(1.08);
     expect(step(s0, [{ kind: 'SET_MLC_PRICE', mult: 0 }], MIDWEST).cost.priceMult).toBeUndefined();
   });
+});
+
+describe('capacity group member views (RF-08)', () => {
+  const groupCmd = (members: string[], limitMsu: number) => [{ kind: 'SET_CAPACITY_GROUP' as const, groupId: 'G1', limitMsu, members }];
+
+  it('zero-fills each member view at the definition, then clears the LIMIT * after four hours', () => {
+    // Before the first slot completes the member's view is zero, so all of the limit is unused.
+    expect(groupMemberR4ha(newR4ha('G1'), 0, 29)).toBe(0);
+    expect(groupMemberR4ha(newR4ha('G1'), 0, 30)).toBe(0); // the slot is empty until stepR4ha fills one
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 5 * 360; i++) s = step(s, [], MIDWEST);
+    const rows = s.rmf.intervals.map((iv) => iv.cpu.find((r) => r.lparId === 'PROD1')!).filter((r) => r.group === 'G1');
+    expect(rows.length).toBeGreaterThan(8);
+    const first = rows[0]!;
+    const last = rows[rows.length - 1]!;
+    // The first closed interval already holds some of the group's usage, but not four hours of it: the LIMIT carries
+    // the `*`, and the unused average is positive.
+    expect(first.groupLimitMsu).toBe(100);
+    expect(first.groupLimitNew).toBe(true);
+    expect(first.groupAvailableMsu!).toBeGreaterThan(0);
+    expect(first.groupAvailableMsu!).toBeLessThan(100);
+    // Four hours later the window is full: the group's average is over the 100 MSU limit, AVAILABLE is negative
+    // and the `*` is gone.
+    expect(last.groupLimitNew).toBe(false);
+    expect(last.groupAvailableMsu!).toBeLessThan(0);
+    expect(last.groupAvailableMsu!).toBeLessThan(first.groupAvailableMsu!);
+  }, 120_000);
+
+  it('gives a member that joins an existing group a lower view than the members already in it', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1'], 100), MIDWEST);
+    for (let i = 0; i < 4.2 * 360; i++) s = step(s, [], MIDWEST);
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST); // one full 30-minute interval after the join
+    const iv = s.rmf.intervals[s.rmf.intervals.length - 1]!;
+    const old = iv.cpu.find((r) => r.lparId === 'PROD1')!;
+    const joined = iv.cpu.find((r) => r.lparId === 'PROD2')!;
+    expect(old.group).toBe('G1');
+    expect(joined.group).toBe('G1');
+    expect(old.groupLimitNew).toBe(false);
+    expect(joined.groupLimitNew).toBe(true);
+    // Same limit, but the new member's four-hour average is still zero-filled, so it sees more unused capacity.
+    expect(joined.groupAvailableMsu!).toBeGreaterThan(old.groupAvailableMsu!);
+  }, 120_000);
 });
 
 describe('RMF intervals and reports', () => {

@@ -6,6 +6,8 @@ import { buildMon3, softCapped } from '../../src/game/mon3';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
+import { newR4ha } from '../../src/sim/cost/r4ha';
+import { R4HA_SLOTS, TICKS_PER_R4HA_SLOT } from '../../src/sim/core/units';
 
 const content = { ...MIDWEST_GAME, events: [] };
 let base: RunState;
@@ -25,7 +27,11 @@ function withCaps(o: { lparFlag?: string; definedCapacity?: [string, number | nu
   }
   if (o.group) {
     sim.config.capacityGroups = [{ id: 'G1', cpcId: sim.config.cpcs[0]!.id, limitMsu: 100 }];
-    sim.capping.groups = [{ ...structuredClone(sim.capping.lpars[0]!), id: 'G1', capped: o.group.capped }];
+    // Each member's own view: a full window whose every 5-minute slot is 200 MSU clears a 100 MSU limit.
+    const slots = new Array<number>(R4HA_SLOTS).fill(o.group.capped ? 200 : 0);
+    sim.capping.groups = [{ ...newR4ha('G1'), slots, r4ha: o.group.capped ? 200 : 0, capped: o.group.capped }];
+    const joined = base.sim.tick - R4HA_SLOTS * TICKS_PER_R4HA_SLOT;
+    sim.capping.groupJoins = { G1: Object.fromEntries(o.group.members.map((id) => [id, joined])) };
   }
   sim.capping.lpars = sim.capping.lpars.map((r) => ({ ...r, capped: r.id === o.lparFlag }));
   return { ...base, sim };

@@ -7,6 +7,9 @@
 
 import { R4HA_SLOTS, TICKS_PER_R4HA_SLOT } from '../core/units';
 
+/** Ticks in a full four-hour R4HA window (48 five-minute slots). */
+export const R4HA_WINDOW_TICKS = R4HA_SLOTS * TICKS_PER_R4HA_SLOT;
+
 export interface R4haState {
   id: string;
   /** 48 five-minute MSU averages, oldest first. Starts at zero (IPL). */
@@ -28,6 +31,21 @@ export const newR4ha = (id: string): R4haState => ({
   capped: false,
   cappedTicks: 0,
 });
+
+/**
+ * A member's view of its capacity group's four-hour average: the group's slot history since the member joined, with
+ * the slots before that counted as zero. A partition that joined less than four hours ago therefore sees a lower used
+ * average than the existing members — the documented "different view of unused group capacity", so it may cap
+ * differently (RMF Report Analysis 3.1 PDF p.400 (printed 360); Planning for Sub-Capacity Pricing PDF p.69 (printed
+ * 53)). The arithmetic itself is inferred: IBM states the different view, not how a member computes it (APPROX).
+ *
+ * `joinTick` is the first simulated tick the member's window includes, and `tick` is the tick just simulated.
+ */
+export function groupMemberR4ha(group: R4haState, joinTick: number, tick: number): number {
+  const slots = Math.min(R4HA_SLOTS, Math.max(0, Math.floor((tick - joinTick) / TICKS_PER_R4HA_SLOT)));
+  if (slots <= 0) return 0;
+  return group.slots.slice(R4HA_SLOTS - slots).reduce((a, b) => a + b, 0) / R4HA_SLOTS;
+}
 
 /** Add one tick of MSU consumption; at each 5-minute boundary roll the window and re-decide capping. */
 export function stepR4ha(st: R4haState, msuRate: number, limitMsu: number | null): R4haState {
