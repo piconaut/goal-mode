@@ -224,6 +224,32 @@ describe('capacity group member views (RF-08)', () => {
     expect(after.groupAvailableMsu!).toBeGreaterThan(0);
   }, 120_000);
 
+  it('caps each member on its own view: a late joiner is not capped while the existing member is', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1'], 50), MIDWEST);
+    for (let i = 0; i < 4.2 * 360; i++) s = step(s, [], MIDWEST);
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 50), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
+    const iv = s.rmf.intervals[s.rmf.intervals.length - 1]!;
+    const old = iv.cpu.find((r) => r.lparId === 'PROD1')!;
+    const joined = iv.cpu.find((r) => r.lparId === 'PROD2')!;
+    // The group's combined average is over 50 MSU, but the joiner's zero-filled view is not, so WLM caps only PROD1.
+    expect(old.groupAvailableMsu!).toBeLessThan(0);
+    expect(old.wlmCappingPct).toBeGreaterThan(0);
+    expect(joined.groupAvailableMsu!).toBeGreaterThan(0);
+    expect(joined.wlmCappingPct).toBe(0);
+  }, 120_000);
+
+  it('does not cap on the old view against a changed limit, not even for one tick', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 5 * 360; i++) s = step(s, [], MIDWEST);
+    const capTicks = () => s.rmf.acc.lpars['PROD1']?.wlmCapTicks ?? 0;
+    const before = capTicks();
+    s = step(s, [], MIDWEST);
+    expect(capTicks()).toBe(before + 1); // capped on the 100 MSU limit
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 120), MIDWEST);
+    expect(capTicks()).toBe(before + 1); // the raised limit applies at once
+  }, 120_000);
+
   it('prints GROUP, the LIMIT with its * and AVAIL on Partition Data', () => {
     let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
     for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
