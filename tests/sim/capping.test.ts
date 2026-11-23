@@ -76,6 +76,27 @@ describe('R4HA and soft capping', () => {
     const prod2 = s.last.lpars.find((l) => l.lparId === 'PROD2')!;
     expect(prod2.scps.reduce((a, x) => a + x.delayCap, 0)).toBe(0);
   });
+
+  it('a binding soft cap holds the effective-dispatch MSU at the limit, not the LPAR management share below it', () => {
+    // MSU is charged on effective dispatch (RMF Report Analysis 3.1 PDF p.401 (printed 361)) while the PR/SM cap acts
+    // on delivered engines, so softCap sizes the cap ÷ (1 − base overhead). Without that conversion the capped rate
+    // would be limit × (1 − overheadFrac), about 3 MSU lower here.
+    const sc = structuredClone(MIDWEST.world);
+    sc.lpars.find((l) => l.id === 'PROD2')!.definedCapacityMsu = 300;
+    const scenario = { ...MIDWEST, world: sc, batchNetwork: MIDWEST.batchNetwork };
+    let s = initState(5, scenario);
+    let bindingTicks = 0;
+    for (let i = 0; i < 6 * 360 + 4 * 360; i++) {
+      s = step(s, [], scenario);
+      const rt = s.lpars.find((l) => l.id === 'PROD2')!;
+      const cp = rt.pools.find((p) => p.pool === 'CP')!;
+      if (!s.capping.lpars.find((r) => r.id === 'PROD2')!.capped || cp.softCappedFrac <= 0) continue;
+      bindingTicks++;
+      expect(rt.msuRate).toBeLessThanOrEqual(300 + 1e-6);
+      expect(rt.msuRate).toBeGreaterThan(300 * (1 - cp.overheadFrac) + 1);
+    }
+    expect(bindingTicks).toBeGreaterThan(10);
+  });
 });
 
 describe('MLC', () => {
