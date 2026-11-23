@@ -695,7 +695,7 @@ out) the discriminator. Recipes live in `content/evidence.ts` beside the metrics
 | CPU_CAPACITY | as above | CPC or image busy ≥ 90 %, or a capacity adjustment below 100 |
 | CAPPING | as above, or CAP delay ≥ 10 % (a group cap's delay is CAP, not CPU) | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
 | DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or velocity under goal) | the hurt class's own CPU delay low (< 10 %), or its work-manager state "waiting" |
-| THREAD_LIMIT | MXT wait or queued-DBAT count up | CPU per transaction and QR wait normal (a ruling-out pin) |
+| THREAD_LIMIT | MXT wait, SOS on a region, or queued-DBAT count up; initiator wait for jobs | the symptom's own look-alike ruled out: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction normal for a DBAT queue, the jobs' CPU wait low for initiators |
 | DEMAND_SURGE | ended rate ≥ 1.25 × baseline on the surging workload | its CPU per transaction within ±15 % of baseline |
 | Change regression | CPU per transaction ≥ 1.3 × baseline | its ended rate within ±15 % of baseline |
 | RUNAWAY_WORK | APPL of one class or job up by ≥ half an engine | that work's ended rate flat |
@@ -749,8 +749,12 @@ claim. Where the build differs from the table:
   other/UNK delay up ≥ 10 points over its normal (DDF's wait on a starved Db2 shows there, not as its CPU delay; a
   healthy DDF row already spends 50–75 % there, so the table's fixed line would pass every DDF row), against its own CPU delay
   < 10 % or a CICS class's READY < 5 %. SYSWKM velocity under goal is not an option: the pin does not carry the goal.
-- **THREAD_LIMIT's ruling-out half** and HARDWARE_FAULT's are *or*, not *and*: either normal reading counts, so the
-  recipe stays two pins. HARDWARE_FAULT's second half also accepts the work's own CPU delay low.
+- **THREAD_LIMIT's ruling-out options are tied to the symptom** that met the first predicate (`rulesOut`, RT-34): a
+  CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a region) needs QR wait < 5 ms/txn on the hurt work, because tasks
+  held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction; a DBAT queue needs CPU
+  per transaction normal, and an initiator wait the jobs' CPU wait < 25 %. HARDWARE_FAULT's ruling-out half stays
+  *or*: either normal reading counts, so the recipe stays two pins. HARDWARE_FAULT's second half also accepts the
+  work's own CPU delay low.
 - **Cost pins carry their row's rate** (`pin.rate`), so DEMAND_SURGE and a change regression are each provable from
   one Workload Activity, Db2 101 or CICS 110 row. When two pins prove them, the second half must read the **same row**
   as the first (`sameWork`: the same class on the same image, WLMGL or Monitor III, or the same workload's

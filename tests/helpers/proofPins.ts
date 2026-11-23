@@ -32,7 +32,8 @@ export function compatible(a: PredicateOption, b: PredicateOption): boolean {
   return da === db;
 }
 
-/** Fewest pins satisfying every predicate, and one choice of options that achieves it. */
+/** Fewest pins satisfying every predicate, and one choice of options that achieves it. A `rulesOut` option is
+ *  only reachable with a first-predicate option whose metric it names (RT-34): its queue's look-alike. */
 export function minPins(predicates: readonly ProofPredicate[]): { pins: number; options: PredicateOption[] } {
   let best = { pins: Infinity, options: [] as PredicateOption[] };
   const choose = (k: number, chosen: PredicateOption[]) => {
@@ -41,7 +42,10 @@ export function minPins(predicates: readonly ProofPredicate[]): { pins: number; 
       if (n < best.pins) best = { pins: n, options: [...chosen] };
       return;
     }
-    for (const o of predicates[k]!.options) choose(k + 1, [...chosen, o]);
+    for (const o of predicates[k]!.options) {
+      if (k > 0 && o.rulesOut && !o.rulesOut.includes(chosen[k - 1]!.metric)) continue;
+      choose(k + 1, [...chosen, o]);
+    }
   };
   choose(0, []);
   return best;

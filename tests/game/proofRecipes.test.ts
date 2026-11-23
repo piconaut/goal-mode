@@ -171,13 +171,26 @@ function anchorFor(r: RunState, kind: Kind, pred: ProofPredicate, pin: EvidenceP
   return undefined;
 }
 
+/** A predicate-0 pin whose metric is one the option's `rulesOut` names: the symptom whose look-alike it rules out. */
+function symptomFor(r: RunState, kind: Kind, pred: ProofPredicate, o: PredicateOption, id: number): EvidencePin | undefined {
+  for (const first of pred.options) {
+    if (!o.rulesOut?.includes(first.metric)) continue;
+    const p = pinFor(r, kind, first, id);
+    if (p) return p;
+  }
+  return undefined;
+}
+
 /** One pin per predicate of a two-predicate recipe for this incident kind, or null. An option tied to predicate 0's
- * work (`sameWork`) gets a predicate-0 pin on the same row. */
+ * work (`sameWork`) gets a predicate-0 pin on the same row, and one tied to a symptom (`rulesOut`) gets that
+ * symptom's pin. */
 function fixturePins(r: RunState, kind: Kind, preds: readonly ProofPredicate[]): EvidencePin[] | null {
   const first = preds[0]!.options.map((o) => pinFor(r, kind, o, 1000)).find((p) => p !== null);
   for (const o of preds[1]!.options) {
     const second = pinFor(r, kind, o, 1001);
     if (!second) continue;
+    if (o.rulesOut && !first) continue;
+    if (o.rulesOut && !o.rulesOut.includes(first!.metric)) continue;
     const anchor = o.sameWork ? anchorFor(r, kind, preds[0]!, second, 1000) : first;
     if (anchor) return [anchor, second];
   }
@@ -216,9 +229,10 @@ describe('proof recipe vocabulary (RT-13)', () => {
       const ok = KINDS.some((kind) => {
         const pin = pinFor(fixtureRun, kind, o, 1000);
         if (!pin) return false;
-        // A tied option needs predicate 0 shown on the same row.
-        const anchor = o.sameWork ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999) : undefined;
-        if (o.sameWork && !anchor) return false;
+        // A tied option needs predicate 0 shown on the same row (`sameWork`) or by the symptom it rules out.
+        const anchor = o.sameWork ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999)
+          : o.rulesOut ? symptomFor(fixtureRun, kind, recipeOf(claim).predicates[0], o, 998) : undefined;
+        if ((o.sameWork || o.rulesOut) && !anchor) return false;
         const inc = fixtureIncident(fixtureRun, kind, truthOf('CPU_PRIORITY', 'POLICY'));
         if (o.displaceable && o.metric === 'APPL_IIP') inc.basis = { lparId: 'PROD1', cpcId: 'CPCA', cpcBusyPct: 100, lparBusyPct: 100, donorPct: 0, full: false, pool: 'ZIIP' };
         const proof = judgeProof(fixtureRun, MIDWEST, [inc], MECHANISMS.includes(claim as Mechanism) ? claim as Mechanism : 'CPU_PRIORITY',
@@ -251,6 +265,41 @@ describe('proof recipe vocabulary (RT-13)', () => {
   });
 });
 
+describe('THREAD_LIMIT\'s ruling-out tie (RT-34)', () => {
+  const rec = MECHANISM_RECIPES.THREAD_LIMIT;
+  const pin = (kind: Kind, o: PredicateOption, id: number) => pinFor(fixtureRun, kind, o, id)!;
+  const judge = (kind: Kind, pins: EvidencePin[]) =>
+    judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, kind, truthOf('THREAD_LIMIT', 'POLICY'))], 'THREAD_LIMIT', 'POLICY', pins).mechanism;
+
+  it('rules out a CICS slot queue with the QR wait, not with a normal cost per transaction', () => {
+    const mxt = pin('CICS', rec.predicates[0].options[0]!, 6000);
+    const cpu = pin('CICS', rec.predicates[1].options[0]!, 6001);
+    const qr = pin('CICS', rec.predicates[1].options[2]!, 6002);
+    const saturated = { ...qr, value: 6762 };
+    const failed = judge('CICS', [mxt, cpu]);
+    expect(failed.predicates[0]!.met).toBe(true);
+    expect(failed.predicates[1]!.met).toBe(false);
+    expect(judge('CICS', [mxt, saturated]).predicates[1]!.met).toBe(false);
+    expect(judge('CICS', [mxt, qr]).complete).toBe(true);
+    // The failed predicate names the QR line and quotes the pin that missed it.
+    const reply = proofLines(judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, 'CICS', truthOf('THREAD_LIMIT', 'POLICY'))], 'THREAD_LIMIT', 'POLICY', [mxt, saturated]));
+    expect(reply.join(' ')).toContain('QR wait < 5 ms/txn');
+    expect(reply.join(' ')).toContain('QR wait ms/txn');
+  });
+
+  it('keeps CPU per transaction for a DBAT queue and the jobs\' CPU wait for initiators', () => {
+    const dbat = pin('DDF', rec.predicates[0].options[1]!, 6100);
+    const cpu = pin('DDF', rec.predicates[1].options[0]!, 6101);
+    expect(judge('DDF', [dbat, cpu]).complete).toBe(true);
+    // A CICS queue's tie does not let a QR reading complete a DBAT symptom, nor the reverse.
+    expect(judge('DDF', [dbat, pin('CICS', rec.predicates[1].options[2]!, 6102)]).predicates[1]!.met).toBe(false);
+    const init = pin('BATCH', rec.predicates[0].options[3]!, 6200);
+    const jobCpu = pin('BATCH', rec.predicates[1].options[3]!, 6201);
+    expect(judge('BATCH', [init, jobCpu]).complete).toBe(true);
+    expect(judge('BATCH', [init, pin('CICS', rec.predicates[1].options[2]!, 6202)]).predicates[1]!.met).toBe(false);
+  });
+});
+
 /** Pairs whose two recipes need a fourth pin: four separate facts with no row showing two of them. BACKLOG RT-27
  * holds the design question. The pairs a shipped card can produce are marked in the BACKLOG entry. */
 const FOUR_PIN_PAIRS = [
@@ -278,7 +327,7 @@ describe('documented values (RT-13)', () => {
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
       QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'little waiting for a slot or on the CPU'],
-      THREAD_LIMIT: ['queued for a slot', 'the work ran no slower'],
+      THREAD_LIMIT: ['queued for a slot', 'the extra wait was the slot, not the QR TCB'],
       ROUTING: ['transactions failed', 'the work itself unchanged'],
       IO: ['I/O waits on the hurt work', 'DASD itself slow'],
       STORAGE: ['storage waits', 'the hurt class\'s own CPU delay < 10 %'],
@@ -712,7 +761,7 @@ describe('every recipe from a replayed incident (RT-13)', () => {
     proves(x, incidentOn(x, 'RBANK'), pins, ['ROUTING', 'APPLICATION_ERROR']);
   });
 
-  it('CICS_SOS: a region short on storage, MXT queueing at a normal cost, READY low (THREAD_LIMIT, STORAGE)', () => {
+  it('CICS_SOS: a region short on storage, MXT queueing with the QR wait normal, READY low (THREAD_LIMIT, STORAGE)', () => {
     const leak = { startMb: 420, mbPerHour: 40 };
     const r = run([{ kind: 'SET_CICS', name: 'CICSAOR2', leak }, { kind: 'SET_CICS', name: 'CICSAOR4', leak }], 4);
     const { run: x, pins } = pinAll(r, [
@@ -720,12 +769,57 @@ describe('every recipe from a replayed incident (RT-13)', () => {
       { source: 'CICS', hour: hour(r), workloadId: 'RBANK', metric: 'MXT_WAIT' },
       { source: 'CICS', hour: hour(r), workloadId: 'RBANK', metric: 'CPU_VS_BASE' },
       { source: 'WLMGL', index: last(r), system: 'PROD2', scKey: 'ONLHI#1', metric: 'WM_READY' },
+      { source: 'CICS', hour: hour(r), workloadId: 'RBANK', metric: 'QR_WAIT' },
     ]);
     const inc = incidentOn(x, 'RBANK');
-    proves(x, inc, pins.slice(1, 3), ['THREAD_LIMIT']);
+    // The CICS slot queue is ruled out by the QR wait, not by the cost per transaction (RT-34), whether the
+    // symptom is the MXT wait or a region's SOS time.
+    proves(x, inc, [pins[1]!, pins[4]!], ['THREAD_LIMIT']);
+    proves(x, inc, [pins[0]!, pins[4]!], ['THREAD_LIMIT']);
     proves(x, inc, [pins[0]!, pins[3]!], ['STORAGE']);
     proves(x, inc, [pins[0]!, pins[2]!], ['APPLICATION_ERROR']);
   });
+
+  it('INC35 shape: an MXT queue behind QR saturation is not THREAD_LIMIT (RT-34)', () => {
+    // Tasks held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction, so a
+    // normal CPU per transaction must not complete the claim.
+    const r = run([
+      { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.95, maxTasks: 10 },
+      { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.95, maxTasks: 10 },
+    ], 2);
+    const { run: x, pins } = pinAll(r, [
+      { source: 'CICS', hour: hour(r), workloadId: 'TELLER', metric: 'MXT_WAIT' },
+      { source: 'CICS', hour: hour(r), workloadId: 'TELLER', metric: 'QR_WAIT' },
+      { source: 'CICS', hour: hour(r), workloadId: 'TELLER', metric: 'CPU_VS_BASE' },
+    ]);
+    const [mxt, qr, cpu] = pins as [EvidencePin, EvidencePin, EvidencePin];
+    expect(mxt.value).toBeGreaterThanOrEqual(5);
+    expect(qr.value).toBeGreaterThanOrEqual(5);
+    expect(Math.abs(cpu.value / cpu.baseline! - 1)).toBeLessThanOrEqual(PROOF.normalBand);
+    const inc = incidentOn(x, 'TELLER');
+    const proof = judgeProof(x, MIDWEST, [inc], 'THREAD_LIMIT', 'POLICY', pins);
+    expect(proof.mechanism.predicates[0]!.met).toBe(true);
+    expect(proof.mechanism.predicates[1]!.met).toBe(false);
+    expect(proof.mechanism.predicates[1]!.failedReading).toMatchObject({ metric: 'QR_WAIT', value: qr.value });
+    expect(proofLines(proof).join(' ')).toContain('QR wait < 5 ms/txn');
+    // CPU per transaction alone (the INC35 reading) cannot complete it.
+    expect(judgeProof(x, MIDWEST, [inc], 'THREAD_LIMIT', 'POLICY', [mxt, cpu]).mechanism.predicates[1]!.met).toBe(false);
+  });
+
+  it('a too-low MXT with the QR wait normal is THREAD_LIMIT (RT-34)', () => {
+    const r = run([
+      { kind: 'SET_CICS', name: 'CICSAOR1', maxTasks: 10 },
+      { kind: 'SET_CICS', name: 'CICSAOR3', maxTasks: 10 },
+    ], 2);
+    const { run: x, pins } = pinAll(r, [
+      { source: 'CICS', hour: hour(r), workloadId: 'TELLER', metric: 'MXT_WAIT' },
+      { source: 'CICS', hour: hour(r), workloadId: 'TELLER', metric: 'QR_WAIT' },
+    ]);
+    expect(pins[0]!.value).toBeGreaterThanOrEqual(5);
+    expect(pins[1]!.value).toBeLessThan(5);
+    proves(x, incidentOn(x, 'TELLER'), pins, ['THREAD_LIMIT']);
+  });
+
 
   it('a defined capacity: CPU delay on a capped image, the work\'s cost per transaction at normal (CAPPING, POLICY, GROWTH)', () => {
     const r = run([{ kind: 'SET_DEFINED_CAPACITY', lparId: 'PROD2', msu: 200 }], 2);

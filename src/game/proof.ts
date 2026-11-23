@@ -155,8 +155,13 @@ function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, re
   // since the tie is between pins, whichever incident each was judged for.
   const first = holding(recipe.predicates[0], () => true);
   const firstWork = new Set(pins.filter((p) => first.has(p.id)).map(workOf));
+  // Which symptoms met the first predicate, for a ruling-out option tied to one of them (RT-34): the QR wait rules
+  // out a CICS slot queue, CPU per transaction a DBAT queue. The tied option is a `self` reading, so it is the hurt
+  // work's own row.
+  const firstMetrics = new Set(pins.filter((p) => first.has(p.id)).map((p) => p.metric));
   const predicates = recipe.predicates.map((pred, k): PredicateCheck => {
-    const ids = k === 0 ? first : holding(pred, (o, p) => !o.sameWork || firstWork.has(workOf(p)));
+    const ids = k === 0 ? first : holding(pred, (o, p) =>
+      (!o.sameWork || firstWork.has(workOf(p))) && (!o.rulesOut || o.rulesOut.some((m) => firstMetrics.has(m))));
     const pinIds = pins.map((p) => p.id).filter((id) => ids.has(id));
     const failed = pinIds.length > 0 ? undefined : failedReadingOf(pred, related);
     return { label: pred.label, met: pinIds.length > 0, pinIds, ...(failed ? { failedReading: failed } : {}) };
