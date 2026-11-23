@@ -247,19 +247,6 @@ the strategy bots do (docs/rca-design.md §4.8); tuning before them would be red
 
 ## cleanup
 
-### CL-63 · Reconcile the stale "Fix queued" rows in docs/research.md
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: M8.7 close-out (2026-11-23). List `realism-fixes` is empty, but six docs/research.md rows still say "Fix
-queued" with an old M8.7 item number and no entry behind them: IIPHONORPRIORITY/offline zIIPs (item 6), MAXDBAT and
-MXT queue wait (item 3, two rows), resource group capping of a server region (item 1), an AOR cap reaching
-transaction CPU (item 2), plus SPEC §17's R4HA row ("not phantom weight … fix queued, M8.7"). The code suggests most
-shipped (SPEC §5 polarity under a soft cap, §5.5 region groups, `src/sim/subsys/slots.ts`, `dispatch.ts`
-`iipcpReported`). Change: for each row, check the sim against the cited page (zos-docs skill) and set its status to
-Matches/Modelled/Approx with what the sim does now, or, where the gap is real, file an RF entry and keep "Fix queued"
-pointing at it; fix the SPEC §17 sentence to match. Docs only, no sim change. Done when: no research.md row says "Fix
-queued" without a BACKLOG entry ID, and SPEC §17 agrees.
-
 ### CL-19 · One field table for the service-class accumulators
 `list: cleanup · status: blocked: design · priority: high · size: M · area: sim`
 
