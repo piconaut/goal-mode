@@ -1145,14 +1145,16 @@ describe('LPAR BUSY vs MVS BUSY (RMF Report Analysis 3.1 p.389)', () => {
 });
 
 describe('most important work missing its goal is helped first (WLM Planning ch.1; SG24-7621 §3.12-3.15)', () => {
-  // Midwest seed 7, PROD1 capped at 200 MSU from about 10:00, Db2 moved up to STCHI with the CICS regions (the
+  // Midwest seed 7, PROD1 capped at 196 MSU from about 10:00: about the effective-MSU cap that 200 MSU gave on
+  // the old total-dispatch basis (200 × (1 − the management share)); the PR/SM cap is 196 ÷ 0.99 ≈ 198
+  // delivered-engine MSU. Db2 moved up to STCHI with the CICS regions (the
   // shipped policy keeps Db2 below its clients, F1). ONLHI runs far past 4× its goal; the reported PI stops at
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
   // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
   // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
   it('capped ONLHI logs its CPU rejection, and nothing less important is raised past it', () => {
     let s = initState(7, MIDWEST);
-    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
+    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 196;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
     const lines: string[] = [];
     const traces: WlmAdjustTrace[] = [];
@@ -1277,11 +1279,13 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
 });
 
 describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 52)', () => {
-  // Midwest seed 7, PROD1 capped at 200 MSU: TSO#2 and DDFPRD#2 (both importance 4) compete for PROD2's CPs.
+  // Midwest seed 7, PROD1 capped at 196 MSU (about the effective-MSU cap that 200 MSU gave on the old
+  // total-dispatch basis; the PR/SM cap is 196 ÷ 0.99 ≈ 198 delivered-engine MSU): TSO#2 and DDFPRD#2 (both
+  // importance 4) compete for PROD2's CPs.
   // Without the gap test they traded places as receiver and donor every few minutes (DPs ED↔EB).
   it('equally important classes do not keep taking DP from each other', () => {
     let s = initState(7, MIDWEST);
-    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
+    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 196;
     const pair = ['TSO#2', 'DDFPRD#2'];
     const traces: WlmAdjustTrace[] = [];
     setWlmTraceSink((t) => {

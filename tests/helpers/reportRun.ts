@@ -15,7 +15,7 @@ import type { Command } from '../../src/sim/core/commands';
 import type { Scenario } from '../../src/sim/core/scenario';
 import type { LparConfig, WorldConfig } from '../../src/sim/core/types';
 import { TICKS_PER_HOUR, TICK_SEC } from '../../src/sim/core/units';
-import { msuPerCp } from '../../src/sim/hw/cpc';
+import { effectiveDispatchEngines, msuPerCp } from '../../src/sim/hw/cpc';
 import { classify } from '../../src/sim/wlm/classify';
 import { allWorkloads } from '../../src/game/workloads';
 import type { RmfInterval } from '../../src/sim/measure/rmf';
@@ -26,6 +26,8 @@ import { SYSOTHER, SYSSTC, type ClassificationRule, type ServiceDefinition } fro
 export interface LparSum {
   deliveredCp: number;
   effectiveCp: number;
+  /** Physical CP dispatch less the LPAR management share, the basis of MSU Act (RF-05). */
+  effectiveDispatchCp: number;
   deliveredZiip: number;
   effectiveZiip: number;
   deliveredIcf: number;
@@ -366,7 +368,7 @@ function batchResponseGoal(scenario: Scenario, run: RunState): Command[] {
   return [{ kind: 'ACTIVATE_POLICY', definition: next }];
 }
 
-const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, deliveredZiip: 0, effectiveZiip: 0, deliveredIcf: 0, msu: 0, cappedTicks: 0, softCappedTicks: 0, wlmCapTicks: 0, capFlagTicks: 0, cappedMsuMax: 0 });
+const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, effectiveDispatchCp: 0, deliveredZiip: 0, effectiveZiip: 0, deliveredIcf: 0, msu: 0, cappedTicks: 0, softCappedTicks: 0, wlmCapTicks: 0, capFlagTicks: 0, cappedMsuMax: 0 });
 
 /** Runs the scenario from 06:00 through the stress phases, then on into the evening batch until `nightUntilHour`
  * hours after the day's start. */
@@ -405,6 +407,7 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
       const cp = pool('CP');
       s.deliveredCp += cp?.deliveredEngines ?? 0;
       s.effectiveCp += cp?.effectiveEngines ?? 0;
+      s.effectiveDispatchCp += effectiveDispatchEngines(cp ?? { deliveredEngines: 0, overheadFrac: 0 });
       s.deliveredZiip += pool('ZIIP')?.deliveredEngines ?? 0;
       s.effectiveZiip += pool('ZIIP')?.effectiveEngines ?? 0;
       s.deliveredIcf += pool('ICF')?.deliveredEngines ?? 0;

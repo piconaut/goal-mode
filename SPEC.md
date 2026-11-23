@@ -701,8 +701,10 @@ receiver candidate.
   toward the CP maximum. Overflow from saturated online zIIPs also stays within that CP budget
   (APPROX: unused overflow grants wait for the next tick rather than reallocating capacity).
   Type 1's sysplex demand split includes backlog. Discretionary caps use the same path.
-  LPAR busy and MSU consumption count dispatched cycles, including modeled overhead, rather than unused
-  capacity offered by PR/SM (*RMF Report Analysis* 3.1 p.389, p.98); MVS busy excludes sleeping demand.
+  LPAR busy and physical busy count dispatched cycles, including modeled overhead, rather than unused
+  capacity offered by PR/SM (*RMF Report Analysis* 3.1 PDF p.389 (printed 349), PDF p.98 (printed 58)); MSU
+  consumption is that dispatch less the LPAR management share, the effective dispatch time RMF's MSU ACT uses
+  (PDF p.401 (printed 361), PDF p.98 (printed 58)); MVS busy excludes sleeping demand.
   APPROX: continuous awake fractions, without the real 1/256 slice granularity or recovery-boost exceptions.
 - Max 32 per definition; one per service class.
 - **Region groups cap their transactions.** CICS transaction CPU is consumed in the AORs, so a group on the AOR
@@ -930,7 +932,14 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 
 #### 5.11.1 R4HA & soft capping
 
-- Every 5 sim-min, compute each LPAR's MSU consumption. Each LPAR keeps 48 five-minute values;
+- Every 5 sim-min, compute each LPAR's MSU consumption from its effective CP dispatch time: the physical CP
+  dispatch less the LPAR management share, which is the basis RMF's MSU ACT uses (*RMF Report Analysis* 3.1 PDF
+  p.401 (printed 361), PDF p.98 (printed 58)). The header MSU, Partition Data MSU AVG, Monitor III CPC MSU Act, the
+  R4HA, soft capping and the bill all read that one rate, so they cannot disagree (RF-05). LPAR BUSY and physical
+  busy keep the total dispatch time. A defined capacity of C MSU is a limit on effective dispatch (C ÷ MSU per CP
+  engines); because the PR/SM cap acts on delivered engines, it is expressed as that limit ÷ (1 − the base PR/SM
+  overhead). The exact share for a tick is known only after allocation, so while the cap is applied the rate can sit
+  up to the rest of the overhead below the limit but never above it (APPROX). Each LPAR keeps 48 five-minute values;
   the **R4HA** is their average (WLM samples every 10 s and keeps the 5-minute values)
   ([value-4it: z/OS soft capping](https://www.value-4it.com/wp/?p=165)).
 - **Defined Capacity (DC)** per LPAR: when R4HA > DC, the LPAR is soft-capped to DC until R4HA
@@ -2091,7 +2100,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CP and zIIP backlog under a CP cap or shortage | **Plausible model** | Transaction backlog carried per pool (CP work left unserved stays on the CPs); a batch job's CP and zIIP demand follow the pace the other pool allows (phases are sequential). APPROX: a transaction's zIIP part is not held back by its CP part |
 | zIIP-eligible work with no zIIP online | **Matches** | Runs on CPs as plain CP work and queues with the CP queue ratio, not a saturated zIIP pool (Init & Tuning p.431) |
 | CICS shared-region Honor Priority | **Faithful simplification** | Any participating DEFAULT CICS transaction class permits TRANSACTION regions' overflow; all NO blocks it (WLM Planning 3.1 p.121–122). Existing topology approximation: transactions share all AORs on an image; if any AOR is TRANSACTION the mix applies to all CICS transaction slices, plus each TRANSACTION AOR/TOR's own CPU. Participation includes arrivals and both pools' backlog, recomputed each tick; no transaction work reverts the address space to its own class. Other images, DDF and REGION/BOTH address spaces keep independent settings; discretionary and system-wide NO protection remain |
-| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX). APPROX: MSU is counted from total dispatch time, LPAR management included, where RMF's MSU ACT is from effective dispatch time (RF-05); a new capacity group's average starts empty and is on no report (RF-08) |
+| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX). MSU is counted from effective dispatch time (physical dispatch less LPAR management), so the header, Partition Data MSU AVG, Monitor III CPC MSU Act, the R4HA and the bill all agree (RF-05); a new capacity group's average starts empty and is on no report (RF-08) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex. WT-16 (docs/archive/wlm-audit-2026-11.md §9.14): address-space queue samples use offered demand, including starved units, with eligible work assigned once across CP/zIIP; the ready-unit bound stays. Projections judge velocity before its PI ceiling of 99; management/reporting keep that ceiling. Equal-DP DDF/batch contention still depends on fictional ready-unit counts. Harbourline quick reversals rise 4 → 8, accepted by the user (2026-11-13, #331) |

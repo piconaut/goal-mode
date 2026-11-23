@@ -239,22 +239,6 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
-### RF-05 · MSU is counted from total dispatch time, LPAR management included
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: cross-report invariant suite (2026-11-14; identity `mon3-sysinfo-cpc`, left-out part). Real RMF computes a
-partition's MSU from effective dispatch time: Partition Data `MSU ACT` is the "actual consumption based on the logical
-processor effective dispatch time", and Monitor III CPC `MSU Act` likewise (RMF Report Analysis 3.1 p.402, p.98). The
-sim's Monitor III CPC `msuAct` already does that, but `LparRuntime.msuRate` (`src/sim/core/tick/dispatch.ts`) is
-`deliveredEngines × msuPerCp`, total dispatch time with LPAR management and polarity loss in it, and it feeds the
-header MSU, Partition Data MSU AVG, the R4HA, soft capping, the SCRT-style bill and TFP MSU-hours. So one image has
-two MSU figures at one moment (Midwest seed 7, 11:20: PROD2 CPC MSU Act 644, header 663, LPAR management 2.9 %).
-Change: take `msuRate` from effective dispatch time; keep `deliveredEngines` for LPAR BUSY and physical busy. This
-lowers every R4HA and bill by the overhead share, so it is a balance change: goldens, a Behaviour change note and a
-three-scenario sweep. Done when: the identity "MSU Act = header MSU = Partition Data MSU AVG at the same time" is
-added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Matches", SPEC §17 is updated and the
-sweep is recorded.
-
 ### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
