@@ -220,6 +220,8 @@ export function renderPartitionData(iv: RmfInterval): string {
   // A member's capacity-group view is printed only when some image is in a group (RF-08): the group's unused
   // four-hour average (`AVAILABLE`, negative while the group caps the image) and the limit, flagged `*` when the
   // member joined under four hours ago. Images in no group keep the report byte-identical.
+  // APPROX: real RMF prints GROUP NAME, LIMIT and AVAILABLE once, in the report header for the measured partition
+  // (RMF Report Analysis 3.1 PDF p.400 (printed 360)); this report covers every image, so they are per-row columns.
   const grouped = iv.cpu.some((r) => r.group !== undefined);
   const groupHead = grouped ? ' ' + padRight('GROUP', 6) + ' ' + padLeft('LIMIT', 7) + ' ' + padLeft('AVAIL', 7) : '';
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
