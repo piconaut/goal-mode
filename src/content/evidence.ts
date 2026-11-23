@@ -44,6 +44,7 @@ export type EvidenceMetric =
   | 'QR_WAIT'
   | 'MXT_WAIT'
   | 'FAIL_PCT'
+  | 'ROLLBACK_PCT'
   | 'JOB_CPU'
   | 'JOB_IO'
   | 'JOB_LOCK'
@@ -149,6 +150,9 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   FAIL_PCT: { label: 'failed % of transactions', unit: '%', mechanisms: ['ROUTING'], triggers: [], notableAt: 1, weight: 1, relations: OWN },
+  // Db2 accounting class 1 rollbacks (QWACABRT / (QWACCOMM + QWACABRT), RT-23): the units a client abandoned, which
+  // a retry storm leaves behind; that this means client retries rather than new demand is the game's inference.
+  ROLLBACK_PCT: { label: 'rollback share %', unit: '%', mechanisms: [], triggers: ['APPLICATION_ERROR'], notableAt: 10, weight: 1, relations: OWN },
   // SMF 30 batch night (critical jobs): share of their lost elapsed time by cause, mapped as batchMissMechanism does.
   JOB_CPU: { label: 'critical jobs CPU wait %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 25, weight: 1, relations: ['self'] },
   JOB_IO: { label: 'critical jobs I/O wait %', unit: '%', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 25, weight: 1, relations: ['self'] },
@@ -444,9 +448,13 @@ export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
     ],
   }] },
   APPLICATION_ERROR: { predicates: [{
-    label: 'the software misbehaved: failed transactions ≥ 1 % (CICS 110), a region short on storage (SOS), or critical jobs ABENDed (SMF 30)',
-    options: [notable('FAIL_PCT', SELF), notable('SOS_MIN', ['server']), at('JOB_ABEND', 1, SELF)],
-  }, DEMAND_NORMAL] },
+    label: 'the software misbehaved: failed transactions ≥ 1 % (CICS 110), a region short on storage (SOS), critical jobs ABENDed (SMF 30), or rollbacks ≥ 10 % of units of work (Db2 accounting)',
+    options: [notable('FAIL_PCT', SELF), notable('SOS_MIN', ['server']), at('JOB_ABEND', 1, SELF), notable('ROLLBACK_PCT', SELF)],
+  }, {
+    // A retry storm is more work plus those rollbacks; the other software failures leave the volume normal (RT-23).
+    label: 'the volume explains it: ended/s ≥ 1.25 × its recent normal, or the work itself unchanged (ended/s or CPU per transaction within ±15 %)',
+    options: [...DEMAND_NORMAL.options, ratio('ENDED_RATE', PROOF.surgeRatio, SELF_OR_COMPETITOR)],
+  }] },
 };
 
 
@@ -458,6 +466,6 @@ export const METRIC_TIER: Record<EvidenceMetric, 0 | 1 | 2> = {
   DELAY_CPU: 0, DELAY_ZIIP: 0, DELAY_IO: 0, DELAY_STO: 0, DELAY_CAP: 0, DELAY_OTHER: 0, WM_LOCK: 0, WM_READY: 0,
   PRSM_DELAY: 1, CAPPED: 1, CPC_BUSY: 1, LPAR_BUSY: 1, CAPACITY_ADJ: 1, JOB_APPL: 1,
   CPU_VS_BASE: 2, LOCK_WAIT: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
-  SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2,
+  SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2, ROLLBACK_PCT: 2,
   JOB_CPU: 2, JOB_IO: 2, JOB_LOCK: 2, JOB_DB2: 2, JOB_SWAP: 2, JOB_INIT: 2, JOB_ABEND: 2,
 };

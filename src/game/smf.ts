@@ -53,6 +53,11 @@ export interface Db2AcctRow {
   cfMs: number;
   /** CPU queueing (not a class 3 suspension, but shows in class 2 not-accounted time). */
   notAccountedMs: number;
+  /** Units of work that committed / rolled back in the hour (class 1 QWACCOMM / QWACABRT, RT-23). */
+  commits: number;
+  rollbacks: number;
+  /** Rollback share, 0..100: rollbacks / (commits + rollbacks). */
+  rollbackPct: number;
 }
 
 export function db2Accounting(run: RunState, scenario: Scenario, key: string): Db2AcctRow[] {
@@ -66,6 +71,7 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
       if (!h || h.completions <= 0) return [];
       const base = slotBaseline(run.hourBaselines, run.baselines, w.id, hourOf);
       const cpuMs = perTxnMs(h, 'cpu');
+      const rollbacks = Math.min(h.completions, h.rolledBack ?? 0);
       return [
         {
           workloadId: w.id,
@@ -79,6 +85,9 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
           syncIoMs: perTxnMs(h, 'io'),
           cfMs: perTxnMs(h, 'cf'),
           notAccountedMs: perTxnMs(h, 'cpuQueue') + perTxnMs(h, 'ziipQueue') + perTxnMs(h, 'dependency'),
+          commits: h.completions - rollbacks,
+          rollbacks,
+          rollbackPct: (100 * rollbacks) / h.completions,
         } satisfies Db2AcctRow,
       ];
     });
@@ -94,13 +103,31 @@ export interface Db2StatRow {
   ssid: string;
   /** Cumulative count of requests that waited for a DBAT during the hour. */
   dbatQueued: number;
+  /** Units of work that committed / rolled back on this member during the hour (Q3STCOMM / Q3STABRT, RT-23). */
+  commits: number;
+  rollbacks: number;
 }
 
 export function db2Statistics(run: RunState, scenario: Scenario, key: string): Db2StatRow[] {
   const d = hourData(run, key);
   if (!d) return [];
   const byLpar = d.dbatQueuedByLpar ?? {};
-  return scenario.world.db2.map((m) => ({ lparId: m.lparId, ssid: m.ssid, dbatQueued: byLpar[m.lparId] ?? 0 }));
+  const db2Work = allWorkloads(scenario, run).filter(usesDb2);
+  return scenario.world.db2.map((m) => {
+    // The member sees the work routed to its image; dynamic routing shares are the sim's current weights.
+    let commits = 0;
+    let rollbacks = 0;
+    for (const w of db2Work) {
+      const h = d.workloads[w.id];
+      if (!h || h.completions <= 0) continue;
+      const share = (run.sim.routing[w.id] ?? w.routing)[m.lparId] ?? 0;
+      if (share <= 0) continue;
+      const rb = Math.min(h.completions, h.rolledBack ?? 0);
+      rollbacks += rb * share;
+      commits += (h.completions - rb) * share;
+    }
+    return { lparId: m.lparId, ssid: m.ssid, dbatQueued: byLpar[m.lparId] ?? 0, commits, rollbacks };
+  });
 }
 
 export interface CicsTxnRow {

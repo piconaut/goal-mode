@@ -83,7 +83,7 @@ const fixtureIncident = (r: RunState, kind: Kind, truth: Incident['truth']): Inc
 };
 
 const WLM_FAMILY = new Set<EvidenceMetric>(['PI', 'APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP', 'ENDED_RATE', 'CPU_PER_TXN', 'DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER', 'WM_LOCK', 'WM_READY']);
-const DB2_FAMILY = new Set<EvidenceMetric>(['CPU_VS_BASE', 'LOCK_WAIT', 'SYNC_IO', 'CF_WAIT', 'DBAT_QUEUE']);
+const DB2_FAMILY = new Set<EvidenceMetric>(['CPU_VS_BASE', 'LOCK_WAIT', 'SYNC_IO', 'CF_WAIT', 'DBAT_QUEUE', 'ROLLBACK_PCT']);
 const CICS_FAMILY = new Set<EvidenceMetric>(['QR_WAIT', 'MXT_WAIT', 'FAIL_PCT']);
 
 /** Where a pin of this metric and relation sits for this incident kind, or null when no report row is one. */
@@ -291,7 +291,7 @@ describe('documented values (RT-13)', () => {
       HARDWARE_FAULT: ['the resource\'s own report', 'the work itself unchanged'],
       NEW_WORKLOAD: ['the hurt work delayed', 'work with no history'],
       GROWTH: ['the hurt work delayed', 'the work itself unchanged'],
-      APPLICATION_ERROR: ['the software misbehaved', 'the work itself unchanged'],
+      APPLICATION_ERROR: ['the software misbehaved', 'the volume explains it'],
     });
   });
 });

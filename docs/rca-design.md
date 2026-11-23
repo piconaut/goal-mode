@@ -46,8 +46,9 @@ The judging is not trustworthy enough to gate fixes on, and the reasons are stru
    turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the missing
    pin sources (RT-05's busy figures, RT-10's CF/DASD rows, RT-11's storage/job/work-manager rows) are done, and
    the proof recipes (RT-13) close the rest.
-6. **A campaign and a retry storm are byte-identical in every report** (R-5). The D1 example fix cannot be proven
-   by any data the game has today (§2, §5.3).
+6. **A campaign and a retry storm were byte-identical in every report** (R-5), so the D1 example fix could not be
+   proven by any data the game had. RT-23 now has the storm back out a share of its units, and the Db2 rollback
+   share separates it from a campaign (§5.3).
 
 No finding crashes the game or corrupts state. One is a plain bug with a wrong truth as its result (A7: a
 storm-drain incident fixed within the hour is judged `QR_TCB`).
@@ -852,7 +853,7 @@ occurrence or with a tip. That is a visible nerf to preparation and needs the us
 | RUNAWAY (CANCEL_RUNAWAY) | runaway work in DDF | APPL of the DDF period up ≥ half an engine; ended rate of that work flat | tier 0 (WLMGL) |
 | REGRESSION (REBIND_REVERT) | change regression on a package | CPU per transaction ≥ ×1.3 on the workload; its ended rate flat. The forewarning or Db2 Whisperer tip may stand in for the first | CICS_MON or DB2_ACCT; tier 0 with a per-workload report class: service per transaction from WLMGL |
 | BOT_ATTACK (BLOCK_BOTS) | surge of cheap requests | ended rate ≥ ×2; CPU per transaction ≤ ×0.7 | DB2_ACCT, or WLMGL service per transaction |
-| RETRY_STORM (MOBILE_BACKOFF) | surge that is retries | ended rate ≥ ×2 at flat CPU per transaction; **a retry discriminator that does not exist yet** (§5.3) | — |
+| RETRY_STORM (MOBILE_BACKOFF) | surge that is retries | ended rate ≥ ×2 at flat CPU per transaction; the Db2 rollback share ≥ 10 % (QWACABRT, RT-23), which a campaign of the same rate does not have | DB2_ACCT (RT-23) |
 | XLOG_LOOP (CANCEL_XLOG) | runaway job in a class | STCHI APPL up ≥ half an engine with CICS ended rates flat; the job named as top consumer (`JOB_APPL` since RT-11) | RMF_MON3 |
 | ENCRYPTION_MANDATE (SCOPE_ENCRYPTION), VENDOR_PRICE (NEGOTIATE_MLC_PRICE), SMF_AUDIT (SCOPE_SMF_AUDIT) | — | Not gated: these are negotiations with a stakeholder about an announced demand, not diagnoses | — |
 | REORG_OVERRUN (TERM_UTILITY) | utility I/O on the batch volumes | LCU 21 IOSQ up (`DASD_IOSQ`, since RT-10); critical jobs' I/O wait share ≥ 25 % or batch class I/O delay | CF_DASD; SMF30_BATCH or WLMGL |
@@ -867,26 +868,31 @@ occurrence or with a tip. That is a visible nerf to preparation and needs the us
 
 Revenue's twins follow their originals. Harbourline's fix-less adaptations are unaffected.
 
-### 5.3 The retry storm cannot be proven today
+### 5.3 The retry storm: the rollback share (as built, RT-23)
 
-R-5: RETRY_STORM and CAMPAIGN are the same command (`rate ×2.5` on MOBILE) and produce identical reports. "END/S up
-at unchanged CPU per transaction" (the D1 note) is true of both. Options:
+R-5: before RT-23, RETRY_STORM and CAMPAIGN were the same command (`rate ×2.5` on MOBILE) and produced identical
+reports; "END/S up at unchanged CPU per transaction" (the D1 note) was true of both. Three options were considered:
+a realistic side-effect on the card, an inbox clue from the application team, or leaving it ungated. Option 1 is now
+built.
 
-1. **A realistic side-effect on the card.** Retries follow client timeouts, so a storm should come with abandoned
-   work: a higher share of rolled-back or abnormally ended threads in Db2 accounting, or timeouts at the
-   distributor. *Verified 2026-11-21*: Db2 accounting (SMF 101, IFCID 3) class 1 carries `QWACABRT` rollbacks,
-   which include application abends, deadlocks and thread abends from resource shortage (OMEGAMON for Db2 PE 5.4
-   PDF p.2968 (printed 2942)); with `CMTSTAT=INACTIVE` the interval ends at commit or rollback when the thread can
-   go inactive, and `ACCUMACC` rolls up 10 intervals per record by default (Db2 13 Managing Performance PDF p.725,
-   PDF p.818 (printed 705, 798)). That a rising rollback share means client retries is the game's inference, not
-   IBM's. It also needs the card to stop being a fixed multiplier, or at least to expose a second modifier.
-2. **An inbox clue from the application team** ("many duplicate request IDs") on the hint ladder, accepted as the
-   second half of the proof once received. Cheap, but then the proof is "wait for the mail".
-3. **Leave it ungated**: the storm keeps an open fix, and D1's first showcase is a card with a real discriminator
-   (REGRESSION or XLOG_LOOP).
+**What IBM documents.** Db2 accounting (SMF 101, IFCID 3) class 1 carries `QWACABRT` rollbacks, which include
+application abends, deadlocks and thread abends from resource shortage (OMEGAMON for Db2 PE 5.4 PDF p.2968 (printed
+2942)); with `CMTSTAT=INACTIVE` the interval ends at commit or rollback when the thread can go inactive, and
+`ACCUMACC` rolls up 10 intervals per record by default (Db2 13 Managing Performance PDF p.725, PDF p.818 (printed 705,
+798)). The statistics record carries the subsystem totals too: `Q3STCOMM` (commits phase 2) and `Q3STABRT`
+(rollbacks), with the same rollback reasons (OMEGAMON for Db2 PE 5.4 PDF p.2859 (printed 2833)).
 
-Recommendation: 3 now, 1 once RT-23 is implemented. The user ruled out a gateway retries view as too generous (2026-11-05);
-option 1 is an indirect signal in a record the player already has.
+**What the game does.** RETRY_STORM (and its Revenue/Harbourline adaptations) raises MOBILE's arrival rate ×2.5 and
+backs out a FICTIONAL fixed 20 % of its completed units; a CAMPAIGN's same ×2.5 surge backs out none. The DB2 (SMF
+101) view shows the rollback count and share per workload-hour, the Db2 statistics view shows commits and rollbacks
+per member, and `ROLLBACK_PCT` is a pin. APPLICATION_ERROR's recipe accepts the pair: rollbacks ≥ 10 % (the abandoned
+work) and either the volume rise or an unchanged work cost, so a storm proves as APPLICATION_ERROR while a campaign
+fails the first predicate. The same rollback share alone does not prove it, because the second predicate still needs
+the volume.
+
+**What stays the game's inference.** That a rising rollback share means client retries is not IBM's statement: a
+retry that commits at Db2 is another unit of work, and per-client identity is SMF 102 (out of scope). The card's
+20 % is a reporting-only approximation of clients giving up; the units still consume their CPU and time.
 
 ### 5.4 The cost of a wrong diagnosis
 
@@ -975,5 +981,5 @@ judged against accepted sets and recipes, not against the primary label.
 | Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
 | Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21); build detail and Q7a … Q7e (accepted as recommended, 2026-11-21) in [rt-16-design.md](rt-16-design.md) | RT-16, RT-32, RT-33 |
 | Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately; open | RT-22, RT-24 |
-| Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Yes; research settled 2026-11-21: SMF 101 rollback share (`QWACABRT`), commit-only retries out of scope; RT-23 ready | RT-23 |
+| Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Yes; research settled 2026-11-21: SMF 101 rollback share (`QWACABRT`), commit-only retries out of scope; RT-23 landed 2026-11-23 | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |

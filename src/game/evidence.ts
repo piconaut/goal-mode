@@ -316,7 +316,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     case 'DB2': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = db2Accounting(run, scenario, key).find((x) => x.workloadId === req.workloadId);
-        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec } : null;
+        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec, ROLLBACK_PCT: r.rollbackPct } : null;
       };
       return hourlyEvidence(run, req, req.workloadId, read, 'No such package row', 'That metric is not in Db2 accounting', 'Db2 101', true);
     }

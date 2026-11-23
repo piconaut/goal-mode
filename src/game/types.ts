@@ -89,6 +89,8 @@ export interface WorkloadHour {
   failed: number;
   rtSumSec: number;
   parts: Record<string, number>;
+  /** Units of work that ended in rollback rather than commit (RT-23); absent when every unit committed. */
+  rolledBack?: number;
 }
 
 export interface SmfHour {

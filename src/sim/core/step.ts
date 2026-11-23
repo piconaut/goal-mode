@@ -242,6 +242,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     wr.retryRate = Math.min(2 * Math.max(0, organic), ((failedBy[wr.id] ?? 0) * w.retryFrac) / TICK_SEC);
     const wt = wlTick[wr.id]!;
     if (wt.completions > 1e-9) wr.lastRtSec = wt.rtSumSec / wt.completions;
+    // Retry-storm backouts (RT-23): a share of the completed units ends in rollback. Reporting only; the units still
+    // consumed their CPU and time, as an abandoned client request does before Db2 backs it out.
+    const rollbackFrac = prev.mods.rollbackFrac?.[wr.id] ?? 0;
+    if (rollbackFrac > 0 && wt.completions > 0) wt.rolledBack = wt.completions * Math.min(1, rollbackFrac);
   }
 
   const nextEnv: EnvState = t.failByWorkloadLpar
