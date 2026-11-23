@@ -926,6 +926,12 @@ export const IDENTITIES: Identity[] = [
             c.close(x.cpuMs, r.cpuMs, ROUNDING, where(`${r.workloadId} CPU 110 vs 101`));
           }
           c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
+          // Every unit of work ends in a commit or a rollback (QWACCOMM/QWACABRT, OMEGAMON for Db2 PE 5.4 PDF p.2968
+          // (printed 2942)), and the rollbacks are the ones the sim backed out tick by tick (RT-23).
+          c.ok(r.commits >= 0 && r.rollbacks >= 0, where(`${r.workloadId} SMF 101 commits and rollbacks non-negative`));
+          c.close(r.commits + r.rollbacks, r.txnPerSec * 3600, ROUNDING, where(`${r.workloadId} SMF 101 commits + rollbacks vs units ended`));
+          c.close(r.rollbacks, w?.rolledBack ?? 0, ROUNDING, where(`${r.workloadId} SMF 101 rollbacks vs sim backouts`));
+          c.close(r.rollbackPct * (r.commits + r.rollbacks), 100 * r.rollbacks, ROUNDING, where(`${r.workloadId} SMF 101 rollback %`));
         }
         for (const x of cics) {
           const w = h.workloads[x.workloadId];
@@ -942,6 +948,10 @@ export const IDENTITIES: Identity[] = [
           // tick's share, so a closed hour can prove the non-negativity and the absent -> 0 fallback.
           c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT waited non-negative`));
           if (last.dbatQueuedByLpar?.[s.lparId] === undefined) c.close(s.dbatQueued, 0, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT waited absent -> 0`));
+          // Game rule (RT-23): a member's rollbacks (Q3STABRT) are the backouts of the work routed to its image, at the
+          // routing in force when the hour closed (the closed report is frozen then).
+          const routed = sum(db2.map((r) => (h.workloads[r.workloadId]?.rolledBack ?? 0) * ((h.end.sim.routing[r.workloadId] ?? allWorkloads(run.scenario, h.end).find((x) => x.id === r.workloadId)?.routing ?? {})[s.lparId] ?? 0)));
+          c.close(s.rollbacks, routed, ROUNDING, where(`${s.lparId} ${s.ssid} Db2 statistics rollbacks vs the routed backouts`));
         }
       }
       // The open hour's count includes every tick so far, the last one included, and the run state keeps that
@@ -1285,6 +1295,7 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   })),
   'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
   'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),
+  'Db2 units of work rolled back in a closed SMF hour': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).some((r) => r.rollbacks > 0); }),
   'a percentile-goal period past its goal': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.pi !== null && r.pi > 1 && r.goalText.includes('<'))),
 };
 

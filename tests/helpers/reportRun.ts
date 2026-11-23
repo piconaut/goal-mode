@@ -68,7 +68,7 @@ export interface HourObs {
   phase: string;
   /** Run state at the hour's end (tick % 360 = 0), after the hour closed. */
   end: RunState;
-  workloads: Record<string, { completions: number; failed: number }>;
+  workloads: Record<string, { completions: number; failed: number; rolledBack: number }>;
 }
 
 export interface ReportRun {
@@ -168,8 +168,19 @@ function phasesFor(scenario: Scenario, note: { reportClassOf: Record<string, str
     return byLpar;
   };
   return [
-    // The scenario as shipped: its own policy and configuration, while the R4HA window fills.
-    { name: 'baseline', hours: 4, apply: () => ({ commands: [], revert: [] }) },
+    // The scenario as shipped: its own policy and configuration, while the R4HA window fills. Every Db2 workload backs
+    // out a share of its units of work, which is reporting only (RT-23), so the Db2 rollback counts have hours to agree on.
+    {
+      name: 'baseline',
+      hours: 4,
+      apply: (run) => {
+        const db2 = allWorkloads(scenario, run).filter((w) => w.servers.some((x) => x.role.startsWith('DB2.'))).map((w) => w.id);
+        return {
+          commands: db2.map((key): Command => ({ kind: 'SET_MODIFIER', mod: 'rollbackFrac', key, value: 0.1 })),
+          revert: db2.map((key): Command => ({ kind: 'SET_MODIFIER', mod: 'rollbackFrac', key, value: 0 })),
+        };
+      },
+    },
     // Report classes on every rule, and another RMF interval length (so identities over intervals don't lean on one
     // length, and each short phase closes several intervals). Both stay until the night; the report classes to the end.
     {
@@ -370,7 +381,7 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
 
   let phase = 'baseline';
   let lpars: Record<string, LparSum> = {};
-  let hourWorkloads: Record<string, { completions: number; failed: number }> = {};
+  let hourWorkloads: Record<string, { completions: number; failed: number; rolledBack: number }> = {};
   let dasdIops = 0;
   let cfRequests = 0;
   let ivConfig = run.sim.config;
@@ -407,9 +418,10 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
       }
     }
     for (const w of sim.last.workloads) {
-      const a = (hourWorkloads[w.id] ??= { completions: 0, failed: 0 });
+      const a = (hourWorkloads[w.id] ??= { completions: 0, failed: 0, rolledBack: 0 });
       a.completions += w.completions;
       a.failed += w.failed;
+      a.rolledBack += w.rolledBack ?? 0;
     }
     dasdIops += sim.env.dasd?.totalIops ?? 0;
     cfRequests += (sim.env.cf ?? []).reduce((a, r) => a + r.requestRate, 0);
