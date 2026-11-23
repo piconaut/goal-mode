@@ -3,7 +3,8 @@
 // defined capacity (or a group's capacity limit), the LPAR is capped until it drops back.
 // At IPL the window holds no usage, so the R4HA starts at zero and early spikes go uncapped
 // (MVS Planning: WLM, "Workload management and Workload License Charges"). APPROX: the cap is a
-// flat MSU limit; real WLM caps via phantom weight, which can also cut VH/VM processors while capped.
+// flat MSU limit; real WLM uses a capping pattern or a phantom weight, whose effect on HiperDispatch
+// polarity is modelled in `src/sim/hw/pools.ts`.
 
 import { R4HA_SLOTS, TICKS_PER_R4HA_SLOT } from '../core/units';
 
