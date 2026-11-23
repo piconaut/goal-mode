@@ -500,7 +500,7 @@ export const IDENTITIES: Identity[] = [
     // average drops below the limit." Monitor III CPC: 4h Avg, 4h Max ("can be greater than the defined capacity").
     // A member's capacity-group view is Partition Data's AVAILABLE (limit − the member's four-hour average; negative
     // while the group caps it), so the group decision is read from the report (RF-08).
-    source: 'WLM Planning 3.1 p.44; RMF Report Analysis 3.1 PDF p.399–400 (printed 359–360), PDF p.96–99 (printed 56–59)',
+    source: 'WLM Planning 3.1 PDF p.44 (printed 24); RMF Report Analysis 3.1 PDF p.399–400 (printed 359–360), PDF p.96–99 (printed 56–59)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const view = buildView({ ...o.end, tools: ['RMF_MON3'] }, run.scenario);
