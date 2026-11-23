@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-23: Backlog design calls (user): RT-29 split into RT-34 (THREAD_LIMIT must rule out QR) and RT-35 (a resource far slower than its peers is accepted); RT-31 keeps the clock-hour average; CL-19 becomes a field guard test; PT-21 split into PT-50 (slow TSO costs engineer-hours) and PT-51 (research); Q8a yes, so RT-22 problem records is ready.
 - 2026-11-23: CL-63 reconciled the stale docs/research.md "Fix queued" rows with the code and the pages: Honor Priority and offline zIIPs (PT-06), unbounded MAXDBAT/MXT queues (realism fix 3), a capped server's dependents (realism fix 1, RF-09) and an AOR group cap reaching transaction CPU (realism fix 2) now read Matches/Approx, and SPEC §17's R4HA row states the modelled phantom-weight polarity instead of a queued fix.
 - 2026-11-23: M8.7 realism closed: audit fixes RF-01 … RF-09 merged (#428–#433, #478, #479) and BACKLOG `realism-fixes` is empty; RF-05 and RF-08 are on `main` via the dev → main milestone PR #481.
 - 2026-11-23: RF-08 a capacity group gives each member its own view of the group's four-hour average (the group's slots since that member joined, zero-filled before), so a member added to an existing group sees more unused capacity and may cap later; Partition Data and the Monitor III CPC header print AVAILABLE and flag the LIMIT with `*` for four hours, a changed group limit restarts the views, and the cap decision reads the member's view, not the group's combined one.
@@ -111,7 +112,7 @@ Recent work, one line each (details in the PRs and Git history):
 retry storm) is offered only once the player has pinned proof of the cause; generic levers stay open, and wrong
 guesses cost something. Design, notes and user decisions: [docs/rca-design.md](docs/rca-design.md) §5 (on the truth
 model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; RT-16 and RT-17 unblocked after an agent playtest
-(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm could not
+(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself: RT-22 problem records (ready, user yes to Q8a 2026-11-23, built ahead of the gating), RT-24 proof-gated fixes (waits for Q8b). The retry storm could not
 be told from a demand surge in any report until RT-23, whose Db2 rollback share now separates them; its fix is still ungated.
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
@@ -291,7 +292,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q8a and Q8b.
+- Waiting on the user: docs/rca-design.md §7 Q8b (Q8a decided 2026-11-23).
 
 ## Known approximations and risks
 

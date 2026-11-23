@@ -63,12 +63,37 @@ AORs" with a choice of regions). Each event registers a general operation that f
 effect, not on a card-specific fix id. Needs a design call, made together with RT-24 (D1): docs/rca-design.md §5.6
 limits which general operations may end a card.
 
-### PT-21 · Starving "Internal" work is free
-`list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
+### PT-50 · A slow TSO costs the team engineer-hours
+`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 
-TSO and ADHOC have stakeholder `Internal` and SLA `NONE`. DEV batch is non-critical with `lockIntensity` 0, so capped or
-discretionary work costs nothing (a lever with no cost). Candidates: an Internal trust facet or inbox escalation when
-TSO/ADHOC degrade; capped work holding Db2 locks or ENQs (enqueue promotion); sysprog TSO during incidents.
+Source: PT-21 (playtest round 2; design decided 2026-11-23, user). TSO and ADHOC have stakeholder `Internal` and SLA
+`NONE`, so capping them or making them discretionary frees CPU at no cost, which breaks the CLAUDE.md guardrail
+"every lever needs a cost". The real cost of a slow TSO falls on the people who use it, including the player's own
+sysprogs. Change: a game-rule response goal on TSO's first period in each scenario's content (not an SLA, no
+incident, no penalty in the SLA score). While its hour attainment misses over a sustained window (a tunable, e.g. two
+consecutive clock hours), operations that consume engineer-hours cost more (a `// FICTIONAL:` multiplier in
+`content/`), the Change Desk and operation dialogs show the surcharge and why, and the inbox gets one developer
+complaint per episode naming the TSO response time. The clue path: RMF WLMGL for the TSO class shows the response time
+against the goal. Also a Codex note on why TSO is usually first-period-short and importance-high in real policies.
+DEV batch stays free to starve: it runs on DEVT against its own Db2, and parking test jobs is what discretionary is
+for. Done when: a test where capping TSO past the window raises the engineer-hour cost and files one inbox item, and
+releasing it restores the price; the surcharge shows in the UI with its reason; SPEC (engineer-hours and §9) states
+the rule; the strategy bots' sweep (three scenarios) is recorded, since a bot that caps TSO now pays.
+
+### PT-51 · A starved BI query holds its Db2 locks and claims longer
+`list: playtest-fixes · status: blocked: research · priority: low · size: L · area: sim`
+
+Source: PT-21 (playtest round 2; design decided 2026-11-23, user). ADHOC runs over DDF against production Db2 on
+PROD2, so starving it has a real-world cost: a long-running query that gets little CPU holds its locks and claims
+longer, online work waits on locks, and utilities cannot drain claims. The sim cannot show this: lock contention is
+one global index built only from running batch jobs' `lockIntensity` (`src/sim/core/step.ts`), independent of how
+starved the holder is. Research first, with the zos-docs skill, cited per the realism policy: whether WLM or IRLM
+promotes a Db2 lock holder that others wait on (the sim's enqueue promotion, docs/research.md, covers ENQs, which Db2
+locks are not); how claims held by readers block a utility's drain, and what reports show it (Db2 accounting
+lock/latch suspension classes, the statistics trace's drain/claim counters, IRLM timeouts); and whether
+isolation level (CS, UR, RR) changes what a BI query holds. Then scope the model: hold time stretched by the holder's
+CPU delay, a lock contention contribution from DDF holders on the same Db2, and a clue path that names the holder.
+Done when: the research rows are in docs/research.md, and this entry is rewritten with the model and set to `ready`.
 
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
@@ -101,42 +126,75 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
-  findings RT-28 … RT-31 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
-  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
+  findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1: RT-22 (problem records) is ready after the user's yes to Q8a
+  (2026-11-23); RT-24 waits for Q8b.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-29 · A complete proof for a mechanism the truth does not accept
-`list: rca-truth · status: blocked: design · priority: high · size: M · area: game`
+### RT-34 · THREAD_LIMIT's ruling-out half must rule out QR for CICS
+`list: rca-truth · status: ready · priority: high · size: S · area: game`
 
-Source: agent playtest 2026-11-21 (runs not committed). Harbourline seed 37 D4 INC35: both THREAD_LIMIT predicates
-green (CICS 110 MXT wait 6762 ms/txn, CPU per transaction ×1.01), primary `QR_TCB/POLICY`, reply "THREAD_LIMIT proven,
-but it was not the cause, so it earns nothing"; the same MXT-queue symptom was QR_TCB on D3/D4 and CPU_PRIORITY on
-D2/D3, and on D1 one hour gave INC1 QR_TCB and INC2 CPU_PRIORITY. Midwest Hard seed 54 D3 INC22: CF02 sync service
-1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗", apparently because CF02 has always
-been slow (a standing misconfiguration is its own baseline). Part of this was RT-17's (co-dominant groups, since
-merged) and RT-19's (THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the
-two repros now that RT-17 has landed;
-what remains needs a design call: accept a mechanism whose complete recipe (including its ruling-out half) holds on the
-incident's own rows and window, or keep it at zero with a reply that says which number made the primary win; and
-whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.
-Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
+Source: RT-29 (agent playtest 2026-11-21; user decision 2026-11-23, docs/rca-design.md §7 Q11). Harbourline seed 37
+D4 INC35: MXT wait 6762 ms/txn and CPU per transaction ×1.01 completed THREAD_LIMIT's recipe while the primary was
+`QR_TCB/POLICY`. The second predicate (`content/evidence.ts` `MECHANISM_RECIPES.THREAD_LIMIT`) is an *or* of CPU per
+transaction normal, QR wait < 5 ms/txn and job CPU wait low, so CPU per transaction alone passes. That cannot separate
+the claim from its nearest look-alike: tasks waiting on a saturated QR TCB hold their MXT slots longer at unchanged
+CPU per transaction. Decision: don't widen the accepted set to any completed recipe; fix the recipe. When the symptom
+half is met by a CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a region), the ruling-out half must be `QR_WAIT` below
+5 ms/txn on the same work. CPU per transaction stays an option for the DBAT queue and `JOB_CPU` for initiator waits.
+The predicate options are an unconditional *or* today, so this needs either a per-option tie (like `sameWork`) or
+separate CICS and DBAT recipes; pick whichever keeps the reply readable. Re-run the INC35 shape first: RT-17's slot
+baselines may have changed which primary wins, and the recipe fix holds either way. Real THREAD_LIMIT incidents
+where the limit is too low for normal hold times remain RT-19's. Done when: a test with an MXT queue behind QR
+saturation (CPU per transaction flat, QR wait high) fails THREAD_LIMIT's recipe, and a test with a too-low MXT and QR
+wait normal passes it; `tests/game/proofRecipes.test.ts` replays still prove THREAD_LIMIT; the reply names the failed
+predicate as "QR wait < 5 ms/txn"; SPEC §10 states the rule.
 
-### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
-`list: rca-truth · status: blocked: design · priority: low · size: M · area: game`
+### RT-35 · A resource far slower than its peers is an accepted mechanism
+`list: rca-truth · status: ready · priority: high · size: M · area: game`
 
-Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
-(CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
-clock-hour average of every tick (87.1 %). Every CPU line and every RT-32 band is measured on that average
-(docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
-in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
-use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
-whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-32,
-so the choice applies to its bands. The reply wording half is RT-30's (landed: the reply now says the truth reads the
-clock hour). Done when: the user decides, the INC6 shape
-(one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
+Source: RT-29 (agent playtest 2026-11-21; user decision 2026-11-23, docs/rca-design.md §7 Q11). Midwest Hard seed 54
+D3 INC22: CF02 sync service time 1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗",
+and CF_SERVICE was not accepted. Two causes: the truth ranks mechanisms only by growth against the baseline
+(`groupExcess`, `game/sla.ts`), so a standing slowdown has zero excess; and `CF_SYNC`/`CF_ASYNC_PCT` are notable only
+past twice the row's own six-interval normal. That conflates mechanism (where the time goes) with trigger (what
+changed): a standing misconfiguration is a valid mechanism with a GROWTH or POLICY trigger. Decision: judge "slow"
+for CF and DASD against peers as well as own history, and add an accepted-set source; the primary stays the
+growth-ranked one, so hints, AIOps, bots and the sim hash do not move.
+- **Recipe:** CF_SERVICE's second half also accepts a CF whose sync service time (or async conversion) is at least
+  `PEER_SLOW_RATIO` × the best CF of the same sysplex in the same interval; IO's second half accepts an LCU whose
+  DISC or response time is at least that × the all-LCU median. A pin carries the peer reading it was judged against
+  (frozen at pin time, like `baseline`), so the reply can quote it. Own-history options stay for faults arriving
+  mid-day.
+- **Truth:** a new row in the §4.1 accepted-set sources: the hurt work's CF (or I/O) time is at least
+  `CO_DOMINANT_SHARE` of its response time in the judged hour and its resource meets the peer rule → accept CF_SERVICE
+  (or IO). The trigger is unchanged; the reply's reason says "CF02 at 76× CF01's sync service time".
+- **Coefficients:** `PEER_SLOW_RATIO` in `content/` with a `// FICTIONAL:` note. Check with the zos-docs skill what
+  RMF CF Activity and DASD Activity present as typical sync service time and DISC, and cite them; do not present a
+  "normal" figure as IBM's.
+Truth labels move (accepted sets only), so the three-scenario `npm run sweep:remote` applies (§4.8 of
+docs/rca-design.md). Done when: the INC22 shape (one CF slow since day 1, Db2 missing on CF time) is a test where
+CF_SERVICE is accepted and its recipe completes from CF Activity; a CF slow against its peers but carrying under a
+third of the response time is not accepted; a DASD equivalent test; SPEC §10 and §17 and docs/rca-design.md §4.1 and
+§4.6 updated.
+
+### RT-31 · The CPU verdict reads the clock-hour average: test it and say so
+`list: rca-truth · status: ready · priority: low · size: S · area: game`
+
+Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed): a pin of one 30-minute RMF interval
+(CPC 90.1 % for 13:00–13:30) met "processor full" while `capacityBasis` (`src/game/sla.ts`) judged the clock-hour
+average (87.1 %). Decided 2026-11-23 (user): keep the clock-hour average as the truth's time base. The SLA is judged
+per clock hour; the worst RMF interval would let a reporting lever move the verdict (`rmfIntervalMin` is the
+player's, and Midwest starts coarse on purpose, F11); a share of ticks over the line is visible in no report (CAPPING
+can use a share because WLM% capped is one). The evidence predicates keep reading the pinned row. INC6 itself is
+covered by RT-32's bands: a CPU_PRIORITY primary on a host at or above `CPU_BANDS.hostRoomFrac` accepts CPU_CAPACITY
+(`game/rcaTruth.ts`). The residue (an interval ≥ 90 % in an hour under 85 %) is explained by RT-30's reply. Done when:
+a test of INC6's shape (one RMF interval over the 90 % line, the hour average inside the 85–95 % band, CPU_PRIORITY
+primary) shows CPU_CAPACITY accepted and its recipe scoring 3 from the interval pin; SPEC §10 and §17 and
+docs/rca-design.md §4.3 state the time base and why.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
@@ -175,11 +233,33 @@ accepted; capping by share of the night (A12). Done when: a DASD_DEGRADED at 22:
 IO/HARDWARE_FAULT.
 
 ### RT-22 · Problem records: a diagnosis without an SLA incident
-`list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5.1, Q8a) · priority: low · size: L · area: game`
+`list: rca-truth · status: ready · priority: low · size: L · area: game`
 
-After RT-13. The player opens a problem on a subject and window and files mechanism, trigger and pins; an incident is
-a problem the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT and a roomy-day REGRESSION open no
-incident (§5.1). Done when: browser and play CLI can open, file and review one, with tests.
+Source: docs/rca-design.md §5.1; user decision 2026-11-23 (§7 Q8a: yes, independent of Q8b). The player opens a
+**problem record** on a subject (workload, service class, image or job) and a time window of whole clock hours within
+what the reports still hold, and files mechanism, trigger and pins on the same form and judge as an incident RCA; an
+incident becomes a problem record the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT and a
+roomy-day REGRESSION open no incident, and because standing faults (RT-35) and quiet regressions are what a good
+analyst finds before anything pages. It also gives the late game a skilled use of engineer-hours (PT-22). Without D1
+(Q8b open) a problem record unlocks no fix; it earns what a correct RCA earns.
+- **Truth for a window:** a card whose footprint (§4.4) touches the subject in the window gives its mechanism and
+  trigger, as for an incident; otherwise the §4.2 rules on the window's hours against the slot baseline, plus the
+  RT-35 peer rule once it lands. When neither finds anything (no card, no delay group over the floor, no standing
+  fault), the truth is "no problem": any filed mechanism is wrong. Pins and recipes are judged as in §4.6, with the
+  relation snapshot taken from the subject when the record opens.
+- **Reward:** a correct mechanism with its complete recipe earns the trust and insight of a correct RCA, on the
+  facet of the subject's workload stakeholder (an image or job subject: the facet of the workloads it hurt in the
+  window, or none). **Cost and anti-fishing** as §5.4: 0.25 engineer-hours per filing, a wrong mechanism −0.5 trust
+  on that facet once per record per day, at most three filings per record per day, re-filing after one simulated
+  hour. These values are §5.4's defaults, in `content/rca.ts` with `// FICTIONAL:` notes; set them by a sweep, not
+  by hand.
+- **Grouping:** a record whose cause matches an open or closed incident's (§4.5) joins that group and cannot earn
+  twice for one cause.
+- **Bots:** unchanged in this entry (they file none); the expert bot may file records later, as a balance call.
+Done when: the browser and the play CLI can open, file and review a problem record, with tests for each truth case
+(a card without an incident, a standing fault, no problem) and for the anti-fishing limits; the RCA reply renders for
+a record; SPEC §10 and the Codex describe problem records; a three-scenario `npm run sweep:remote` shows the bands
+unchanged (bots file none).
 
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
@@ -247,24 +327,25 @@ the strategy bots do (docs/rca-design.md §4.8); tuning before them would be red
 
 ## cleanup
 
-### CL-19 · One field table for the service-class accumulators
-`list: cleanup · status: blocked: design · priority: high · size: M · area: sim`
+### CL-19 · A guard test for the service-class accumulator fields
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
-**Design question (2026-11-18):** `addScp` runs once per period per tick. Should the single field-spec table *generate*
-the four accumulator functions as static code at build time (checked by a regeneration test), or should all four use a
-table loop, accepting whatever per-tick cost it adds? The entry itself leaves this open ("generate the code, or measure
-that a table loop stays within budget"). Recommend generating static code: it keeps the exact object key order that
-the golden and bench hashes depend on and leaves the hot path unchanged, at the cost of a generated file in `src/sim/`.
-Waiting on the user or main agent's choice before building.
-
-Source: codebase survey (2026-11-16). The fields of the per-period accumulator are listed by hand in four places,
-each with the same optional-field quirks (`delayQueue`, `usingIoNoVel`, `srvUsing`, `workManager`):
-`addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and `addAccInto`/`sumAcc` in
-`src/sim/wlm/runtime.ts`. A new report field needs four edits in lockstep (PR-21 adds several). Change: drive all four
-from one field-spec table (additive, optional, decayed). `addScp` runs every tick and is written without spreads:
-generate the code, or measure that a table loop stays within budget. No behaviour change; label
-`perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
-difference; per-tick timing before and after (`npm run bench`) in the PR.
+Source: codebase survey (2026-11-16); design decided 2026-11-23 (user). The per-period accumulator fields are
+handled by hand in four places: `addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and
+`addAccInto`/`sumAcc` in `src/sim/wlm/runtime.ts`. The original entry proposed driving all four from one field
+table, either generated or looped. Declined: the four are not one field list in four layouts. They differ in which
+fields they carry (`addScp` has no `srv*`, `demand*`, `rtQueueSumSec`, `ziipEnginesView`), in formulas
+(`cpuEngines` is `cpEngines` in `addScp` but `cpEngines + iipcpEngines` in `decayInto`; `ziipEngines` and `demand*`
+seed at steady state; `srvDelayCap` has a compatibility fallback) and in presence rules and key order, which the
+state hash reads. A table would need a per-field rules language and would put the hashes at risk on the hot path.
+The real risk is a new field that misses one of the four functions, and a test catches that. Change, test-only:
+- A field list typed with `satisfies Record<keyof Required<ScpAcc>, …>` (and the same for `ScpTick`'s fields), so a
+  field added to either interface fails typecheck until it is listed.
+- A unit test that fills a tick (and two accumulators) with a distinct non-zero value in every field, runs `addScp`,
+  `decayInto`, `mergeAcc` and `sumAcc`, and asserts every listed field reaches each output non-zero, except fields a
+  function deliberately omits, each listed with its reason.
+No sim change. Done when: the test passes; removing any one field from any of the four functions makes it fail
+(checked by hand once, noted in the PR); `npm run typecheck` clean.
 
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
