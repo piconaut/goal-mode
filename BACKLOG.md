@@ -101,28 +101,59 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
-  findings RT-28 … RT-31 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
+  findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-29 · A complete proof for a mechanism the truth does not accept
-`list: rca-truth · status: blocked: design · priority: high · size: M · area: game`
+### RT-34 · THREAD_LIMIT's ruling-out half must rule out QR for CICS
+`list: rca-truth · status: ready · priority: high · size: S · area: game`
 
-Source: agent playtest 2026-11-21 (runs not committed). Harbourline seed 37 D4 INC35: both THREAD_LIMIT predicates
-green (CICS 110 MXT wait 6762 ms/txn, CPU per transaction ×1.01), primary `QR_TCB/POLICY`, reply "THREAD_LIMIT proven,
-but it was not the cause, so it earns nothing"; the same MXT-queue symptom was QR_TCB on D3/D4 and CPU_PRIORITY on
-D2/D3, and on D1 one hour gave INC1 QR_TCB and INC2 CPU_PRIORITY. Midwest Hard seed 54 D3 INC22: CF02 sync service
-1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗", apparently because CF02 has always
-been slow (a standing misconfiguration is its own baseline). Part of this was RT-17's (co-dominant groups, since
-merged) and RT-19's (THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the
-two repros now that RT-17 has landed;
-what remains needs a design call: accept a mechanism whose complete recipe (including its ruling-out half) holds on the
-incident's own rows and window, or keep it at zero with a reply that says which number made the primary win; and
-whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.
-Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
+Source: RT-29 (agent playtest 2026-11-21; user decision 2026-11-23, docs/rca-design.md §7 Q11). Harbourline seed 37
+D4 INC35: MXT wait 6762 ms/txn and CPU per transaction ×1.01 completed THREAD_LIMIT's recipe while the primary was
+`QR_TCB/POLICY`. The second predicate (`content/evidence.ts` `MECHANISM_RECIPES.THREAD_LIMIT`) is an *or* of CPU per
+transaction normal, QR wait < 5 ms/txn and job CPU wait low, so CPU per transaction alone passes. That cannot separate
+the claim from its nearest look-alike: tasks waiting on a saturated QR TCB hold their MXT slots longer at unchanged
+CPU per transaction. Decision: don't widen the accepted set to any completed recipe; fix the recipe. When the symptom
+half is met by a CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a region), the ruling-out half must be `QR_WAIT` below
+5 ms/txn on the same work. CPU per transaction stays an option for the DBAT queue and `JOB_CPU` for initiator waits.
+The predicate options are an unconditional *or* today, so this needs either a per-option tie (like `sameWork`) or
+separate CICS and DBAT recipes; pick whichever keeps the reply readable. Re-run the INC35 shape first: RT-17's slot
+baselines may have changed which primary wins, and the recipe fix holds either way. Real THREAD_LIMIT incidents
+where the limit is too low for normal hold times remain RT-19's. Done when: a test with an MXT queue behind QR
+saturation (CPU per transaction flat, QR wait high) fails THREAD_LIMIT's recipe, and a test with a too-low MXT and QR
+wait normal passes it; `tests/game/proofRecipes.test.ts` replays still prove THREAD_LIMIT; the reply names the failed
+predicate as "QR wait < 5 ms/txn"; SPEC §10 states the rule.
+
+### RT-35 · A resource far slower than its peers is an accepted mechanism
+`list: rca-truth · status: ready · priority: high · size: M · area: game`
+
+Source: RT-29 (agent playtest 2026-11-21; user decision 2026-11-23, docs/rca-design.md §7 Q11). Midwest Hard seed 54
+D3 INC22: CF02 sync service time 1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗",
+and CF_SERVICE was not accepted. Two causes: the truth ranks mechanisms only by growth against the baseline
+(`groupExcess`, `game/sla.ts`), so a standing slowdown has zero excess; and `CF_SYNC`/`CF_ASYNC_PCT` are notable only
+past twice the row's own six-interval normal. That conflates mechanism (where the time goes) with trigger (what
+changed): a standing misconfiguration is a valid mechanism with a GROWTH or POLICY trigger. Decision: judge "slow"
+for CF and DASD against peers as well as own history, and add an accepted-set source; the primary stays the
+growth-ranked one, so hints, AIOps, bots and the sim hash do not move.
+- **Recipe:** CF_SERVICE's second half also accepts a CF whose sync service time (or async conversion) is at least
+  `PEER_SLOW_RATIO` × the best CF of the same sysplex in the same interval; IO's second half accepts an LCU whose
+  DISC or response time is at least that × the all-LCU median. A pin carries the peer reading it was judged against
+  (frozen at pin time, like `baseline`), so the reply can quote it. Own-history options stay for faults arriving
+  mid-day.
+- **Truth:** a new row in the §4.1 accepted-set sources: the hurt work's CF (or I/O) time is at least
+  `CO_DOMINANT_SHARE` of its response time in the judged hour and its resource meets the peer rule → accept CF_SERVICE
+  (or IO). The trigger is unchanged; the reply's reason says "CF02 at 76× CF01's sync service time".
+- **Coefficients:** `PEER_SLOW_RATIO` in `content/` with a `// FICTIONAL:` note. Check with the zos-docs skill what
+  RMF CF Activity and DASD Activity present as typical sync service time and DISC, and cite them; do not present a
+  "normal" figure as IBM's.
+Truth labels move (accepted sets only), so the three-scenario `npm run sweep:remote` applies (§4.8 of
+docs/rca-design.md). Done when: the INC22 shape (one CF slow since day 1, Db2 missing on CF time) is a test where
+CF_SERVICE is accepted and its recipe completes from CF Activity; a CF slow against its peers but carrying under a
+third of the response time is not accepted; a DASD equivalent test; SPEC §10 and §17 and docs/rca-design.md §4.1 and
+§4.6 updated.
 
 ### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
 `list: rca-truth · status: blocked: design · priority: low · size: M · area: game`
