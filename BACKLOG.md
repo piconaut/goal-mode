@@ -181,25 +181,6 @@ After RT-13. The player opens a problem on a subject and window and files mechan
 a problem the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT and a roomy-day REGRESSION open no
 incident (§5.1). Done when: browser and play CLI can open, file and review one, with tests.
 
-### RT-23 · A discriminator for the retry storm
-`list: rca-truth · status: ready · priority: low · size: M · area: sim`
-
-Research settled 2026-11-21 (docs/research.md "Db2 and hardware configuration"): no retry field was found in the Db2
-books read, but Db2 accounting (SMF 101, IFCID 3) class 1 counts commits (`QWACCOMM`) and rollbacks (`QWACABRT`, "the
-number of units that were backed out": application program abends, rollback requests, deadlocks, operator cancels,
-thread abends from resource shortage). With DDF's default `CMTSTAT=INACTIVE` the accounting interval starts at the first
-SQL statement and ends at commit or rollback when the thread can go inactive; `ACCUMACC` rolls up 10 intervals per
-record by default. The game reads `QWACABRT / (QWACCOMM + QWACABRT)` per workload-hour as the retry signal for work
-that is backed out — an inference, since IBM documents the backouts but not that they mean client retries. Retries
-that commit at Db2 are indistinguishable in aggregate; telling those apart needs
-per-client identity (SMF 101 `QMDAAPPL`/`QMDAPLAT`/`QMDASUFX`, or client statistics IFCID 411/412 and the 2024
-IFCID 417, SMF type 102), which the game's SMF 100/101 views do not collect — decided out of scope.
-Change: add the rollback count to the DB2 (SMF 101) view and the Db2 statistics view, and make RETRY_STORM back out a
-share of its retried transactions (the card is `mod('rate', 'MOBILE', 2.5)` only today, so it would raise arrivals with
-no aborts). The rollback share then separates it from DEMAND_SURGE.
-Done when: RETRY_STORM and its Revenue/Harbourline variants show a rising rollback share in the DB2 view, a
-DEMAND_SURGE of the same rate does not, and tests pin both (R-5, docs/rca-design.md §5.3).
-
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
 
@@ -218,9 +199,9 @@ is skipped: an open PR for the same entry uses it.) 29 of the 108 mechanism × t
 so with `EVIDENCE.perRca` = 3 they earn the mechanism's 3 points but never strong evidence. Those a shipped card can
 produce: CPU_CAPACITY, CAPPING and DEPENDENCY × RUNAWAY_WORK (RUNAWAY, SHADOW_IT), CPU_PRIORITY and CAPPING ×
 HARDWARE_FAULT (POWER_CAP, CF_LINK, CF_FAILURE), and the CPU family and DEPENDENCY × APPLICATION_ERROR (RETRY_STORM's
-alternate, unprovable anyway until RT-23). Options: a fourth pin for strong evidence only; a trigger predicate that a
-mechanism pin can also meet where the data honestly shows both; or accept the gap. Done when: the user decides and
-the test's list matches the decision.
+alternate; RT-23's rollback share now proves the two-pin trigger, so the pair is a card's, not a data gap). Options: a
+fourth pin for strong evidence only; a trigger predicate that a mechanism pin can also meet where the data honestly
+shows both; or accept the gap. Done when: the user decides and the test's list matches the decision.
 
 ## wlm-truth
 

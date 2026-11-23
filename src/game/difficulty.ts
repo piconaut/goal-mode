@@ -39,13 +39,13 @@ export function scenarioFor(given: Scenario, id: DifficultyId | undefined): Scen
 const scaleExcess = (value: number, mult: number) => Math.max(0.05, 1 + (value - 1) * mult);
 
 /** An event card's begin commands at this severity (1 = unchanged). Multipliers scale their excess over 1;
- * the absolute region failure fraction scales from zero instead. */
+ * the absolute fractions (region failures, Db2 rollbacks) scale from zero instead, capped at 1. */
 export function scaleEventCommands(cmds: readonly Command[], mult: number): Command[] {
   if (mult === 1) return [...cmds];
   return cmds.map((c): Command => {
     switch (c.kind) {
       case 'SET_MODIFIER':
-        return { ...c, value: c.mod === 'regionFailFrac' ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
+        return { ...c, value: c.mod === 'regionFailFrac' || c.mod === 'rollbackFrac' ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
       case 'SET_CF':
         return c.degrade === undefined ? c : { ...c, degrade: scaleExcess(c.degrade, mult) };
       case 'SET_DASD':

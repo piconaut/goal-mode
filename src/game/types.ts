@@ -89,6 +89,8 @@ export interface WorkloadHour {
   failed: number;
   rtSumSec: number;
   parts: Record<string, number>;
+  /** Units of work that ended in rollback rather than commit (RT-23); absent when every unit committed. */
+  rolledBack?: number;
 }
 
 export interface SmfHour {
@@ -104,6 +106,9 @@ export interface SmfHour {
   /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member
    * (QUEDBAT/QDSTQDBT, Db2 13 Command Reference p.303). */
   dbatQueuedByLpar?: Record<string, number>;
+  /** Db2 rollbacks during the hour, per LPAR that runs a Db2 member (Q3STABRT, RT-23), frozen at close so a later
+   * routing change cannot rewrite a historical report. Absent before RT-23 and when no unit rolled back. */
+  db2RollbacksByLpar?: Record<string, number>;
 }
 
 /** CICS storage manager statistics for one region over an hour. */

@@ -201,6 +201,8 @@ export interface WorkloadTick {
   cpuWaitByLpar?: Record<string, CpuWait>;
   /** Messages waiting on the workload's MQ queue, per queue manager (LPAR). */
   queueDepth?: Record<string, number>;
+  /** Units of work that ended in rollback rather than commit this tick (RT-23); absent when every unit commits. */
+  rolledBack?: number;
 }
 
 export interface CicsStorageTick {
@@ -274,6 +276,9 @@ export interface SimModifiers {
   lockBoost: number;
   /** Fraction of a workload's transactions failing fast in one image's regions, keyed `workload@lpar` (sick AOR). */
   regionFailFrac?: Record<string, number>;
+  /** Share (0..1) of a workload's completed units of work that end in rollback rather than commit, keyed by workload
+   *  (RT-23). Absent or 0 = every unit commits. Reporting only: a rolled-back unit still consumed its CPU and time. */
+  rollbackFrac?: Record<string, number>;
 }
 
 export interface SimState {

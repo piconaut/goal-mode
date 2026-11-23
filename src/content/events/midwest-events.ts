@@ -60,7 +60,7 @@ export interface EventDef {
 // SYSOTHER trickle is rounding noise, not a finding.
 export const AUDIT = { findingTrust: 5, cleanDayTrust: 1, minApplPct: 0.1 };
 
-const mod = (m: 'rate' | 'cpu' | 'asCpu', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
+const mod = (m: 'rate' | 'cpu' | 'asCpu' | 'rollbackFrac', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
 
 export const ACQUIRED_APP: WorkloadDef = {
   id: 'ACQBANK',
@@ -216,8 +216,11 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [11, 14],
     durationHours: 3, // the card network recovers
     // FICTIONAL magnitude: up to three retries on a 2 s client timeout, ~2.5x the offered mobile load.
-    begin: [mod('rate', 'MOBILE', 2.5)],
-    end: [mod('rate', 'MOBILE', 1)],
+    // RT-23: a share of the units is backed out, as a client that gives up leaves a rollback in Db2 accounting
+    // (QWACABRT). APPROX: a fixed share for the window, not a feedback loop on which client timed out; that a
+    // rollback share means client retries is the game's inference, not IBM's.
+    begin: [mod('rate', 'MOBILE', 2.5), mod('rollbackFrac', 'MOBILE', 0.2)],
+    end: [mod('rate', 'MOBILE', 1), mod('rollbackFrac', 'MOBILE', 0)],
     fix: 'MOBILE_BACKOFF',
     forewarning: null,
     announcement: null,

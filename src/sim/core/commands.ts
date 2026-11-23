@@ -366,7 +366,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     case 'SET_MODIFIER': {
       const table = { ...s.mods[cmd.mod] };
       // Fractions are neutral at 0, multipliers at 1.
-      if (cmd.value === (cmd.mod === 'regionFailFrac' ? 0 : 1)) delete table[cmd.key];
+      if (cmd.value === (cmd.mod === 'regionFailFrac' || cmd.mod === 'rollbackFrac' ? 0 : 1)) delete table[cmd.key];
       else table[cmd.key] = cmd.value;
       return ok({ ...s, mods: { ...s.mods, [cmd.mod]: table } }, `${cmd.mod}[${cmd.key}] = ${cmd.value}`);
     }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { DIFFICULTIES, type DifficultyId } from '../../src/content/difficulty';
 import { HARBOURLINE_EVENTS } from '../../src/content/events/harbourline-events';
+import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { SCENARIOS } from '../../src/content/scenarios';
 import { scaleEventCommands, scenarioFor, storyBeatsFor } from '../../src/game/difficulty';
 import type { Command } from '../../src/sim/core/commands';
@@ -80,6 +81,14 @@ describe('scaleEventCommands', () => {
     const cmd: Command = { kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: 'MKTORD@PRDC', value: 0.9 };
     expect(scaleEventCommands([cmd], 1.25)[0]).toMatchObject({ value: 1 });
     expect(scaleEventCommands([{ ...cmd, value: 0 }], 0.7)[0]).toMatchObject({ value: 0 });
+  });
+
+  it('scales the retry storm rollback share from zero, so harder storms back out more (RT-23)', () => {
+    const storm = MIDWEST_EVENTS.find((e) => e.id === 'RETRY_STORM')!;
+    const share = (mult: number) => scaleEventCommands(storm.begin, mult).find((c) => c.kind === 'SET_MODIFIER' && c.mod === 'rollbackFrac');
+    expect(share(0.7)).toMatchObject({ value: expect.closeTo(0.14, 12) });
+    expect(share(1.25)).toMatchObject({ value: expect.closeTo(0.25, 12) });
+    expect(scaleEventCommands([{ kind: 'SET_MODIFIER', mod: 'rollbackFrac', key: 'MOBILE', value: 0.9 }], 1.25)[0]).toMatchObject({ value: 1 });
   });
 
   it('leaves Normal untouched and scales multipliers by their excess over 1', () => {
