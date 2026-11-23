@@ -155,19 +155,20 @@ CF_SERVICE is accepted and its recipe completes from CF Activity; a CF slow agai
 third of the response time is not accepted; a DASD equivalent test; SPEC §10 and §17 and docs/rca-design.md §4.1 and
 §4.6 updated.
 
-### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
-`list: rca-truth · status: blocked: design · priority: low · size: M · area: game`
+### RT-31 · The CPU verdict reads the clock-hour average: test it and say so
+`list: rca-truth · status: ready · priority: low · size: S · area: game`
 
-Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
-(CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
-clock-hour average of every tick (87.1 %). Every CPU line and every RT-32 band is measured on that average
-(docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
-in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
-use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
-whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-32,
-so the choice applies to its bands. The reply wording half is RT-30's (landed: the reply now says the truth reads the
-clock hour). Done when: the user decides, the INC6 shape
-(one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
+Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed): a pin of one 30-minute RMF interval
+(CPC 90.1 % for 13:00–13:30) met "processor full" while `capacityBasis` (`src/game/sla.ts`) judged the clock-hour
+average (87.1 %). Decided 2026-11-23 (user): keep the clock-hour average as the truth's time base. The SLA is judged
+per clock hour; the worst RMF interval would let a reporting lever move the verdict (`rmfIntervalMin` is the
+player's, and Midwest starts coarse on purpose, F11); a share of ticks over the line is visible in no report (CAPPING
+can use a share because WLM% capped is one). The evidence predicates keep reading the pinned row. INC6 itself is
+covered by RT-32's bands: a CPU_PRIORITY primary on a host at or above `CPU_BANDS.hostRoomFrac` accepts CPU_CAPACITY
+(`game/rcaTruth.ts`). The residue (an interval ≥ 90 % in an hour under 85 %) is explained by RT-30's reply. Done when:
+a test of INC6's shape (one RMF interval over the 90 % line, the hour average inside the 85–95 % band, CPU_PRIORITY
+primary) shows CPU_CAPACITY accepted and its recipe scoring 3 from the interval pin; SPEC §10 and §17 and
+docs/rca-design.md §4.3 state the time base and why.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
