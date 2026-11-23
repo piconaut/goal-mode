@@ -281,28 +281,6 @@ Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may p
 Tune after the RT entries that move truth labels have landed (RT-00, RT-02, RT-09, RT-14), because they change what
 the strategy bots do (docs/rca-design.md §4.8); tuning before them would be redone.
 
-### BL-01 · Harbourline expert wins 5 of 10
-`list: balance · status: ready · priority: low · size: M · area: content`
-
-Release sweep 2026-11-10 (dev `1300e69`, Normal, seeds 1–10): expert 5/10. All five losses are trust losses, mostly
-on Markets (seeds 1, 2, 4, 7, 9); seed 4 (day 38) is new against the 6/10 the user accepted. Harbourline is gated
-against Midwest's bands for reference only. The user accepted 5/10 for the release. Find why Markets trust runs out
-for an expert player (event mix, Markets SLA tightness, the expert bot's blind spots such as never raising Db2 above
-CICS) and decide whether to tune content or the bot. Done when: a 20-seed three-bot Harbourline sweep is recorded in
-PROGRESS.md M8.2 with the decision, and any content change carries `// FICTIONAL:` notes.
-Cross-note: the `wlm-truth` core (WT-04 … WT-09) changes how equal-priority crowding arises (docs/archive/wlm-audit-2026-11.md W2,
-§6.2); tuning before WT-09 would be redone (§8 Q2).
-
-### BL-02 · Revenue: do-nothing survives close to textbook
-`list: balance · status: ready · priority: low · size: M · area: content`
-
-Release sweep 2026-11-10: do-nothing median day 19 (p10 16, p90 23), textbook 27, expert 10/10. Do-nothing is inside
-its 8–22 band (it moved there with #167's G1 retune), but the gap to textbook is 8 days against Midwest's 11 and
-Harbourline's 19.5, so diagnosing earns less on Revenue. The textbook PREFILL losses around day 22 (PROGRESS.md
-M8.2 follow-ups) belong here too. Decide whether the spread is wanted; if not, tune G1/G2 pressure or the deadline
-week. Done when: a 20-seed three-bot Revenue sweep and the decision are recorded in PROGRESS.md M8.2.
-Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2, §8 Q2).
-
 ## cleanup
 
 ### CL-19 · One field table for the service-class accumulators
