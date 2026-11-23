@@ -207,6 +207,32 @@ describe('capacity group member views (RF-08)', () => {
     // Same limit, but the new member's four-hour average is still zero-filled, so it sees more unused capacity.
     expect(joined.groupAvailableMsu!).toBeGreaterThan(old.groupAvailableMsu!);
   }, 120_000);
+  it('restarts the view and the LIMIT * when the group limit changes', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 5 * 360; i++) s = step(s, [], MIDWEST);
+    const before = s.rmf.intervals[s.rmf.intervals.length - 1]!.cpu.find((r) => r.lparId === 'PROD1')!;
+    expect(before.groupLimitMsu).toBe(100);
+    expect(before.groupLimitNew).toBe(false);
+    expect(before.groupAvailableMsu!).toBeLessThan(0);
+    // A changed limit starts the four-hour window again (IBM allows the limit to be exceeded for those hours).
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 120), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
+    const after = s.rmf.intervals[s.rmf.intervals.length - 1]!.cpu.find((r) => r.lparId === 'PROD1')!;
+    expect(after.groupLimitMsu).toBe(120);
+    expect(after.groupLimitNew).toBe(true);
+    expect(after.groupAvailableMsu!).toBeGreaterThan(before.groupAvailableMsu!);
+    expect(after.groupAvailableMsu!).toBeGreaterThan(0);
+  }, 120_000);
+
+  it('prints GROUP, the LIMIT with its * and AVAIL on Partition Data', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
+    const text = renderPartitionData(s.rmf.intervals[s.rmf.intervals.length - 1]!);
+    expect(text).toContain('GROUP');
+    expect(text).toContain('LIMIT');
+    expect(text).toContain('AVAIL');
+    expect(text).toMatch(/G1\s+100\*/);
+  }, 120_000);
 });
 
 describe('RMF intervals and reports', () => {

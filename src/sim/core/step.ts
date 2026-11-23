@@ -256,7 +256,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
 
   const nextTick = prev.tick + 1;
-  const { cappingLpars, cappingGroups, groupJoins, groupByLpar, msuBy, r4haBy } = stepCapping(t, zosLpars);
+  const { cappingLpars, cappingGroups, groupJoinTicks, groupLimitsMsu, groupByLpar, msuBy, r4haBy } = stepCapping(t, zosLpars);
   const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
   const rmf = stepRmf(t, batch, dasd, cf, r4haBy, groupByLpar, nextTick, cfBySystem, lockIndex);
   return {
@@ -274,7 +274,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     capping: {
       lpars: cappingLpars,
       groups: cappingGroups,
-      ...(Object.keys(groupJoins).length > 0 ? { groupJoins } : {}),
+      ...(Object.keys(groupJoinTicks).length > 0 ? { groupJoinTicks } : {}),
+      ...(Object.keys(groupLimitsMsu).length > 0 ? { groupLimitsMsu } : {}),
     },
     cost,
     rmf,

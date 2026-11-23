@@ -523,7 +523,7 @@ export const IDENTITIES: Identity[] = [
           // while that window is not full (four hours).
           const g = o.end.sim.config.capacityGroups.find((x) => x.id === l.capacityGroup)!;
           const gs = o.end.sim.capping.groups.find((x) => x.id === l.capacityGroup)!;
-          const join = o.end.sim.capping.groupJoins?.[l.capacityGroup]?.[r.lparId] ?? o.end.sim.tick;
+          const join = o.end.sim.capping.groupJoinTicks?.[l.capacityGroup]?.[r.lparId] ?? o.end.sim.tick;
           c.ok(r.group === l.capacityGroup && r.groupLimitMsu === g.limitMsu, () => `${at(o)} ${r.lparId} Partition Data group ${r.group} limit ${r.groupLimitMsu}`);
           c.close(r.groupAvailableMsu ?? NaN, g.limitMsu - groupMemberR4ha(gs, join, o.end.sim.tick), ROUNDING, () => `${at(o)} ${r.lparId} AVAILABLE vs limit − member view`);
           c.close(head.groupAvailableMsu ?? NaN, r.groupAvailableMsu ?? NaN, ROUNDING, () => `${at(o)} ${r.lparId} CPC header AVAILABLE vs Partition Data`);

@@ -31,7 +31,7 @@ function withCaps(o: { lparFlag?: string; definedCapacity?: [string, number | nu
     const slots = new Array<number>(R4HA_SLOTS).fill(o.group.capped ? 200 : 0);
     sim.capping.groups = [{ ...newR4ha('G1'), slots, r4ha: o.group.capped ? 200 : 0, capped: o.group.capped }];
     const joined = base.sim.tick - R4HA_SLOTS * TICKS_PER_R4HA_SLOT;
-    sim.capping.groupJoins = { G1: Object.fromEntries(o.group.members.map((id) => [id, joined])) };
+    sim.capping.groupJoinTicks = { G1: Object.fromEntries(o.group.members.map((id) => [id, joined])) };
   }
   sim.capping.lpars = sim.capping.lpars.map((r) => ({ ...r, capped: r.id === o.lparFlag }));
   return { ...base, sim };

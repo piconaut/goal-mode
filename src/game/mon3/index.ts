@@ -43,7 +43,7 @@ export function softCapped(sim: RunState['sim'], lparId: string): boolean {
   const g = sim.config.capacityGroups.find((x) => x.id === l.capacityGroup);
   const gs = sim.capping.groups.find((x) => x.id === l.capacityGroup);
   if (!g || !gs) return false;
-  const join = sim.capping.groupJoins?.[l.capacityGroup]?.[lparId] ?? sim.tick;
+  const join = sim.capping.groupJoinTicks?.[l.capacityGroup]?.[lparId] ?? sim.tick;
   return groupMemberR4ha(gs, join, sim.tick) > g.limitMsu;
 }
 
@@ -234,7 +234,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       const r4 = sim.capping.lpars.find((x) => x.id === l.id);
       const grp = l.capacityGroup ? sim.config.capacityGroups.find((g) => g.id === l.capacityGroup) : undefined;
       const gs = grp ? sim.capping.groups.find((g) => g.id === grp.id) : undefined;
-      const join = grp ? (sim.capping.groupJoins?.[grp.id]?.[l.id] ?? sim.tick) : undefined;
+      const join = grp ? (sim.capping.groupJoinTicks?.[grp.id]?.[l.id] ?? sim.tick) : undefined;
       const groupUsed = grp && gs && join !== undefined ? groupMemberR4ha(gs, join, sim.tick) : null;
       // Image Capacity: the lowest of logical-CP capacity, defined capacity and the group limit.
       const limits = [(cp ? cp.logical + cp.reserved : 0) * msuCp, l.definedCapacityMsu ?? Infinity, grp?.limitMsu ?? Infinity];

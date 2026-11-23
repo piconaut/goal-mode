@@ -951,10 +951,11 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   capping is proportional to weight. Unused share is redistributed to members with demand, and
   no member exceeds its own DC (SG24-7621 §4.21). Each member keeps its own view of the group's
   four-hour average — the group's slots since that member joined, zero-filled before — so a member
-  added to an existing group sees more unused capacity and may cap later than the others. Partition
-  Data and the Monitor III CPC header print `AVAILABLE = limit − view` (negative while the group
-  caps the member) and flag the LIMIT with `*` for four hours after the member joined. APPROX: IBM
-  documents the different view, not the arithmetic.
+  added to an existing group sees more unused capacity and may cap later than the others. A changed
+  group limit restarts every member's window, so the limit can be exceeded for the first four hours
+  after a definition or a capacity change. Partition Data and the Monitor III CPC header print
+  `AVAILABLE = limit − view` (negative while the group caps the member) and flag the LIMIT with `*`
+  for four hours after the member joined. APPROX: IBM documents the different view, not the arithmetic.
 - Capping is shown as **capping delay** in WLM samples. WLM cannot fix it; the PI reflects
   it.
 - An IPL resets the rolling average with a "start-up credit" (initial window). It's a small but

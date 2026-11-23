@@ -40,6 +40,8 @@ export const newR4ha = (id: string): R4haState => ({
  * 53)). The arithmetic itself is inferred: IBM states the different view, not how a member computes it (APPROX).
  *
  * `joinTick` is the first simulated tick the member's window includes, and `tick` is the tick just simulated.
+ * APPROX: a join inside a group slot counts that whole slot once it completes, so up to five minutes of usage from
+ * before the join can enter the member's view.
  */
 export function groupMemberR4ha(group: R4haState, joinTick: number, tick: number): number {
   const slots = Math.min(R4HA_SLOTS, Math.max(0, Math.floor((tick - joinTick) / TICKS_PER_R4HA_SLOT)));

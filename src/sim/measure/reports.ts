@@ -221,7 +221,7 @@ export function renderPartitionData(iv: RmfInterval): string {
   // four-hour average (`AVAILABLE`, negative while the group caps the image) and the limit, flagged `*` when the
   // member joined under four hours ago. Images in no group keep the report byte-identical.
   const grouped = iv.cpu.some((r) => r.group !== undefined);
-  const groupHead = grouped ? '  GROUP   LIMIT   AVAIL' : '';
+  const groupHead = grouped ? ' ' + padRight('GROUP', 6) + ' ' + padLeft('LIMIT', 7) + ' ' + padLeft('AVAIL', 7) : '';
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
   out.push(`NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP${groupHead}  zIIP ENG`);
   for (const r of iv.cpu.filter((x) => x.logicalCps > 0)) {

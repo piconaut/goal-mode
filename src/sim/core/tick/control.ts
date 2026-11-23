@@ -29,7 +29,7 @@ export function softCap(t: TickCtx): void {
     if (r?.capped && l.definedCapacityMsu !== null) capMsu = l.definedCapacityMsu;
     const g = l.capacityGroup ? plan.groupOf[l.capacityGroup] : undefined;
     const gs = g ? prev.capping.groups.find((x) => x.id === g.id) : undefined;
-    const join = g ? prev.capping.groupJoins?.[g.id]?.[l.id] : undefined;
+    const join = g ? prev.capping.groupJoinTicks?.[g.id]?.[l.id] : undefined;
     // Each member's own view of the group's average decides its cap (RF-08): a member that joined under four hours
     // ago sees a lower used average and may not be capped while the others are.
     if (g && gs && join !== undefined && groupMemberR4ha(gs, join, prev.tick) > g.limitMsu) {
@@ -167,18 +167,26 @@ export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
   // joining an existing group keeps the group's slots but counts the ones before its join as zero, so its view of
   // used capacity is lower for up to four hours. The state is rebuilt from the current configuration each tick, so a
   // removed group or member leaves nothing behind.
-  const groupJoins: Record<string, Record<string, number>> = {};
+  const groupJoinTicks: Record<string, Record<string, number>> = {};
+  const groupLimitsMsu: Record<string, number> = {};
   const cappingGroups: R4haState[] = [];
   const groupByLpar: Record<string, GroupView> = {};
   for (const g of config.capacityGroups) {
     const members = plan.groupMembers[g.id] ?? [];
     const msu = members.reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
-    const gs = stepR4ha(prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id), msu, g.limitMsu);
+    // A limit change restarts the group window and every member's view: IBM allows the limit to be exceeded for the
+    // four hours after a capacity change, as after a definition (Planning for Sub-Capacity Pricing PDF p.69
+    // (printed 53)). A state without a stored limit (a save from before RF-08) also starts afresh.
+    const prevLimit = prev.capping.groupLimitsMsu?.[g.id];
+    const restarted = prevLimit === undefined ? prev.capping.groups.some((x) => x.id === g.id) : prevLimit !== g.limitMsu;
+    const gs = stepR4ha(restarted ? newR4ha(g.id) : (prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id)), msu, g.limitMsu);
     cappingGroups.push(gs);
-    const joins = (groupJoins[g.id] ??= {});
+    groupLimitsMsu[g.id] = g.limitMsu;
+    const joins = (groupJoinTicks[g.id] ??= {});
     for (const m of members) {
-      // A member the last state already knew keeps its join; a new one starts its zero-filled view at this tick.
-      const join = prev.capping.groupJoins?.[g.id]?.[m.id] ?? prev.tick;
+      // A member the last state already knew keeps its join; a new one (or every member after a limit change)
+      // starts its zero-filled view at this tick.
+      const join = restarted ? prev.tick : (prev.capping.groupJoinTicks?.[g.id]?.[m.id] ?? prev.tick);
       joins[m.id] = join;
       const used = groupMemberR4ha(gs, join, nextTick);
       groupByLpar[m.id] = {
@@ -191,7 +199,7 @@ export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
   }
   const r4haBy: Record<string, number> = {};
   for (const r of cappingLpars) r4haBy[r.id] = r.r4ha;
-  return { cappingLpars, cappingGroups, groupJoins, groupByLpar, msuBy, r4haBy };
+  return { cappingLpars, cappingGroups, groupJoinTicks, groupLimitsMsu, groupByLpar, msuBy, r4haBy };
 }
 
 /** MLC: hourly SCRT-style sample, monthly bill. */
