@@ -364,7 +364,9 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
   }] },
   // The ruling-out half is tied to the symptom (RT-34): a CICS slot queue's nearest look-alike is QR saturation,
   // which holds MXT slots longer at an unchanged cost per transaction, so only the QR wait rules it out. A DBAT
-  // queue and an initiator wait keep the cost and job readings.
+  // queue and an initiator wait keep the cost and job readings. MXT limits concurrent user tasks (CICS Performance
+  // PDF p.89, printed 81) and QRMODDLY is a dispatched task's wait for QR redispatch (CICS Monitoring PDF p.295,
+  // printed 287), so a task waiting on QR still holds its slot.
   THREAD_LIMIT: { predicates: [{
     label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
