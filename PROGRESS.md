@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-23: M8.7 realism closed: audit fixes RF-01 … RF-09 merged (#428–#433, #478, #479) and BACKLOG `realism-fixes` is empty; RF-05 and RF-08 are on `dev`, not yet `main`. Six docs/research.md rows still read "Fix queued (M8.7 item N)" with no entry behind them; reconciling them is BACKLOG CL-63.
 - 2026-11-23: RF-08 a capacity group gives each member its own view of the group's four-hour average (the group's slots since that member joined, zero-filled before), so a member added to an existing group sees more unused capacity and may cap later; Partition Data and the Monitor III CPC header print AVAILABLE and flag the LIMIT with `*` for four hours, a changed group limit restarts the views, and the cap decision reads the member's view, not the group's combined one.
 - 2026-11-23: RF-05 MSU is charged on effective CP dispatch time (physical dispatch less the LPAR management share) instead of total dispatch time, so the header MSU, Partition Data MSU AVG, Monitor III CPC MSU Act, the R4HA, soft capping and the bill read one rate and an image no longer shows two MSU figures at once; R4HA and bills fall by the overhead share (1–3 % on the reference runs), while LPAR BUSY and physical busy keep total dispatch time. Ten-seed three-bot sweeps (Normal, all in band; runs 45111397822, 45115168408, 45115168291): Midwest donothing 17 / textbook 28 / expert 10 of 10, Harbourline 11 / 30.5 / 8, Revenue 21 / 29 / 10.
 - 2026-11-23: RT-23 the retry storm backs out 20 % of its units, so Db2 accounting shows a rollback share (QWACABRT) and the Db2 statistics view shows rollbacks per member (Q3STABRT); APPLICATION_ERROR's recipe accepts the rollback share with the volume, which proves a storm and not a same-rate campaign. Reporting-only: the units still consume their CPU and time.
@@ -75,7 +76,7 @@ Recent work, one line each (details in the PRs and Git history):
 - 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
 - 2026-11-14: agent instructions pruned of incident notes (#355); PR-04 … PR-08, PR-10 UI fixes (#348–#352, #358).
 
-- **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain; M9 simplified mode is planned
+- **Phase:** M0–M7, M8.7 and M8.9 complete; M8 follow-ups remain; M9 simplified mode is planned
   (requirements below).
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
   the user" in Remaining work; none is implemented.
@@ -98,7 +99,7 @@ Recent work, one line each (details in the PRs and Git history):
 | M8.1–M8.3 | Bench/sweep harnesses, difficulty presets, hints, weekends, endless/daily modes, end reports, career XP and starting unlocks. Performance and balance targets closed by user decision; regression checks remain. |
 | M8.4 | Midwest, Revenue, and Harbourline scenarios with flaws/story beats; 27-card Midwest deck, scenario adaptations, draft options, 11 perks and 2 pacts. |
 | M8.5–M8.6 | Tutorial, accessibility/themes/contrast, keyboard controls, sound, autosave, agent playtests and CLI fixes, draft-based Change Desk, multi-CPC views. Human/phone follow-ups remain below. |
-| M8.7 | Completed researched realism fixes are recorded in SPEC §17 and docs/research.md, including the CICS_SOS EDSA storage model (#166). |
+| M8.7 | Researched realism fixes, recorded in SPEC §17 and docs/research.md: the CICS_SOS EDSA storage model (#166) and the audit round RF-01 … RF-09 (CPU Activity change reason, DISPLAY DDF view, velocity floor, MSU on effective dispatch, WLM% as cap-in-force share, every ended batch job a transaction, per-member capacity group R4HA, a starved server carrying its dependents at its granted share). Closed 2026-11-23 with list `realism-fixes` empty. |
 | M8.9 | Headless play CLI, three player personas, deterministic command logs, spectator mode and take-over saves. |
 
 ## Remaining work
