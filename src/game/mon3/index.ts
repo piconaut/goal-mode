@@ -183,7 +183,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       kind: l.kind,
       msuDef: l.kind === 'ZOS' ? l.definedCapacityMsu : null,
       // MSU Act: the partition's MSU rate, from effective dispatch time (physical dispatch less LPAR management,
-      // RMF Report Analysis 3.1 PDF p.402 (printed 362), PDF p.98 (printed 58)). It is the same field the header,
+      // RMF Report Analysis 3.1 PDF p.401 (printed 361), PDF p.98 (printed 58)). It is the same field the header,
       // Partition Data MSU AVG, the R4HA and the bill use, so the reports cannot disagree.
       msuAct: l.kind === 'ZOS' && box ? (lrt?.msuRate ?? 0) : null,
       procNum: logical,

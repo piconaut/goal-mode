@@ -10,6 +10,7 @@ import { sysplexPis, type WlmSystemState } from '../../wlm/runtime';
 import { clockAt } from '../clock';
 import type { LparConfig, EnvState, SimState } from '../types';
 import { CLUE_LOG_EVERY } from '../../../content/wlm/tuning';
+import { PRSM } from '../../../content/hardware';
 import { TICKS_PER_HOUR, TICK_SEC } from '../units';
 import { RMF_KEEP, type TickCtx, WLM_LOG_MAX } from './ctx';
 import { atOrFind } from './plan';
@@ -40,7 +41,15 @@ export function softCap(t: TickCtx): void {
       );
       capMsu = Math.min(capMsu, shares[l.id] ?? capMsu);
     }
-    if (capMsu < Infinity) d.softCapEngines = capMsu / msuCp;
+    if (capMsu < Infinity) {
+      // The limit is in MSU, which RF-05 charges on effective dispatch (delivered engines less the LPAR management
+      // share). The cap itself is a limit on delivered engines, so divide the effective-dispatch limit by the
+      // smallest usable share any partition can have: the base PR/SM overhead is always charged, and the exact
+      // share for this tick is known only after allocation. Sized this way the capped MSU rate cannot exceed the
+      // limit; it can sit up to the rest of the overhead below it (APPROX).
+      const usable = 1 - PRSM.baseOverheadFrac;
+      d.softCapEngines = capMsu / msuCp / usable;
+    }
   }
 }
 

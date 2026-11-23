@@ -365,11 +365,11 @@ export const IDENTITIES: Identity[] = [
     title: 'One MSU figure: Monitor III CPC MSU Act is the header MSU, and its average over an interval is Partition Data MSU AVG',
     basis: 'game',
     // Partition Data MSU ACT is the "actual consumption based on the logical processor effective dispatch time"
-    // (RMF Report Analysis 3.1 PDF p.402 (printed 362), PDF p.98 (printed 58)), and Monitor III CPC MSU Act is the
+    // (RMF Report Analysis 3.1 PDF p.401 (printed 361), PDF p.98 (printed 58)), and Monitor III CPC MSU Act is the
     // same measurement. That both RMF reports carry one figure is the real behaviour; the header gauge is the game's
     // display of that same rate, so all three must agree: at one moment (the header and Monitor III) and over the
     // interval (Partition Data).
-    source: 'RMF Report Analysis 3.1 PDF p.402 (printed 362), PDF p.98 (printed 58) (MSU ACT and MSU Act from effective dispatch); SPEC §5.11.1',
+    source: 'RMF Report Analysis 3.1 PDF p.401 (printed 361), PDF p.98 (printed 58) (MSU ACT and MSU Act from effective dispatch); SPEC §5.11.1',
     check: (run, c) => {
       for (const o of run.intervals) {
         const view = buildView(o.end, run.scenario);

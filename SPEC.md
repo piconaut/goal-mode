@@ -704,7 +704,7 @@ receiver candidate.
   LPAR busy and physical busy count dispatched cycles, including modeled overhead, rather than unused
   capacity offered by PR/SM (*RMF Report Analysis* 3.1 PDF p.389 (printed 349), PDF p.98 (printed 58)); MSU
   consumption is that dispatch less the LPAR management share, the effective dispatch time RMF's MSU ACT uses
-  (PDF p.402 (printed 362), PDF p.98 (printed 58)); MVS busy excludes sleeping demand.
+  (PDF p.401 (printed 361), PDF p.98 (printed 58)); MVS busy excludes sleeping demand.
   APPROX: continuous awake fractions, without the real 1/256 slice granularity or recovery-boost exceptions.
 - Max 32 per definition; one per service class.
 - **Region groups cap their transactions.** CICS transaction CPU is consumed in the AORs, so a group on the AOR
@@ -934,9 +934,12 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 
 - Every 5 sim-min, compute each LPAR's MSU consumption from its effective CP dispatch time: the physical CP
   dispatch less the LPAR management share, which is the basis RMF's MSU ACT uses (*RMF Report Analysis* 3.1 PDF
-  p.402 (printed 362), PDF p.98 (printed 58)). The header MSU, Partition Data MSU AVG, Monitor III CPC MSU Act, the
+  p.401 (printed 361), PDF p.98 (printed 58)). The header MSU, Partition Data MSU AVG, Monitor III CPC MSU Act, the
   R4HA, soft capping and the bill all read that one rate, so they cannot disagree (RF-05). LPAR BUSY and physical
-  busy keep the total dispatch time. Each LPAR keeps 48 five-minute values;
+  busy keep the total dispatch time. A defined capacity of C MSU is a limit on effective dispatch (C ÷ MSU per CP
+  engines); because the PR/SM cap acts on delivered engines, it is expressed as that limit ÷ (1 − the base PR/SM
+  overhead). The exact share for a tick is known only after allocation, so while capped the rate can sit up to the
+  rest of the overhead below the limit but never above it (APPROX). Each LPAR keeps 48 five-minute values;
   the **R4HA** is their average (WLM samples every 10 s and keeps the 5-minute values)
   ([value-4it: z/OS soft capping](https://www.value-4it.com/wp/?p=165)).
 - **Defined Capacity (DC)** per LPAR: when R4HA > DC, the LPAR is soft-capped to DC until R4HA
