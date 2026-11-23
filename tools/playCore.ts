@@ -58,7 +58,7 @@ export type PlayCommand =
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
   | { cmd: 'project'; id: string; hours: number }
   | { cmd: 'restart'; name: string }
-  /** intervalId (WLMGL): the stable interval id the CLI shows; it replaces req.index. */
+  /** intervalId (WLMGL, CPC, CF, DASD): the stable interval id the CLI shows; it replaces req.index. */
   /** at (MON3, CPC without an interval): a past time as `clockText` prints it (`D2 10:40`); it sets req.tick. */
   | { cmd: 'pin'; req: PinRequest; intervalId?: number; at?: string }
   | { cmd: 'unpin'; id: number }
@@ -206,21 +206,26 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'pin': {
       let req = c.req;
+      // Whether the command named an interval at all: the CLI's id, or a position in a `json` command's PinRequest.
+      const namedInterval = c.intervalId !== undefined || ((req.source === 'CF' || req.source === 'DASD') && req.index !== undefined);
       // Same gate as the view the browser pins from.
-      const view = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
-      if (view && !hasFeature(run, view)) return fail(needsText(view, `A ${req.source} pin`));
+      const feature = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
+      if (feature && !hasFeature(run, feature)) return fail(needsText(feature, `A ${req.source} pin`));
+      const shown = buildView(run, sc(run));
+      // An interval pin names the interval by its stable id, as `report` shows it. Resolve that once for every source
+      // whose rows come from an RMF interval (PT-48: CF and DASD used to read the id as an array position).
+      if (c.intervalId !== undefined && (req.source === 'WLMGL' || req.source === 'CPC' || req.source === 'CF' || req.source === 'DASD')) {
+        const index = intervalIndex(run, c.intervalId);
+        if (!shown.reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
+        req = { ...req, index };
+      }
       if (req.source === 'WLMGL') {
-        const index = c.intervalId !== undefined ? intervalIndex(run, c.intervalId) : req.index;
-        const iv = buildView(run, sc(run)).reports.some((x) => x.index === index) ? run.sim.rmf.intervals[index] : undefined;
-        if (!iv) return fail(`No RMF interval ${c.intervalId ?? req.index}; ${intervalList(run)}`);
+        const index = req.index;
+        const iv = shown.reports.some((x) => x.index === index) ? run.sim.rmf.intervals[index] : undefined;
+        if (!iv) return fail(`No RMF interval ${index}; ${intervalList(run)}`);
         const w = { ...req, index, scKey: resolveKey(req.scKey, iv.wlm.map((x) => x.scKey)) };
         if (!iv.wlm.some((x) => x.lparId === w.system && x.scKey === w.scKey)) return fail(`No WLMGL row ${w.system} ${w.scKey} in interval ${intervalId(iv)}; ${rowKeys(iv, w.system)}`);
         req = w;
-      }
-      if (req.source === 'CPC' && c.intervalId !== undefined) {
-        const index = intervalIndex(run, c.intervalId);
-        if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
-        req = { ...req, index };
       }
       if (req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'CICS_STORAGE') {
         const hour = smfHourKey(run, req.hour);
@@ -238,10 +243,13 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       }
       const history = (t: number) => (file.mon3 ? mon3PinsAt(file.mon3, t) : null);
       if (req.source === 'MON3') {
-        const keys = (req.tick !== undefined ? history(req.tick)?.view.rows : buildView(run, sc(run)).mon3?.rows)?.map((x) => x.scKey) ?? [];
+        const keys = (req.tick !== undefined ? history(req.tick)?.view.rows : shown.mon3?.rows)?.map((x) => x.scKey) ?? [];
         req = { ...req, scKey: resolveKey(req.scKey, keys) };
       }
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'PIN', req }, content, sc(run), { mon3History: history });
+      // Without an interval id a CF or DASD pin reads the buffer's latest interval, which need not be the incident's.
+      if (o.ok && (req.source === 'CF' || req.source === 'DASD') && !namedInterval)
+        return done(o.run, `${o.message} (no interval id given: this is the latest RMF interval, not the incident's)`);
       return done(o.run, o.message, o.ok, o.pending);
     }
     case 'unpin': {

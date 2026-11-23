@@ -119,7 +119,7 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceStat
     case 'rca':
       return settled({ run: submitRca(run, c.incidentId, c.mechanism, c.trigger, scOf(run), c.evidenceIds ?? []) });
     case 'ask':
-      return settled(askAround(run, c.topic, c.workloadId ?? null, scOf(run)));
+      return settled(askAround(run, c.topic, c.workloadId ?? null, scOf(run), contentOf(run)));
     case 'project':
       return settled(workOnProject(run, c.id, c.hours));
     case 'pin':

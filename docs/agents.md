@@ -22,7 +22,7 @@ npm run -s play -- runs/a.json finance    # Finance tab: bill so far; under TFP,
 npm run -s play -- runs/a.json capacity   # CPC engines and MSU, LPAR logical CPs/weights/defined capacity, job class initiators, capacity changes by day
 npm run -s play -- runs/a.json batch      # last batch night by stream (needs SMF30_BATCH, like smf BATCH): LPARs, start/end, queueing, stretch
 npm run -s play -- runs/a.json rca INC3 CPU_PRIORITY POLICY [--evidence PIN1,PIN4]   (ids: INC incident, PIN pin, CHG planned change; bare numbers work too)
-npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also MON3, CPC, DB2, CICS (see catalog)
+npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also CPC, CF, DASD, MON3, DB2, CICS (see catalog)
 npm run -s play -- runs/a.json pin MON3 PRDA MKTORD DELAY_CPU --at D1 09:40   # MON3 and CPC pins from a past Monitor III range
 npm run -s play -- runs/a.json pin MON3 PROD1 ONLHI#1 VELOCITY CICSAOR1   # a SYSWKM server's velocity (current range only)
 npm run -s play -- runs/a.json ask CALENDAR       # ask around; APP_ENTRY/GROWTH take a workload id
@@ -41,7 +41,8 @@ with code 2 and change nothing.
 
 Times read `D1 Tue 00:30`: the played day runs 06:00 to 06:00, so the small hours after day 1's evening are still
 D1, on the next calendar weekday. RMF intervals have stable ids (the interval's end in 5-minute slots since the
-run began); `status` lists the latest ones, and `report`, `pin WLMGL` and incident lines all use these ids. A
+run began); `status` lists the latest ones, and `report`, interval pins (`pin WLMGL|CPC|CF|DASD …`) and incident
+lines all use these ids. A
 bare service class name (`ONLHI`) means its first period (`ONLHI#1`). `rca` replies with which half was right,
 the true mechanism/trigger and the trust effect (a wrong RCA costs trust; skipping one earns no points and costs no trust). Shapes: `PlayCommand` in `tools/playCore.ts`, Change Desk commands in
 `src/sim/core/commands.ts`, WLM edits in `src/game/wlmEdit.ts`.

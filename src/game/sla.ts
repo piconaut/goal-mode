@@ -1,6 +1,7 @@
 // Hourly SLA accounting, incident detection and ground-truth causes (SPEC §10, §12).
 
-import { NEW_WORKLOAD_DAYS } from '../content/sla';
+import { CO_DOMINANT_SHARE, DELAY_FLOOR_FRAC, NEW_WORKLOAD_DAYS } from '../content/sla';
+import { clockAt } from '../sim/core/clock';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { SERVER_KEY } from '../sim/wlm/holders';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
@@ -14,6 +15,19 @@ import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, IncidentSubjects, M
 import { sumCapSamples, sumCpuGrants, sumCpuWaits, sumRecords } from './hourAccounting';
 
 export const BASELINE_DECAY = 0.8;
+
+/** The clock hour (0–23) a tick falls in: the key of a workload's hour-of-day baseline. */
+export const clockHourOf = (tick: number): number => Math.floor(clockAt(tick).hourOfDay);
+
+/** A workload's baseline for a clock hour: its slot once it has one, the rolling EWMA until then (RT-17). */
+export function slotBaseline(
+  hourBaselines: Record<string, Record<string, Record<string, number>>> | undefined,
+  baselines: Record<string, Record<string, number>>,
+  workloadId: string,
+  hour: number,
+): Record<string, number> {
+  return hourBaselines?.[workloadId]?.[String(hour)] ?? baselines[workloadId] ?? {};
+}
 
 /** Importance rank for legacy hour accounting: SYSTEM/SYSSTC 0, goal classes 1–5, discretionary/SYSOTHER 6.
  * APPROX: old hours without RT-16 grants retain the importance-only split; RT-32 does not use it for new hours. */
@@ -157,7 +171,15 @@ export function cappingVerdict(hour: HourAcc, hosts: readonly IncidentHost[], ct
   return null;
 }
 
-/** Which mechanism grew most relative to the workload's healthy baseline. */
+/** The CPU-family answer for an hour: a capped image first, otherwise capacity or priority (RT-33, §4.3). */
+export function cpuMechanismOf(hour: HourAcc, hosts: readonly IncidentHost[], ctx?: CpuJudgement): Mechanism {
+  // Only capping of the images this workload runs on counts, and only the judged host's (U-9).
+  if (cappingVerdict(hour, hosts, ctx)) return 'CAPPING';
+  // Game rule: a full judged pool with little displaceable use is capacity, otherwise priority.
+  return capacityBasis(hour, hosts, ctx)?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
+}
+
+/** Which mechanism grew most relative to the workload's healthy baseline for its clock hour (RT-17). */
 export function mechanismOf(
   parts: Record<string, number>,
   baseline: Record<string, number>,
@@ -165,24 +187,46 @@ export function mechanismOf(
   hosts: readonly IncidentHost[],
   ctx?: CpuJudgement,
 ): Mechanism {
-  let best = 'CPU';
-  let bestExcess = -Infinity;
-  for (const [g, excess] of groupExcess(parts, baseline)) {
-    if (excess > bestExcess) {
-      best = g;
-      bestExcess = excess;
+  const groups = groupExcess(parts, baseline);
+  const total = groups.reduce((a, [, excess]) => a + Math.max(0, excess), 0);
+  // A miss whose delay groups together are under the floor is not explained by any of them (A6, §4.2(2)): the CPU
+  // verdict. A caller that passes no SLA budget keeps the pre-RT-17 ranking (old hours, unit fixtures).
+  if (ctx?.slaRtSec === undefined || total >= DELAY_FLOOR_FRAC * ctx.slaRtSec) {
+    let best = 'CPU';
+    let bestExcess = -Infinity;
+    for (const [g, excess] of groups) {
+      if (excess > bestExcess) {
+        best = g;
+        bestExcess = excess;
+      }
     }
+    if (best !== 'CPU') return best as Mechanism;
   }
-  if (best !== 'CPU') return best as Mechanism;
-  // Only capping of the images this workload runs on counts, and only the judged host's (U-9).
-  if (cappingVerdict(hour, hosts, ctx)) return 'CAPPING';
-  // Game rule: a full judged pool with little displaceable use is capacity, otherwise priority.
-  return capacityBasis(hour, hosts, ctx)?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
+  return cpuMechanismOf(hour, hosts, ctx);
+}
+
+/** Delay groups that also explain the miss: at least a third of the total excess, the primary group excluded, and
+ *  none when the total is under the floor (§4.2(2)). `CPU` names the CPU group; the caller maps it to its verdict. */
+export function coDominantGroups(
+  parts: Record<string, number>,
+  baseline: Record<string, number>,
+  slaRtSec: number,
+  primaryGroup: string,
+): { group: string; sharePct: number }[] {
+  const groups = groupExcess(parts, baseline);
+  const total = groups.reduce((a, [, excess]) => a + Math.max(0, excess), 0);
+  if (total <= 0 || total < DELAY_FLOOR_FRAC * slaRtSec) return [];
+  return groups
+    .filter(([g, excess]) => g !== primaryGroup && excess >= CO_DOMINANT_SHARE * total)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .map(([group, excess]) => ({ group, sharePct: (100 * Math.max(0, excess)) / total }));
 }
 
 export interface CpuJudgement {
   workloadId: string;
   baseline: Record<string, number>;
+  /** The workload's SLA response-time budget (seconds per transaction), for the delay floor (A6, RT-17). */
+  slaRtSec?: number;
   subjects: IncidentSubjects;
   overflowBlockedHosts?: readonly string[];
   /** Roles the work depends on (`w.servers` plus `w.hostRole`): a resource-group cap on one of them is CAPPING. */
@@ -464,11 +508,11 @@ export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEv
   return fallbackTrigger(mechanism, nightHour, false);
 }
 
-export function updateBaseline(prev: Record<string, number> | undefined, parts: Record<string, number>): Record<string, number> {
+export function updateBaseline(prev: Record<string, number> | undefined, parts: Record<string, number>, decay = BASELINE_DECAY): Record<string, number> {
   if (!prev) return { ...parts };
   const out: Record<string, number> = {};
   for (const k of new Set([...Object.keys(prev), ...Object.keys(parts)])) {
-    out[k] = BASELINE_DECAY * (prev[k] ?? 0) + (1 - BASELINE_DECAY) * (parts[k] ?? 0);
+    out[k] = decay * (prev[k] ?? 0) + (1 - decay) * (parts[k] ?? 0);
   }
   return out;
 }

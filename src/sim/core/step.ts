@@ -3,7 +3,7 @@
 // subsystem concurrency) use the previous tick's values carried in `env`.
 // Stage bodies live in ./tick/ (ctx, control, demand, dispatch, helpers); this file orchestrates them.
 
-import { cfServiceForSystem, evaluateCf, type CfImageInput, type CfSystemResult } from '../cf/cf';
+import { cfServiceForSystems, evaluateCf, type CfImageInput } from '../cf/cf';
 import { cpSpeed, ziipSpeed } from '../hw/cpc';
 import type { PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
@@ -216,12 +216,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     return [{ cfg, availableEngines: rt.availableEngines, entitlementEngines: rt.entitlementEngines, dedicated: icf.dedicated }];
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
-  const siteKm = (lparId: string) => plan.siteKmOf[lparId] ?? 0;
-  const cfBySystem: Record<string, CfSystemResult> = {};
-  for (const l of zosLpars) {
-    const here = siteKm(l.id);
-    cfBySystem[l.id] = cfServiceForSystem(cf, config.cfStructures, (cfId) => Math.abs(siteKm(cfId) - here), scenario.cfTunables, sums.cfRequestsBy[l.id] ?? 0);
-  }
+  const cfBySystem = cfServiceForSystems(cf, config.cfStructures, zosLpars, plan.siteKmOf, scenario.cfTunables, sums.cfRequestsBy);
   const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + prev.mods.lockBoost;
 
   // Batch critical-path projection and end-of-night summary.
@@ -247,6 +242,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     wr.retryRate = Math.min(2 * Math.max(0, organic), ((failedBy[wr.id] ?? 0) * w.retryFrac) / TICK_SEC);
     const wt = wlTick[wr.id]!;
     if (wt.completions > 1e-9) wr.lastRtSec = wt.rtSumSec / wt.completions;
+    // Retry-storm backouts (RT-23): a share of the completed units ends in rollback. Reporting only; the units still
+    // consumed their CPU and time, as an abandoned client request does before Db2 backs it out.
+    const rollbackFrac = prev.mods.rollbackFrac?.[wr.id] ?? 0;
+    if (rollbackFrac > 0 && wt.completions > 0) wt.rolledBack = wt.completions * Math.min(1, rollbackFrac);
   }
 
   const nextEnv: EnvState = t.failByWorkloadLpar
@@ -257,9 +256,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
 
   const nextTick = prev.tick + 1;
-  const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
+  const { cappingLpars, cappingGroups, groupJoinTicks, groupLimitsMsu, groupByLpar, msuBy, r4haBy } = stepCapping(t, zosLpars);
   const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
-  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick, cfBySystem, lockIndex);
+  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, groupByLpar, nextTick, cfBySystem, lockIndex);
   return {
     ...prev,
     tick: prev.tick + 1,
@@ -272,7 +271,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     last: { lpars: lparTicks, workloads: Object.values(wlTick) },
     env: nextEnv,
     batch,
-    capping: { lpars: cappingLpars, groups: cappingGroups },
+    capping: {
+      lpars: cappingLpars,
+      groups: cappingGroups,
+      ...(Object.keys(groupJoinTicks).length > 0 ? { groupJoinTicks } : {}),
+      ...(Object.keys(groupLimitsMsu).length > 0 ? { groupLimitsMsu } : {}),
+    },
     cost,
     rmf,
   };

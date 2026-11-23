@@ -2,10 +2,33 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { CF_LOCK_CONTENTION } from '../../src/content/cf';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import type { LparTick } from '../../src/sim/core/types';
-import type { CfResult } from '../../src/sim/cf/cf';
+import type { CfResult, CfSystemResult } from '../../src/sim/cf/cf';
 import { accumulateTick, closeInterval, newRmfAcc } from '../../src/sim/measure/rmf';
 import { renderCfActivity, renderWlmDetail, renderWlmSummary } from '../../src/sim/measure/reports';
 import { emptyScpTick } from '../../src/sim/wlm/evaluate';
+
+it('accumulates multiple structure copies on one subchannel without changing the previous interval state', () => {
+  const row = { name: 'LOCK', type: 'LOCK' as const, role: 'PRIM' as const, cfLparId: 'CF01',
+    distKm: 0, requestRate: 8, syncSec: 0.125, asyncFrac: 0.25, asyncSec: 0.25, serviceSec: 0.15625 };
+  const cfSys: Record<string, CfSystemResult> = {
+    PROD1: { distKm: 15, requestRate: 12, syncSec: 0, asyncFrac: 0, serviceSec: 0, zosCpuSec: 0, byStructure: [
+      row,
+      { ...row, name: 'GBP', type: 'CACHE', role: undefined, requestRate: 4 },
+      { ...row, role: 'SEC', cfLparId: 'CF02', distKm: 15 },
+    ] },
+  };
+  const before = accumulateTick(newRmfAcc(0), [], [], null, [], cfSys);
+  const snapshot = structuredClone(before);
+  const after = accumulateTick(before, [], [], null, [], cfSys);
+  expect(before).toEqual(snapshot);
+  expect(after.cfSystems).toEqual({
+    'PROD1|CF01': { system: 'PROD1', cfLparId: 'CF01', distKm: 0, ticks: 2, rate: 24,
+      syncSecW: 3, asyncW: 6, serviceSecW: 3.75, syncReq: 18, syncReqSecW: 2.25 },
+    'PROD1|CF02': { system: 'PROD1', cfLparId: 'CF02', distKm: 15, ticks: 2, rate: 16,
+      syncSecW: 2, asyncW: 4, serviceSecW: 2.5, syncReq: 12, syncReqSecW: 1.5 },
+  });
+  expect(after.cfStructSystems?.['LOCK|SEC|PROD1']).toMatchObject({ ticks: 2, rate: 16, syncReq: 12, asyncReq: 4 });
+});
 
 // RMF Report Analysis 3.1 p.534 Table 222: IIPCP is a subset of APPL% CP.
 describe('WLM APPL% CP includes zIIP-eligible work executed on CPs', () => {

@@ -1,8 +1,9 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_PRODUCTS, tieredMonthlyCost } from '../../src/content/pricing';
 import { accrueUsage, closeMonth, estimateMonth, newCost, recordHour, startTfp } from '../../src/sim/cost/mlc';
-import { groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
+import { groupMemberR4ha, groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
 import { initState } from '../../src/sim/core/init';
+import { effectiveDispatchEngines } from '../../src/sim/hw/cpc';
 import { step } from '../../src/sim/core/step';
 import { TICKS_PER_R4HA_SLOT } from '../../src/sim/core/units';
 import { renderPartitionData, renderReport, renderWlmDetail, renderWlmSummary, renderCfActivity, renderDasdSummary } from '../../src/sim/measure/reports';
@@ -76,6 +77,35 @@ describe('R4HA and soft capping', () => {
     const prod2 = s.last.lpars.find((l) => l.lparId === 'PROD2')!;
     expect(prod2.scps.reduce((a, x) => a + x.delayCap, 0)).toBe(0);
   });
+
+  it('a binding soft cap holds the effective-dispatch MSU at the limit, not the LPAR management share below it', () => {
+    // MSU is charged on effective dispatch (RMF Report Analysis 3.1 PDF p.401 (printed 361)) while the PR/SM cap acts
+    // on delivered engines, so softCap sizes the cap ÷ (1 − base overhead). Without that conversion the capped rate
+    // would be limit × (1 − overheadFrac), about 3 MSU lower here.
+    const sc = structuredClone(MIDWEST.world);
+    sc.lpars.find((l) => l.id === 'PROD2')!.definedCapacityMsu = 300;
+    const scenario = { ...MIDWEST, world: sc, batchNetwork: MIDWEST.batchNetwork };
+    let s = initState(5, scenario);
+    let bindingTicks = 0;
+    for (let i = 0; i < 6 * 360 + 4 * 360; i++) {
+      s = step(s, [], scenario);
+      const rt = s.lpars.find((l) => l.id === 'PROD2')!;
+      const cp = rt.pools.find((p) => p.pool === 'CP')!;
+      if (!s.capping.lpars.find((r) => r.id === 'PROD2')!.capped || cp.softCappedFrac <= 0) continue;
+      bindingTicks++;
+      expect(rt.msuRate).toBeLessThanOrEqual(300 + 1e-6);
+      expect(rt.msuRate).toBeGreaterThan(300 * (1 - cp.overheadFrac) + 1);
+    }
+    expect(bindingTicks).toBeGreaterThan(10);
+  });
+});
+
+describe('MSU basis', () => {
+  it('effective dispatch engines are the delivered engines less the LPAR management share', () => {
+    expect(effectiveDispatchEngines({ deliveredEngines: 4, overheadFrac: 0.025 })).toBeCloseTo(3.9, 12);
+    expect(effectiveDispatchEngines({ deliveredEngines: 2.5, overheadFrac: 0 })).toBe(2.5);
+    expect(effectiveDispatchEngines({ deliveredEngines: 0, overheadFrac: 0.03 })).toBe(0);
+  });
 });
 
 describe('MLC', () => {
@@ -134,6 +164,101 @@ describe('MLC', () => {
     expect(s1.cost.priceMult).toBe(1.08);
     expect(step(s0, [{ kind: 'SET_MLC_PRICE', mult: 0 }], MIDWEST).cost.priceMult).toBeUndefined();
   });
+});
+
+describe('capacity group member views (RF-08)', () => {
+  const groupCmd = (members: string[], limitMsu: number) => [{ kind: 'SET_CAPACITY_GROUP' as const, groupId: 'G1', limitMsu, members }];
+
+  it('zero-fills each member view at the definition, then clears the LIMIT * after four hours', () => {
+    // Before the first slot completes the member's view is zero, so all of the limit is unused.
+    expect(groupMemberR4ha(newR4ha('G1'), 0, 29)).toBe(0);
+    expect(groupMemberR4ha(newR4ha('G1'), 0, 30)).toBe(0); // the slot is empty until stepR4ha fills one
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 5 * 360; i++) s = step(s, [], MIDWEST);
+    const rows = s.rmf.intervals.map((iv) => iv.cpu.find((r) => r.lparId === 'PROD1')!).filter((r) => r.group === 'G1');
+    expect(rows.length).toBeGreaterThan(8);
+    const first = rows[0]!;
+    const last = rows[rows.length - 1]!;
+    // The first closed interval already holds some of the group's usage, but not four hours of it: the LIMIT carries
+    // the `*`, and the unused average is positive.
+    expect(first.groupLimitMsu).toBe(100);
+    expect(first.groupLimitNew).toBe(true);
+    expect(first.groupAvailableMsu!).toBeGreaterThan(0);
+    expect(first.groupAvailableMsu!).toBeLessThan(100);
+    // Four hours later the window is full: the group's average is over the 100 MSU limit, AVAILABLE is negative
+    // and the `*` is gone.
+    expect(last.groupLimitNew).toBe(false);
+    expect(last.groupAvailableMsu!).toBeLessThan(0);
+    expect(last.groupAvailableMsu!).toBeLessThan(first.groupAvailableMsu!);
+  }, 120_000);
+
+  it('gives a member that joins an existing group a lower view than the members already in it', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1'], 100), MIDWEST);
+    for (let i = 0; i < 4.2 * 360; i++) s = step(s, [], MIDWEST);
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST); // one full 30-minute interval after the join
+    const iv = s.rmf.intervals[s.rmf.intervals.length - 1]!;
+    const old = iv.cpu.find((r) => r.lparId === 'PROD1')!;
+    const joined = iv.cpu.find((r) => r.lparId === 'PROD2')!;
+    expect(old.group).toBe('G1');
+    expect(joined.group).toBe('G1');
+    expect(old.groupLimitNew).toBe(false);
+    expect(joined.groupLimitNew).toBe(true);
+    // Same limit, but the new member's four-hour average is still zero-filled, so it sees more unused capacity.
+    expect(joined.groupAvailableMsu!).toBeGreaterThan(old.groupAvailableMsu!);
+  }, 120_000);
+  it('restarts the view and the LIMIT * when the group limit changes', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 5 * 360; i++) s = step(s, [], MIDWEST);
+    const before = s.rmf.intervals[s.rmf.intervals.length - 1]!.cpu.find((r) => r.lparId === 'PROD1')!;
+    expect(before.groupLimitMsu).toBe(100);
+    expect(before.groupLimitNew).toBe(false);
+    expect(before.groupAvailableMsu!).toBeLessThan(0);
+    // A changed limit starts the four-hour window again (IBM allows the limit to be exceeded for those hours).
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 120), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
+    const after = s.rmf.intervals[s.rmf.intervals.length - 1]!.cpu.find((r) => r.lparId === 'PROD1')!;
+    expect(after.groupLimitMsu).toBe(120);
+    expect(after.groupLimitNew).toBe(true);
+    expect(after.groupAvailableMsu!).toBeGreaterThan(before.groupAvailableMsu!);
+    expect(after.groupAvailableMsu!).toBeGreaterThan(0);
+  }, 120_000);
+
+  it('caps each member on its own view: a late joiner is not capped while the existing member is', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1'], 50), MIDWEST);
+    for (let i = 0; i < 4.2 * 360; i++) s = step(s, [], MIDWEST);
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 50), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
+    const iv = s.rmf.intervals[s.rmf.intervals.length - 1]!;
+    const old = iv.cpu.find((r) => r.lparId === 'PROD1')!;
+    const joined = iv.cpu.find((r) => r.lparId === 'PROD2')!;
+    // The group's combined average is over 50 MSU, but the joiner's zero-filled view is not, so WLM caps only PROD1.
+    expect(old.groupAvailableMsu!).toBeLessThan(0);
+    expect(old.wlmCappingPct).toBeGreaterThan(0);
+    expect(joined.groupAvailableMsu!).toBeGreaterThan(0);
+    expect(joined.wlmCappingPct).toBe(0);
+  }, 120_000);
+
+  it('does not cap on the old view against a changed limit, not even for one tick', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 5 * 360; i++) s = step(s, [], MIDWEST);
+    const capTicks = () => s.rmf.acc.lpars['PROD1']?.wlmCapTicks ?? 0;
+    const before = capTicks();
+    s = step(s, [], MIDWEST);
+    expect(capTicks()).toBe(before + 1); // capped on the 100 MSU limit
+    s = step(s, groupCmd(['PROD1', 'PROD2'], 120), MIDWEST);
+    expect(capTicks()).toBe(before + 1); // the raised limit applies at once
+  }, 120_000);
+
+  it('prints GROUP, the LIMIT with its * and AVAIL on Partition Data', () => {
+    let s = step(initState(7, MIDWEST), groupCmd(['PROD1', 'PROD2'], 100), MIDWEST);
+    for (let i = 0; i < 180; i++) s = step(s, [], MIDWEST);
+    const text = renderPartitionData(s.rmf.intervals[s.rmf.intervals.length - 1]!);
+    expect(text).toContain('GROUP');
+    expect(text).toContain('LIMIT');
+    expect(text).toContain('AVAIL');
+    expect(text).toMatch(/G1\s+100\*/);
+  }, 120_000);
 });
 
 describe('RMF intervals and reports', () => {

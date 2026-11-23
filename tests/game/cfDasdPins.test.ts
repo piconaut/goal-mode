@@ -76,7 +76,7 @@ describe('CF Activity pins (RT-10)', () => {
     expect(p.source).toBe('CF');
     expect(p.value).toBeCloseTo(109);
     expect(p.baseline).toBeCloseTo(18);
-    expect(p.text).toMatch(/^CF D1 13:30 CF01 CF sync service time 109 µs/);
+    expect(p.text).toMatch(/^CF D1 \d\d:\d\d–\d\d:\d\d CF01 CF sync service time 109 µs/);
     expect(verdict(r, incident('CF_SERVICE', 'HARDWARE_FAULT')).relevance).toBe(1);
     // The same row says nothing about a non-hardware I/O incident: the mechanism and trigger are a CF service's.
     expect(verdict(r, incident('IO', 'POLICY')).relevance).toBe(0);
@@ -110,7 +110,7 @@ describe('DASD Activity pins (RT-10)', () => {
     // DASD_DEGRADED: DISC ×5.
     const degraded = pin(withHistory({ dasd: { ...interval(2).dasd, discMs: 0.37 } }), { source: 'DASD', lcuId: 'ALL', metric: 'DASD_DISC', index: 2 });
     expect(degraded.pins.at(-1)!.value).toBeCloseTo(0.37);
-    expect(degraded.pins.at(-1)!.text).toMatch(/^DASD D1 13:30 ALL DISC time 0\.4 ms/);
+    expect(degraded.pins.at(-1)!.text).toMatch(/^DASD D1 \d\d:\d\d–\d\d:\d\d ALL DISC time 0\.4 ms/);
     expect(verdict(degraded, incident('IO', 'HARDWARE_FAULT')).relevance).toBe(1);
     expect(verdict(degraded, incident('CF_SERVICE', 'POLICY')).relevance).toBe(0);
   });

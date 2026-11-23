@@ -83,7 +83,7 @@ const fixtureIncident = (r: RunState, kind: Kind, truth: Incident['truth']): Inc
 };
 
 const WLM_FAMILY = new Set<EvidenceMetric>(['PI', 'APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP', 'ENDED_RATE', 'CPU_PER_TXN', 'DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER', 'WM_LOCK', 'WM_READY']);
-const DB2_FAMILY = new Set<EvidenceMetric>(['CPU_VS_BASE', 'LOCK_WAIT', 'SYNC_IO', 'CF_WAIT', 'DBAT_QUEUE']);
+const DB2_FAMILY = new Set<EvidenceMetric>(['CPU_VS_BASE', 'LOCK_WAIT', 'SYNC_IO', 'CF_WAIT', 'DBAT_QUEUE', 'ROLLBACK_PCT']);
 const CICS_FAMILY = new Set<EvidenceMetric>(['QR_WAIT', 'MXT_WAIT', 'FAIL_PCT']);
 
 /** Where a pin of this metric and relation sits for this incident kind, or null when no report row is one. */
@@ -277,21 +277,21 @@ describe('documented values (RT-13)', () => {
       DEPENDENCY: ['the server slow', 'the hurt class\'s own CPU delay < 10 %'],
       LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
-      QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'not the task limit or the CPU'],
-      THREAD_LIMIT: ['queued for a slot', 'not slower work holding the slots'],
+      QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'little waiting for a slot or on the CPU'],
+      THREAD_LIMIT: ['queued for a slot', 'the work ran no slower'],
       ROUTING: ['transactions failed', 'the work itself unchanged'],
       IO: ['I/O waits on the hurt work', 'DASD itself slow'],
       STORAGE: ['storage waits', 'the hurt class\'s own CPU delay < 10 %'],
-      JOB_FAILURE: ['critical jobs ABENDed', 'they failed rather than ran late'],
+      JOB_FAILURE: ['critical jobs ABENDed', 'little of the lost time was CPU or I/O wait'],
       DEMAND_SURGE: ['more work', 'at the same cost'],
-      CHANGE_REGRESSION: ['the same work costs more', 'not more of it'],
-      RUNAWAY_WORK: ['one class or job up by half an engine', 'without more work to show for it'],
+      CHANGE_REGRESSION: ['the same work costs more', 'the volume did not grow'],
+      RUNAWAY_WORK: ['one class or job up by half an engine', 'its work did not grow'],
       BATCH_OVERLAP: ['lock or I/O waits on the hurt work', 'batch running then'],
       POLICY: ['the hurt work delayed', 'the work itself unchanged'],
       HARDWARE_FAULT: ['the resource\'s own report', 'the work itself unchanged'],
       NEW_WORKLOAD: ['the hurt work delayed', 'work with no history'],
       GROWTH: ['the hurt work delayed', 'the work itself unchanged'],
-      APPLICATION_ERROR: ['the software misbehaved', 'the work itself unchanged'],
+      APPLICATION_ERROR: ['the software misbehaved', 'the volume explains it'],
     });
   });
 });
@@ -581,7 +581,7 @@ describe('RCA scoring by proof (RT-13)', () => {
     expect(rca.strong).toBe(true);
     expect(rca.points).toBe(5 + PROOF.recipePoints);
     expect(after.insight - before.insight).toBe(5 + PROOF.recipePoints + EVIDENCE.strongInsight);
-    expect(proofLines(rca.proof!)[0]).toMatch(/^Mechanism CPU_PRIORITY proven: ✓ CPU or zIIP delay .*; ✓ a consumer WLM could have taken CPU from/);
+    expect(proofLines(rca.proof!)[0]).toMatch(/^Mechanism CPU_PRIORITY: proven: ✓ CPU or zIIP delay .*; ✓ a consumer WLM could have taken CPU from/);
   });
 
   it('pays the mechanism recipe without the strong bonus when the trigger recipe is incomplete', () => {

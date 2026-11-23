@@ -18,6 +18,7 @@ import { allWorkloads } from '../../src/game/workloads';
 import { formatClock } from '../../src/sim/core/clock';
 import type { LparConfig, WorldConfig } from '../../src/sim/core/types';
 import { R4HA_SLOTS, TICKS_PER_HOUR, TICKS_PER_R4HA_SLOT, TICK_SEC } from '../../src/sim/core/units';
+import { groupMemberR4ha, R4HA_WINDOW_TICKS } from '../../src/sim/cost/r4ha';
 import { billLines, closeMonth, tfpCharge } from '../../src/sim/cost/mlc';
 import { msuPerCp } from '../../src/sim/hw/cpc';
 import { REPORT_KINDS, renderReport, renderScrt } from '../../src/sim/measure/reports';
@@ -342,9 +343,9 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'partition-msu',
-    title: "Partition Data: MSU AVG is the dispatched CP engines at the CPC's MSU per CP (Monitor III CPC capacity ÷ CPs)",
+    title: "Partition Data: MSU AVG is the effective CP dispatch at the CPC's MSU per CP (Monitor III CPC capacity ÷ CPs)",
     basis: 'game',
-    source: 'SPEC §5.11.1 (MSU from general-CP dispatch time); Monitor III CPC header',
+    source: 'SPEC §5.11.1 (MSU from general-CP effective dispatch time, RF-05); Monitor III CPC header',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -353,9 +354,47 @@ export const IDENTITIES: Identity[] = [
           const h = o.mon3.cpcHeaders.find((x) => x.lparId === r.lparId);
           const cpc = o.config.cpcs.find((x) => x.id === h?.cpcId);
           if (!h || !cpc || cpc.engines.CP === 0) continue;
-          c.close(r.msuAvg, (r.physicalEngines * h.cpcCapacityMsu) / cpc.engines.CP, ROUNDING, () => `${at(o)} ${r.lparId} MSU AVG vs PHYS ENG × MSU/CP`);
+          c.close(r.msuAvg, (o.lpars[r.lparId]!.effectiveDispatchCp * h.cpcCapacityMsu) / cpc.engines.CP / n, ROUNDING, () => `${at(o)} ${r.lparId} MSU AVG vs EFFECTIVE ENG × MSU/CP`);
           c.close(r.msuAvg, o.lpars[r.lparId]!.msu / n, ROUNDING, () => `${at(o)} ${r.lparId} MSU AVG vs sim MSU rate`);
           c.close(r.physicalEngines, o.lpars[r.lparId]!.deliveredCp / n, ROUNDING, () => `${at(o)} ${r.lparId} PHYS ENG vs sim`);
+        }
+      }
+    },
+  },
+  {
+    id: 'msu-act-everywhere',
+    title: 'One MSU figure: Monitor III CPC MSU Act is the header MSU, and its average over an interval is Partition Data MSU AVG',
+    basis: 'game',
+    // Partition Data MSU ACT is the "actual consumption based on the logical processor effective dispatch time"
+    // (RMF Report Analysis 3.1 PDF p.401 (printed 361), PDF p.98 (printed 58)), and Monitor III CPC MSU Act is the
+    // same measurement. That both RMF reports carry one figure is the real behaviour; the header gauge is the game's
+    // display of that same rate, so all three must agree: at one moment (the header and Monitor III) and over the
+    // interval (Partition Data).
+    source: 'RMF Report Analysis 3.1 PDF p.401 (printed 361), PDF p.98 (printed 58) (MSU ACT and MSU Act from effective dispatch); SPEC §5.11.1',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        const view = buildView(o.end, run.scenario);
+        for (const x of o.mon3.cpc) {
+          if (x.msuAct === null) continue;
+          c.close(x.msuAct, view.lpars.find((y) => y.id === x.lparId)!.msu, ROUNDING, () => `${at(o)} ${x.lparId} MSU Act vs header MSU`);
+        }
+      }
+      for (const w of run.windows) {
+        // views[0] is the reading at the interval's start; one reading follows each of its ticks, so their average
+        // is the rate Partition Data averages over the interval.
+        const n = w.views.length - 1;
+        for (const r of w.iv.cpu) {
+          let sum = 0;
+          let readings = 0;
+          for (const v of w.views.slice(1)) {
+            const x = v.cpc.find((y) => y.lparId === r.lparId);
+            if (x && x.msuAct !== null) {
+              sum += x.msuAct;
+              readings++;
+            }
+          }
+          if (readings === 0) continue;
+          c.close(r.msuAvg, sum / n, ROUNDING, () => `${w.phase} ${formatClock(w.iv.endTick)} ${r.lparId} MSU AVG vs Monitor III MSU Act readings`);
         }
       }
     },
@@ -455,11 +494,13 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'soft-cap-flag',
-    title: 'Soft capping: an image is capped exactly while its R4HA is above its defined capacity (or its group is capped), and every view says so',
+    title: 'Soft capping: an image is capped exactly while its R4HA is above its defined capacity (or its group view is over the limit), and every view says so',
     basis: 'z/OS',
     // "When this four-hour average goes over the defined capacity limit, then WLM caps the partition ... until the
     // average drops below the limit." Monitor III CPC: 4h Avg, 4h Max ("can be greater than the defined capacity").
-    source: 'WLM Planning 3.1 p.44; RMF Report Analysis 3.1 p.96–99 (Table 16)',
+    // A member's capacity-group view is Partition Data's AVAILABLE (limit − the member's four-hour average; negative
+    // while the group caps it), so the group decision is read from the report (RF-08).
+    source: 'WLM Planning 3.1 PDF p.44 (printed 24); RMF Report Analysis 3.1 PDF p.399–400 (printed 359–360), PDF p.96–99 (printed 56–59)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const view = buildView({ ...o.end, tools: ['RMF_MON3'] }, run.scenario);
@@ -468,18 +509,26 @@ export const IDENTITIES: Identity[] = [
           const sys = o.mon3.systems.find((x) => x.system === r.lparId)!;
           const head = o.mon3.cpcHeaders.find((x) => x.lparId === r.lparId)!;
           const lv = view.lpars.find((x) => x.id === r.lparId)!;
-          // Decided at each 5-minute boundary, which every interval end is. A capacity group caps its members when
-          // the group's own average passes its limit. Left out: that average against the limit, which no report shows
-          // (real RMF prints the group's AVAILABLE MSU; BACKLOG RF-08), so the group's state is read from the sim.
           const l = o.end.sim.config.lpars.find((x) => x.id === r.lparId)!;
-          const group = l.capacityGroup !== null && !!o.end.sim.capping.groups.find((g) => g.id === l.capacityGroup)?.capped;
-          c.ok(sys.capped === ((r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu) || group), () => `${at(o)} ${r.lparId} capped ${sys.capped}, R4HA ${r.r4ha}, DEF CAP ${r.definedCapacityMsu}, group capped ${group}`);
+          const group = r.groupAvailableMsu !== undefined && r.groupAvailableMsu < 0;
+          c.ok(sys.capped === ((r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu) || group), () => `${at(o)} ${r.lparId} capped ${sys.capped}, R4HA ${r.r4ha}, DEF CAP ${r.definedCapacityMsu}, group AVAILABLE ${r.groupAvailableMsu}`);
           c.ok(head.group === l.capacityGroup && head.groupLimitMsu === (o.end.sim.config.capacityGroups.find((g) => g.id === l.capacityGroup)?.limitMsu ?? null), () => `${at(o)} ${r.lparId} CPC header group ${head.group} limit ${head.groupLimitMsu}`);
           c.ok(lv.capped === sys.capped, () => `${at(o)} ${r.lparId} header capped ${lv.capped}, Monitor III ${sys.capped}`);
           c.close(head.r4haMsu, r.r4ha, ROUNDING, () => `${at(o)} ${r.lparId} Monitor III 4h avg vs Partition Data R4HA`);
           c.close(lv.r4ha ?? 0, r.r4ha, ROUNDING, () => `${at(o)} ${r.lparId} header R4HA vs Partition Data`);
           c.atMost(head.r4haMsu, head.max4hMsu, ROUNDING, () => `${at(o)} ${r.lparId} 4h avg above 4h max`);
           c.close(lv.msu, sys.msu, ROUNDING, () => `${at(o)} ${r.lparId} header MSU vs Monitor III`);
+          if (l.capacityGroup === null) continue;
+          // The member's own view: the group's slots since it joined, zero-filled before, and LIMIT flagged `*`
+          // while that window is not full (four hours).
+          const g = o.end.sim.config.capacityGroups.find((x) => x.id === l.capacityGroup)!;
+          const gs = o.end.sim.capping.groups.find((x) => x.id === l.capacityGroup)!;
+          const join = o.end.sim.capping.groupJoinTicks?.[l.capacityGroup]?.[r.lparId] ?? o.end.sim.tick;
+          c.ok(r.group === l.capacityGroup && r.groupLimitMsu === g.limitMsu, () => `${at(o)} ${r.lparId} Partition Data group ${r.group} limit ${r.groupLimitMsu}`);
+          c.close(r.groupAvailableMsu ?? NaN, g.limitMsu - groupMemberR4ha(gs, join, o.end.sim.tick), ROUNDING, () => `${at(o)} ${r.lparId} AVAILABLE vs limit − member view`);
+          c.close(head.groupAvailableMsu ?? NaN, r.groupAvailableMsu ?? NaN, ROUNDING, () => `${at(o)} ${r.lparId} CPC header AVAILABLE vs Partition Data`);
+          c.ok(r.groupLimitNew === (o.end.sim.tick - join < R4HA_WINDOW_TICKS), () => `${at(o)} ${r.lparId} LIMIT * ${r.groupLimitNew}, join age ${o.end.sim.tick - join}`);
+          c.ok(head.groupLimitNew === r.groupLimitNew, () => `${at(o)} ${r.lparId} CPC header LIMIT * ${head.groupLimitNew} vs Partition Data ${r.groupLimitNew}`);
         }
       }
     },
@@ -926,6 +975,12 @@ export const IDENTITIES: Identity[] = [
             c.close(x.cpuMs, r.cpuMs, ROUNDING, where(`${r.workloadId} CPU 110 vs 101`));
           }
           c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
+          // Every unit of work ends in a commit or a rollback (QWACCOMM/QWACABRT, OMEGAMON for Db2 PE 5.4 PDF p.2968
+          // (printed 2942)), and the rollbacks are the ones the sim backed out tick by tick (RT-23).
+          c.ok(r.commits >= 0 && r.rollbacks >= 0, where(`${r.workloadId} SMF 101 commits and rollbacks non-negative`));
+          c.close(r.commits + r.rollbacks, r.txnPerSec * 3600, ROUNDING, where(`${r.workloadId} SMF 101 commits + rollbacks vs units ended`));
+          c.close(r.rollbacks, w?.rolledBack ?? 0, ROUNDING, where(`${r.workloadId} SMF 101 rollbacks vs sim backouts`));
+          c.close(r.rollbackPct * (r.commits + r.rollbacks), 100 * r.rollbacks, ROUNDING, where(`${r.workloadId} SMF 101 rollback %`));
         }
         for (const x of cics) {
           const w = h.workloads[x.workloadId];
@@ -942,6 +997,10 @@ export const IDENTITIES: Identity[] = [
           // tick's share, so a closed hour can prove the non-negativity and the absent -> 0 fallback.
           c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT waited non-negative`));
           if (last.dbatQueuedByLpar?.[s.lparId] === undefined) c.close(s.dbatQueued, 0, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT waited absent -> 0`));
+          // Game rule (RT-23): a member's rollbacks (Q3STABRT) are the backouts of the work routed to its image, at the
+          // routing in force when the hour closed (the closed report is frozen then).
+          const routed = sum(db2.map((r) => (h.workloads[r.workloadId]?.rolledBack ?? 0) * ((h.end.sim.routing[r.workloadId] ?? allWorkloads(run.scenario, h.end).find((x) => x.id === r.workloadId)?.routing ?? {})[s.lparId] ?? 0)));
+          c.close(s.rollbacks, routed, ROUNDING, where(`${s.lparId} ${s.ssid} Db2 statistics rollbacks vs the routed backouts`));
         }
       }
       // The open hour's count includes every tick so far, the last one included, and the run state keeps that
@@ -1114,9 +1173,8 @@ export const IDENTITIES: Identity[] = [
     basis: 'z/OS',
     // SYSINFO Avg CPU Util% = LPAR CPU time ÷ online time; Appl% (address spaces) and EAppl% (plus enclaves) are
     // divided by the logical processors. CPC: Physical Util % LPAR = (total − effective) ÷ (physical × range); MSU Act
-    // is "based on the logical processor effective dispatch time".
-    // Left out: MSU Act equal to the MSU the header, Partition Data, the R4HA and the bill use. Those count total
-    // dispatch time, LPAR management included, where RMF's MSU is from effective time (BACKLOG RF-05).
+    // is "based on the logical processor effective dispatch time", the same field the header, Partition Data MSU AVG,
+    // the R4HA and the bill use (`msu-act-everywhere`, RF-05).
     source: 'RMF Report Analysis 3.1 p.96–99 (Table 16), p.222–224 (Table 84)',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -1264,6 +1322,8 @@ const DECAYED_PCT: Tol = { rel: 1e-6, abs: 1e-4 };
 export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'an image soft-capped by its defined capacity': (run) => run.intervals.some((o) => zos(o.config).some((l) => l.definedCapacityMsu !== null && (o.lpars[l.id]?.softCappedTicks ?? 0) > 0)),
   'an image soft-capped by its capacity group': (run) => run.intervals.some((o) => zos(o.config).some((l) => l.capacityGroup !== null && l.definedCapacityMsu === null && (o.lpars[l.id]?.softCappedTicks ?? 0) > 0)),
+  'a capacity group member whose view is not full (LIMIT *)': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.groupLimitNew === true)),
+  'a capacity group member over its limit (AVAILABLE negative)': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.groupAvailableMsu !== undefined && r.groupAvailableMsu < 0)),
   'an image capped, but not by WLM': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.cappedPct > 0 && (r.wlmCappingPct ?? 0) === 0)),
   'an hour billed under a defined capacity': (run) => run.intervals.some((o) => o.iv.endTick % TICKS_PER_HOUR === 0 && o.iv.cpu.some((r) => r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu)),
   'an hour billed under a group limit': (run) => run.intervals.some((o) => o.iv.endTick % TICKS_PER_HOUR === 0 && o.end.sim.capping.groups.some((g) => g.capped)),
@@ -1285,6 +1345,7 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   })),
   'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
   'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),
+  'Db2 units of work rolled back in a closed SMF hour': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).some((r) => r.rollbacks > 0); }),
   'a percentile-goal period past its goal': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.pi !== null && r.pi > 1 && r.goalText.includes('<'))),
 };
 

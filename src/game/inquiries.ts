@@ -3,7 +3,8 @@
 // (critical jobs, lock-heavy jobs, job classes, how an app is classified, growth, what's coming up).
 
 import { storyBeatsFor } from './difficulty';
-import { APP_OWNERS, CALENDAR_FACTS, CURT_PREFIX, EVENT_RUMOURS, FRIENDLY_PREFIX, INQUIRY, INQUIRY_TOPICS, JOB_CLASS_MEANING, RUDE_REPLIES, STORY_RUMOURS, STREAM_STORY, type InquiryKind } from '../content/inquiries';
+import { CURT_PREFIX, EVENT_RUMOURS, FRIENDLY_PREFIX, INQUIRY, INQUIRY_TOPICS, JOB_CLASS_MEANING, RUDE_REPLIES, STORY_RUMOURS, STREAM_STORY, type InquiryKind } from '../content/inquiries';
+import { packOf } from '../content/packs';
 import { clockAt } from '../sim/core/clock';
 import { type Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
@@ -30,7 +31,7 @@ const empty = (): InquiryState => ({ pending: [], revealed: [] });
 
 type Out = { run: RunState; ok: boolean; message: string };
 
-export function askAround(run: RunState, topicId: InquiryKind, workloadId: string | null, scenario: Scenario): Out {
+export function askAround(run: RunState, topicId: InquiryKind, workloadId: string | null, scenario: Scenario, content: GameContent = packOf(run.scenarioId).game): Out {
   const t = INQUIRY_TOPICS.find((x) => x.id === topicId);
   if (!t) return { run, ok: false, message: `Unknown question; topics: ${INQUIRY_TOPICS.map((x) => x.id).join(', ')}` };
   // REVIEW spends tomorrow's hours, like planning a change; the reply clock starts at once.
@@ -48,11 +49,13 @@ export function askAround(run: RunState, topicId: InquiryKind, workloadId: strin
   return {
     run: { ...run, nextId: run.nextId + 1, hoursLeft: run.hoursLeft - hours, inquiries: { ...st, pending: [...st.pending, p] } },
     ok: true,
-    message: `Asked ${who(topicId, wid)}; expect an answer in a few hours`,
+    message: `Asked ${who(topicId, wid, content)}; expect an answer in a few hours`,
   };
 }
 
-const who = (topic: InquiryKind, wid: string | null) => (topic === 'APP_ENTRY' && wid ? (APP_OWNERS[wid] ?? `the ${wid} owner`) : INQUIRY_TOPICS.find((t) => t.id === topic)!.contact);
+/** The contact for a question: the scenario's own app owner for APP_ENTRY, else the topic's named person. */
+const who = (topic: InquiryKind, wid: string | null, content: GameContent) =>
+  topic === 'APP_ENTRY' && wid ? (content.appOwners?.[wid] ?? `the ${wid} owner`) : INQUIRY_TOPICS.find((t) => t.id === topic)!.contact;
 
 /** Deliver answers that are due (called each sim-hour). */
 export function deliverInquiries(run: RunState, scenario: Scenario, content: GameContent): RunState {
@@ -78,7 +81,7 @@ export function deliverInquiries(run: RunState, scenario: Scenario, content: Gam
       body = (mood === 'CURT' ? pick(rng, CURT_PREFIX) : mood === 'FRIENDLY' ? pick(rng, FRIENDLY_PREFIX) : '') + ans.text;
       if (ans.key) revealed = [...revealed, ans.key];
     }
-    inbox.push({ day: run.day, from: who(p.topic, p.workloadId), subject, body });
+    inbox.push({ day: run.day, from: who(p.topic, p.workloadId, content), subject, body });
   }
   return { ...run, inbox, inquiries: { pending: st.pending.filter((p) => !due.includes(p)), revealed } };
 }
@@ -186,7 +189,7 @@ function answer(run: RunState, scenario: Scenario, content: GameContent, p: Pend
         const f = pick(rng, c);
         return { text: f.v, key: f.key };
       }
-      const facts = fresh(CALENDAR_FACTS.map((f) => ({ key: `cal:${f.id}`, v: f.text })));
+      const facts = fresh((content.calendarFacts ?? []).map((f) => ({ key: `cal:${f.id}`, v: f.text })));
       if (facts.length === 0) return { text: 'Nothing new that I know of.', key: null };
       const f = pick(rng, facts);
       return { text: f.v, key: f.key };
@@ -196,12 +199,12 @@ function answer(run: RunState, scenario: Scenario, content: GameContent, p: Pend
 
 const inquiryHours = (hours: number, perks: readonly string[]) => (perks.includes('WELL_CONNECTED') ? 0 : hours);
 
-export function inquiriesView(run: RunState, scenario: Scenario) {
+export function inquiriesView(run: RunState, scenario: Scenario, content: GameContent = packOf(run.scenarioId).game) {
   const st = run.inquiries ?? empty();
   return {
     apps: allWorkloads(scenario, run).map((w) => ({ id: w.id, name: w.name })),
     topics: INQUIRY_TOPICS.map((t) => ({ id: t.id, contact: t.contact, question: t.question, hours: inquiryHours(t.hours, run.perks), perWorkload: !!t.perWorkload })),
-    pending: st.pending.map((p) => ({ id: p.id, topic: p.topic, workloadId: p.workloadId, who: who(p.topic, p.workloadId), question: INQUIRY_TOPICS.find((t) => t.id === p.topic)!.question })),
+    pending: st.pending.map((p) => ({ id: p.id, topic: p.topic, workloadId: p.workloadId, who: who(p.topic, p.workloadId, content), question: INQUIRY_TOPICS.find((t) => t.id === p.topic)!.question })),
     maxOpen: INQUIRY.maxOpen,
   };
 }

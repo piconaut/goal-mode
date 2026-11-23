@@ -3,8 +3,9 @@
 import { idText } from '../../game/ids';
 import { predicateText, recipeHeading, type ProofResult } from '../../game/proof';
 
-/** Each filed claim's proof recipe, its two predicates ticked or not (RT-13), worded as the play CLI's reply. */
-export function ProofView({ proof }: { proof: ProofResult }) {
+/** Each filed claim's proof recipe, its two predicates ticked or not (RT-13), worded as the play CLI's reply; the
+ *  hour-base note was recorded at filing (RT-30), so a later unpin cannot change it. */
+export function ProofView({ proof, note }: { proof: ProofResult; note?: string }) {
   return (
     <>
       {([['Mechanism', proof.mechanism], ['Trigger', proof.trigger]] as const).map(([what, c]) => (
@@ -17,6 +18,11 @@ export function ProofView({ proof }: { proof: ProofResult }) {
           ))}
         </div>
       ))}
+      {note && (
+        <div className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+          {note}
+        </div>
+      )}
     </>
   );
 }

@@ -26,7 +26,7 @@ import { grantProjectHours } from './projects';
 import { ARMED, failRisk, NO_TARGET, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
 import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
-import { accumulateHour, closeHour, newHour } from './run/hourly';
+import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
@@ -195,6 +195,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   const scenario = scenarioFor(baseScenario, run.difficulty);
   const defs = new Map(content.events.map((d) => [d.id, d]));
   let r = run;
+  let hour: ReturnType<typeof copyHourForAdvance> | undefined;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
     // The hour's scheduled switch is issued before the tick's queued commands (PR-01): a queued activation is the
@@ -305,7 +306,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
-    r = accumulateHour(r);
+    r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];
       if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
@@ -318,7 +319,10 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);
     }
-    if ((tick + 1) % TICKS_PER_HOUR === 0) r = deliverInquiries(closeHour(r, scenario, content), scenario, content);
+    if ((tick + 1) % TICKS_PER_HOUR === 0) {
+      r = deliverInquiries(closeHour(r, scenario, content), scenario, content);
+      hour = undefined;
+    }
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
   }
   return r;

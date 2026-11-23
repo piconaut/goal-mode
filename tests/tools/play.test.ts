@@ -568,4 +568,37 @@ describe('headless play interface', () => {
     expect(past.ok).toBe(false);
     expect(past.text).toContain('no job rows');
   });
+
+  it('pins CF and DASD rows by the interval id the report shows, and says when it read the latest interval', () => {
+    // CF and DASD Activity are the CF_DASD tool, and the live day's intervals need Monitor III; buy them.
+    let f = withMon3(started(2));
+    f = { ...f, run: { ...f.run, insight: 60 } };
+    for (const toolId of ['PARTITION_DATA', 'CF_DASD']) f = run(f, [{ cmd: 'buy', toolId }]);
+    // An older interval: the latest one would also pass if the command ignored the id and read the buffer's end.
+    const iv = f.run.sim.rmf.intervals.at(-2)!;
+    const id = intervalId(iv);
+    const cf = iv.cf[0]!.lparId;
+    // The id is not an array position: the report shows the row the pin must find (PT-48).
+    expect(applyPlayCommand(f, { cmd: 'report', kind: 'CF', id }).text).toContain(cf);
+    const pinned = applyPlayCommand(f, { cmd: 'pin', req: { source: 'CF', cfLparId: cf, metric: 'CF_SYNC', index: id }, intervalId: id });
+    expect(pinned.ok, pinned.text).toBe(true);
+    expect(pinned.file.run.pins.at(-1)!.tick).toBe(iv.endTick);
+    expect(pinned.file.run.pins.at(-1)!.text).toMatch(new RegExp(`^CF D1 \\d\\d:\\d\\d–\\d\\d:\\d\\d ${cf} CF sync service time`));
+    const dasd = applyPlayCommand(f, { cmd: 'pin', req: { source: 'DASD', lcuId: 'ALL', metric: 'DASD_DISC', index: id }, intervalId: id });
+    expect(dasd.ok, dasd.text).toBe(true);
+    expect(dasd.file.run.pins.at(-1)!.tick).toBe(iv.endTick);
+    expect(dasd.file.run.pins.at(-1)!.text).toMatch(/^DASD D1 \d\d:\d\d–\d\d:\d\d ALL DISC time/);
+    // The first tick shapes the label only: a saved pin keeps its end tick and no new field.
+    expect(JSON.stringify(dasd.file.run.pins.at(-1))).not.toContain('fromTick');
+    // Without an id both read the latest interval; the reply says so instead of implying it is the incident's.
+    for (const req of [{ source: 'CF', cfLparId: cf, metric: 'CF_ASYNC_PCT' }, { source: 'DASD', lcuId: 'ALL', metric: 'DASD_DISC' }] as const) {
+      const latest = applyPlayCommand(f, { cmd: 'pin', req });
+      expect(latest.ok, latest.text).toBe(true);
+      expect(latest.text).toContain('no interval id given');
+    }
+    // A `json` pin that names a position in the request does name an interval: no caveat.
+    const positional = applyPlayCommand(f, { cmd: 'pin', req: { source: 'CF', cfLparId: cf, metric: 'CF_SYNC', index: f.run.sim.rmf.intervals.length - 3 } });
+    expect(positional.ok, positional.text).toBe(true);
+    expect(positional.text).not.toContain('no interval id given');
+  });
 });

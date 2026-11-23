@@ -31,10 +31,10 @@ import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
 import { buildView } from './view';
 import { MECHANISMS, TRIGGERS } from './sla';
-import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from './run/rca';
-import { TRIGGER_LABEL, triggerLabel } from '../content/rca';
+import { alsoAcceptedOf, groupAcceptedOf, rcaAnswerText, rcaGroupOf } from './run/rca';
+import { TRIGGER_LABEL } from '../content/rca';
 import { EVIDENCE } from '../content/evidence';
-import { proofLines } from './proof';
+import { pinVerdictLines, proofLines } from './proof';
 import { idText } from './ids';
 import type { Mon3PinLookup } from './mon3PinHistory';
 import type { GameContent } from './run/shared';
@@ -138,12 +138,11 @@ export function applyGameCommand(
       if (missing.length && !pins.length) return no('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without evidence.');
       if (missing.length) return no(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${pins.map((p) => idText('pin', p.id)).join(' ')}`);
       const r = submitRca(run, cmd.incidentId, cmd.mechanism, cmd.trigger, sc, cmd.evidenceIds ?? []);
-      // One RCA covers the group: its primary is the lead's and its accepted answers are the union of the members'
-      // (RT-15, docs/rca-design.md §4.5).
+      // One RCA covers the group: its accepted answers are the union of the members', and the header names each
+      // distinct primary with its workloads, each accepted reason with its victim (RT-15, RT-28, §4.5).
       const group = rcaGroupOf(r.incidents, cmd.incidentId);
       const covered = group.filter((i) => i.id !== cmd.incidentId && i.rca).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === cmd.incidentId)?.rca;
-      const t = group[0]!.truth;
       const accepted = groupAcceptedOf(group);
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
@@ -152,9 +151,17 @@ export function applyGameCommand(
       const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
       const evidence = rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : '';
       const proof = rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : '';
+      // The answer and the proof are different things (RT-30): the truth accepts the answer (or not), and the pins
+      // prove the recipe (or not). The answer line is shared with the RCA card.
+      const answer = rcaAnswerText(group, cmd.mechanism, cmd.trigger, accepted);
+      // Every filed pin is listed with the clause it counted for or why it did not count, and the hour note recorded
+      // at filing when a met pin was over a line the hour average missed (RT-30).
+      const pinLines = rca ? pinVerdictLines(rca.proof, rca.evidence ?? [], (id) => idText('pin', id)) : [];
+      const pinsLine = pinLines.length ? `\nPins: ${pinLines.join('; ')}` : '';
+      const hourNote = rca?.hourNote ? `\n${rca.hourNote}` : '';
       return yes(
         r,
-        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. Mechanism ${accepted.mechanisms.includes(cmd.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cmd.trigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}`,
+        `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. ${answer}${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}${pinsLine}${hourNote}`,
       );
     }
     case 'PIN':
@@ -223,7 +230,7 @@ export function applyGameCommand(
     case 'TFP':
       return result(decideTfp(run, cmd.accept));
     case 'ASK':
-      return result(askAround(run, cmd.topic, cmd.workloadId ?? null, sc));
+      return result(askAround(run, cmd.topic, cmd.workloadId ?? null, sc, content));
     case 'PROJECT':
       return result(workOnProject(run, cmd.id, cmd.hours));
   }

@@ -12,6 +12,14 @@ export function msuPerCp(cpc: CpcConfig): number {
   return generationOf(cpc).fullSpeedMsuPerCp * CAPACITY_SETTING_FRAC[cpc.capacitySetting];
 }
 
+/** Effective dispatch engines of a partition's general-CP pool: physical dispatch time less the LPAR management
+ *  share. RMF's MSU is "based on the logical processor effective dispatch time" (RMF Report Analysis 3.1 PDF p.401
+ *  (printed 361), PDF p.98 (printed 58)), so this, not the gross delivered engines, is what MSU is charged on. Keep
+ *  `deliveredEngines` itself for LPAR BUSY and physical busy, which count the total dispatch time. */
+export function effectiveDispatchEngines(pool: { deliveredEngines: number; overheadFrac: number }): number {
+  return pool.deliveredEngines * (1 - pool.overheadFrac);
+}
+
 /** General CP speed relative to the reference engine; sub-capacity CPs are slower engines. */
 export function cpSpeed(cpc: CpcConfig): number {
   return generationOf(cpc).relativeSpeed * CAPACITY_SETTING_FRAC[cpc.capacitySetting];

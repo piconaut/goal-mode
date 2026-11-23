@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addHour, batchMissMechanism, batchMissTrigger, failureMechanismOf, importanceRank, mechanismOf, triggerOf } from '../../src/game/sla';
+import { addHour, batchMissMechanism, batchMissTrigger, coDominantGroups, failureMechanismOf, importanceRank, mechanismOf, slotBaseline, triggerOf } from '../../src/game/sla';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { NightSummary } from '../../src/sim/subsys/batch';
@@ -120,6 +120,42 @@ describe('failureMechanismOf', () => {
     expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, endTick: TICKS_PER_HOUR, ended: true }], hour)).toBe('ROUTING');
     // One that ended exactly at the hour's start does not overlap.
     expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, endTick: 0, ended: true }], hour)).toBeNull();
+  });
+});
+
+describe('hour-of-day baselines and the delay floor (RT-17)', () => {
+  const judge = (parts: Record<string, number>, baseline: Record<string, number>, slaRtSec: number) =>
+    mechanismOf(parts, baseline, hour, [], { workloadId: 'RBANK', baseline, subjects: { classes: [], lpars: [], hosts: [], servers: [], serverClasses: [] }, slaRtSec });
+
+  it("does not call a 20:00 hour lock contention when the lock group is under 10 % of the SLA budget", () => {
+    // R-6/R-15: CARDAUTH's 20:00 incident read LOCK_CONTENTION/GROWTH on a 2.9 ms lock growth. CARDAUTH's goal is
+    // 100 ms, so the floor is 10 ms: no delay group explains the miss and the CPU verdict does.
+    const parts = { lock: 0.0029 };
+    expect(judge(parts, {}, 0.1)).toBe('CPU_PRIORITY');
+    // The old ranking would have named the lock: a budget small enough for 2.9 ms to clear 10 % shows it.
+    expect(judge(parts, {}, 0.02)).toBe('LOCK_CONTENTION');
+    // At the floor itself a delay group still explains the miss; just under it, none does.
+    expect(judge({ lock: 0.05 }, {}, 0.5)).toBe('LOCK_CONTENTION');
+    expect(judge({ lock: 0.0499 }, {}, 0.5)).toBe('CPU_PRIORITY');
+  });
+
+  it('accepts a second delay group at a third of the excess, and none under the floor', () => {
+    // CPU 6 ms and IO 4 ms: IO is 40 % of the 10 ms total.
+    expect(coDominantGroups({ cpuQueue: 0.006, io: 0.004 }, {}, 0.05, 'CPU')).toEqual([{ group: 'IO', sharePct: 40 }]);
+    // The primary is not offered again, and a small group below a third is not either.
+    expect(coDominantGroups({ cpuQueue: 0.006, io: 0.004 }, {}, 0.05, 'IO')).toEqual([{ group: 'CPU', sharePct: 60 }]);
+    expect(coDominantGroups({ lock: 0.009, io: 0.001 }, {}, 0.05, 'LOCK_CONTENTION')).toEqual([]);
+    // Under the floor there is no explanation to accept.
+    expect(coDominantGroups({ cpuQueue: 0.006, io: 0.004 }, {}, 0.2, 'CPU')).toEqual([]);
+  });
+
+  it('reads the slot for its clock hour, and the rolling EWMA until a slot has data', () => {
+    const slots = { RBANK: { '20': { cpu: 0.1 } } };
+    const rolling = { RBANK: { cpu: 0.2 } };
+    expect(slotBaseline(slots, rolling, 'RBANK', 20).cpu).toBeCloseTo(0.1);
+    expect(slotBaseline(slots, rolling, 'RBANK', 21).cpu).toBeCloseTo(0.2);
+    expect(slotBaseline(undefined, rolling, 'RBANK', 21).cpu).toBeCloseTo(0.2);
+    expect(slotBaseline(slots, rolling, 'NOPE', 20)).toEqual({});
   });
 });
 

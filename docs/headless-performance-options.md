@@ -315,6 +315,73 @@ the command (with a copy) so an in-place edit fails. Bench hashes are unchanged 
 `ff6e21b2171a2586`, Harbourline `ad8889b13fe355cd`, Revenue `59a35d5be8f3e367`; `npm run compare -- --base origin/dev`
 reports no differences.
 
+## Results: November regressions (2026-11-22)
+
+Each sim or content PR merged into `dev` from 2026-11-02 to 2026-11-22 (97 commits touching `src/sim` or
+`src/content`) was timed against its parent with `npm run bench:pair` in sim mode: seed 42, 720 warm-up ticks,
+8,640 ticks per pair, Harbourline and Midwest, each pinned to its own CPU. Pass 1 ran 3 pairs per PR; pass 2 reran 16
+leaders and controls with 7 pairs. Raw results: [performance/regressions-2026-11-22.csv](performance/regressions-2026-11-22.csv).
+
+**Noise.** In pass 1, the PRs that left `src/sim` untouched and kept the hash had medians from −6.5 % to +8.2 %
+(standard deviation about 3–4 %). Three of them rerun with 7 pairs (#466, #353, #373) were still +4.5 … +5.7 % on
+Harbourline, with every pair on the same side, while an A/A pair (one commit against itself) gave −1.5 % on
+Harbourline and +2.9 % on Midwest. The tool is not biased; unrelated code changes move timings by about ±5 % through
+JIT and code layout. Read a single PR's change below about 6 % as unattributed unless a profile shows its mechanism.
+Most realism PRs change the hash, so their timing also includes a changed trajectory.
+
+Largest regressions, pass 2 medians (7 pairs):
+
+| PR | Merged | Harbourline | Midwest | Mechanism (before/after CPU profiles) | Status |
+|---|---|---:|---:|---|---|
+| #295 WT-04 | 11-11 | +15.0 % | +17.5 % | `periodTicks` added `demandCp`/`demandZi` to each `ScpTick` after `emptyScpTick` built it; the records changed hidden class mid-loop (`addSliceTo` +112 % with its code unchanged) | Fixed by #470 |
+| #147 SYSWKM | 11-02 | +13.8 % | +11.8 % | New `reportedTicks` pass every tick, more `accumulateTick` work, `moved`/`workManager` added to ticks after creation | Open, ~2–3 % left |
+| #175 phantom CPU busy | 11-04 | +9.7 % | +7.9 % | `reserveOverflow`: a counterfactual `evaluateLpar` probe per zIIP image per tick, and `softCap`/`prsm` again when it adds CP demand | Open, see below |
+| #413 PR-21 | 11-18 | +4.4 % | +10.1 % | Five reporting-only `ScpAcc` fields; `addAccInto` adds them conditionally | Under 1 % left |
+| #377 PR-15 | 11-16 | +5.6 % | +7.6 % | Per-tick reconcile loop over every carried DP; only needed after a policy activation. Hash-neutral, so overhead, but within the layout noise | Under 1 % left |
+
+#146 and #302 (+4 … +7 %) are slower because WLM does more or different work, not avoidable overhead. #446, #95 and
+#114 were already addressed by #464, #466 and #467.
+
+**#470.** Creating both fields in `emptyScpTick`, paired against `dev` `d49d64c` with hashes unchanged: Harbourline
+−5.8 % sim (5 pairs, −4.1 … −12.0 %) and −10.1 % live (3 pairs); Midwest −2.8 % sim (5 pairs) and −3.4 % live (3 pairs).
+
+Profile of `dev` `9bcfa5f` (before #470), one Harbourline day, inclusive shares (nested rows overlap; profiled total
+21.0 s):
+
+| Stage | Share |
+|---|---:|
+| `dispatchLpar` | 26.3 % |
+| `adjustPolicies` | 18.3 % |
+| `evaluateLpar` | 17.8 % |
+| `policyAdjust` / `createAdjustContext` | 12.9 / 8.1 % |
+| `stepRmf` / `accumulateTick` | 11.0 / 10.0 % |
+| `reserveOverflow` (of which `imageInput` 3.5 %, shared with dispatch) | 9.2 % |
+| `lparDemand` | 7.2 % |
+| GC (self) | 7.0 % |
+| `periodTicks` | 6.3 % |
+| `reportedTicks` | 2.2 % |
+
+`adjustPolicies` was 9.6 % at CL-06 (2026-11-11) and has roughly doubled across the WT and RF PRs; no single PR
+accounts for it.
+
+**Remaining targets, judged against CL-06's stop rule** (under 5 % on Harbourline merges only if it also simplifies):
+
+- `createAdjustContext` (8.1 %) runs on every tick for every system. Most of it is per-tick data: carried DPs, PIs,
+  CPU protection, the canonical ladder. Hash-neutral options are caching `goalInfo`/`holderTopology`/holder info (its
+  input includes the period keys in this tick's slices, so the cache needs cross-tick invalidation; about 1–2 %) and
+  dropping its dozen closures (about 1 %, mostly esbuild's `__name` wrapper, which only headless runs pay; it would
+  undo CL-30's structure). Neither is worth it. Building the context only once a receiver candidate exists could save
+  most of the 8 %, but it also restores CPU protection and makes the ladder canonical every tick, so that is a
+  behaviour change (compare, goldens, sweep).
+- `reserveOverflow`'s probe costs about 4–5 % beyond the shared `imageInput`: `evaluateLpar` 2.8 % and its own scans
+  1.5 %. Running it less often, or reusing its result in dispatch, changes the hashes (the probe uses counterfactual
+  CP availability; dispatch uses the final grants). A grants-only probe is a second evaluator path, which
+  [headless-performance.md](headless-performance.md) rules out. More provably zero-overflow early exits are cheap:
+  count first how often the probe finds overflow ≤ 1e-9.
+- `ScpTick`/`ScpAcc` fields added after creation (`moved`, `workManager`, `srvUsing`, `usingIoNoVel`, `delayQueue`,
+  `rtQueueSumSec`) are another 1–2 %. Readers test for absence and `ScpAcc` is saved state, so making them always
+  present changes hashes.
+
 ## Reproduction
 
 ```sh

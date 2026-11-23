@@ -44,6 +44,7 @@ export type EvidenceMetric =
   | 'QR_WAIT'
   | 'MXT_WAIT'
   | 'FAIL_PCT'
+  | 'ROLLBACK_PCT'
   | 'JOB_CPU'
   | 'JOB_IO'
   | 'JOB_LOCK'
@@ -149,6 +150,9 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   FAIL_PCT: { label: 'failed % of transactions', unit: '%', mechanisms: ['ROUTING'], triggers: [], notableAt: 1, weight: 1, relations: OWN },
+  // Db2 accounting class 1 rollbacks (QWACABRT / (QWACCOMM + QWACABRT), RT-23): the units a client abandoned, which
+  // a retry storm leaves behind; that this means client retries rather than new demand is the game's inference.
+  ROLLBACK_PCT: { label: 'rollback share %', unit: '%', mechanisms: [], triggers: ['APPLICATION_ERROR'], notableAt: 10, weight: 1, relations: OWN },
   // SMF 30 batch night (critical jobs): share of their lost elapsed time by cause, mapped as batchMissMechanism does.
   JOB_CPU: { label: 'critical jobs CPU wait %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 25, weight: 1, relations: ['self'] },
   JOB_IO: { label: 'critical jobs I/O wait %', unit: '%', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 25, weight: 1, relations: ['self'] },
@@ -350,14 +354,14 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'QR TCB wait ≥ 5 ms/txn (CICS 110), or the READY state past twice its normal (WLMGL)',
     options: [notable('QR_WAIT', SELF), notable('WM_READY', SELF)],
   }, {
-    label: 'not the task limit or the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
+    label: 'little waiting for a slot or on the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
     options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
   }] },
   THREAD_LIMIT: { predicates: [{
     label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
-    label: 'not slower work holding the slots: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
+    label: 'the work ran no slower: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
     options: [...COST_NORMAL, below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
   }] },
   ROUTING: { predicates: [{
@@ -382,7 +386,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'critical jobs ABENDed (SMF 30)',
     options: [at('JOB_ABEND', 1, SELF)],
   }, {
-    label: 'they failed rather than ran late: the jobs\' CPU or I/O wait < 25 % (SMF 30)',
+    label: 'little of the lost time was CPU or I/O wait: the jobs\' CPU or I/O wait < 25 % (SMF 30)',
     options: [below('JOB_CPU', PROOF.jobWaitPct, SELF), below('JOB_IO', PROOF.jobWaitPct, SELF)],
   }] },
 };
@@ -403,7 +407,7 @@ export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
     label: 'the same work costs more: CPU per transaction ≥ 1.3 × its normal (WLMGL CP ms/txn, Db2 101, CICS 110)',
     options: [ratio('CPU_PER_TXN', PROOF.regressionRatio, SELF_OR_COMPETITOR), ratio('CPU_VS_BASE', PROOF.regressionRatio, SELF)],
   }, {
-    label: 'not more of it: that work\'s ended/s within ±15 % of normal',
+    label: 'the volume did not grow: that work\'s ended/s within ±15 % of normal',
     options: [same(normal('ENDED_RATE', SELF_OR_COMPETITOR)), same(normal('CPU_PER_TXN', SELF_OR_COMPETITOR, 'rate')), same(normal('CPU_VS_BASE', SELF, 'rate'))],
   }] },
   RUNAWAY_WORK: { predicates: [{
@@ -413,7 +417,7 @@ export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
       at('JOB_APPL', PROOF.runawayPoints, ['server', 'competitor']),
     ],
   }, {
-    label: 'without more work to show for it: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
+    label: 'its work did not grow: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
     options: [same(normal('ENDED_RATE', ['competitor'])), ...COST_NORMAL],
   }] },
   BATCH_OVERLAP: { predicates: [{
@@ -444,9 +448,13 @@ export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
     ],
   }] },
   APPLICATION_ERROR: { predicates: [{
-    label: 'the software misbehaved: failed transactions ≥ 1 % (CICS 110), a region short on storage (SOS), or critical jobs ABENDed (SMF 30)',
-    options: [notable('FAIL_PCT', SELF), notable('SOS_MIN', ['server']), at('JOB_ABEND', 1, SELF)],
-  }, DEMAND_NORMAL] },
+    label: 'the software misbehaved: failed transactions ≥ 1 % (CICS 110), a region short on storage (SOS), critical jobs ABENDed (SMF 30), or rollbacks ≥ 10 % of units of work (Db2 accounting)',
+    options: [notable('FAIL_PCT', SELF), notable('SOS_MIN', ['server']), at('JOB_ABEND', 1, SELF), notable('ROLLBACK_PCT', SELF)],
+  }, {
+    // A retry storm is more work plus those rollbacks; the other software failures leave the volume normal (RT-23).
+    label: 'the volume explains it: ended/s ≥ 1.25 × its recent normal, or the work itself unchanged (ended/s or CPU per transaction within ±15 %)',
+    options: [...DEMAND_NORMAL.options, ratio('ENDED_RATE', PROOF.surgeRatio, SELF_OR_COMPETITOR)],
+  }] },
 };
 
 
@@ -458,6 +466,6 @@ export const METRIC_TIER: Record<EvidenceMetric, 0 | 1 | 2> = {
   DELAY_CPU: 0, DELAY_ZIIP: 0, DELAY_IO: 0, DELAY_STO: 0, DELAY_CAP: 0, DELAY_OTHER: 0, WM_LOCK: 0, WM_READY: 0,
   PRSM_DELAY: 1, CAPPED: 1, CPC_BUSY: 1, LPAR_BUSY: 1, CAPACITY_ADJ: 1, JOB_APPL: 1,
   CPU_VS_BASE: 2, LOCK_WAIT: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
-  SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2,
+  SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2, ROLLBACK_PCT: 2,
   JOB_CPU: 2, JOB_IO: 2, JOB_LOCK: 2, JOB_DB2: 2, JOB_SWAP: 2, JOB_INIT: 2, JOB_ABEND: 2,
 };

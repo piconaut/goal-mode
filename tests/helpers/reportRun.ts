@@ -15,7 +15,7 @@ import type { Command } from '../../src/sim/core/commands';
 import type { Scenario } from '../../src/sim/core/scenario';
 import type { LparConfig, WorldConfig } from '../../src/sim/core/types';
 import { TICKS_PER_HOUR, TICK_SEC } from '../../src/sim/core/units';
-import { msuPerCp } from '../../src/sim/hw/cpc';
+import { effectiveDispatchEngines, msuPerCp } from '../../src/sim/hw/cpc';
 import { classify } from '../../src/sim/wlm/classify';
 import { allWorkloads } from '../../src/game/workloads';
 import type { RmfInterval } from '../../src/sim/measure/rmf';
@@ -26,6 +26,8 @@ import { SYSOTHER, SYSSTC, type ClassificationRule, type ServiceDefinition } fro
 export interface LparSum {
   deliveredCp: number;
   effectiveCp: number;
+  /** Physical CP dispatch less the LPAR management share, the basis of MSU Act (RF-05). */
+  effectiveDispatchCp: number;
   deliveredZiip: number;
   effectiveZiip: number;
   deliveredIcf: number;
@@ -68,7 +70,7 @@ export interface HourObs {
   phase: string;
   /** Run state at the hour's end (tick % 360 = 0), after the hour closed. */
   end: RunState;
-  workloads: Record<string, { completions: number; failed: number }>;
+  workloads: Record<string, { completions: number; failed: number; rolledBack: number }>;
 }
 
 export interface ReportRun {
@@ -168,8 +170,19 @@ function phasesFor(scenario: Scenario, note: { reportClassOf: Record<string, str
     return byLpar;
   };
   return [
-    // The scenario as shipped: its own policy and configuration, while the R4HA window fills.
-    { name: 'baseline', hours: 4, apply: () => ({ commands: [], revert: [] }) },
+    // The scenario as shipped: its own policy and configuration, while the R4HA window fills. Every Db2 workload backs
+    // out a share of its units of work, which is reporting only (RT-23), so the Db2 rollback counts have hours to agree on.
+    {
+      name: 'baseline',
+      hours: 4,
+      apply: (run) => {
+        const db2 = allWorkloads(scenario, run).filter((w) => w.servers.some((x) => x.role.startsWith('DB2.'))).map((w) => w.id);
+        return {
+          commands: db2.map((key): Command => ({ kind: 'SET_MODIFIER', mod: 'rollbackFrac', key, value: 0.1 })),
+          revert: db2.map((key): Command => ({ kind: 'SET_MODIFIER', mod: 'rollbackFrac', key, value: 0 })),
+        };
+      },
+    },
     // Report classes on every rule, and another RMF interval length (so identities over intervals don't lean on one
     // length, and each short phase closes several intervals). Both stay until the night; the report classes to the end.
     {
@@ -355,7 +368,7 @@ function batchResponseGoal(scenario: Scenario, run: RunState): Command[] {
   return [{ kind: 'ACTIVATE_POLICY', definition: next }];
 }
 
-const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, deliveredZiip: 0, effectiveZiip: 0, deliveredIcf: 0, msu: 0, cappedTicks: 0, softCappedTicks: 0, wlmCapTicks: 0, capFlagTicks: 0, cappedMsuMax: 0 });
+const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, effectiveDispatchCp: 0, deliveredZiip: 0, effectiveZiip: 0, deliveredIcf: 0, msu: 0, cappedTicks: 0, softCappedTicks: 0, wlmCapTicks: 0, capFlagTicks: 0, cappedMsuMax: 0 });
 
 /** Runs the scenario from 06:00 through the stress phases, then on into the evening batch until `nightUntilHour`
  * hours after the day's start. */
@@ -370,7 +383,7 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
 
   let phase = 'baseline';
   let lpars: Record<string, LparSum> = {};
-  let hourWorkloads: Record<string, { completions: number; failed: number }> = {};
+  let hourWorkloads: Record<string, { completions: number; failed: number; rolledBack: number }> = {};
   let dasdIops = 0;
   let cfRequests = 0;
   let ivConfig = run.sim.config;
@@ -394,6 +407,7 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
       const cp = pool('CP');
       s.deliveredCp += cp?.deliveredEngines ?? 0;
       s.effectiveCp += cp?.effectiveEngines ?? 0;
+      s.effectiveDispatchCp += effectiveDispatchEngines(cp ?? { deliveredEngines: 0, overheadFrac: 0 });
       s.deliveredZiip += pool('ZIIP')?.deliveredEngines ?? 0;
       s.effectiveZiip += pool('ZIIP')?.effectiveEngines ?? 0;
       s.deliveredIcf += pool('ICF')?.deliveredEngines ?? 0;
@@ -407,9 +421,10 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
       }
     }
     for (const w of sim.last.workloads) {
-      const a = (hourWorkloads[w.id] ??= { completions: 0, failed: 0 });
+      const a = (hourWorkloads[w.id] ??= { completions: 0, failed: 0, rolledBack: 0 });
       a.completions += w.completions;
       a.failed += w.failed;
+      a.rolledBack += w.rolledBack ?? 0;
     }
     dasdIops += sim.env.dasd?.totalIops ?? 0;
     cfRequests += (sim.env.cf ?? []).reduce((a, r) => a + r.requestRate, 0);

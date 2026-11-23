@@ -68,24 +68,6 @@ export const STREAM_STORY: Record<string, string> = {
   STM: 'customer statements',
 };
 
-/** Who owns each workload (Midwest). */
-export const APP_OWNERS: Record<string, string> = {
-  RBANK: 'Sam Lee (retail banking)',
-  CARDAUTH: 'Ana Costa (cards)',
-  MOBILE: 'Jordan Wu (digital channels)',
-  TELLER: 'Chris Novak (branch systems)',
-  PAYMQ: 'Fatima Haddad (payments)',
-  ADHOC: 'Erik Lund (BI and analytics)',
-  TSO: 'Robin Shah (development)',
-};
-
-/** Facts about the calendar anyone in the business knows (Midwest). */
-export const CALENDAR_FACTS: { id: string; text: string }[] = [
-  { id: 'payday', text: 'Payday is the 15th: everyone checks their balance and moves money that day, mostly from their phones.' },
-  { id: 'monthend', text: 'Month end (29th–30th) adds about a third more reporting batch on top of the usual night.' },
-  { id: 'weekend', text: 'Weekends are quiet for branches, but mobile traffic hardly drops.' },
-];
-
 /** Rumours the business has heard about upcoming events (only events someone could know about). */
 export const EVENT_RUMOURS: Record<string, string> = {
   CAMPAIGN: 'marketing is about to push a mobile promotion',

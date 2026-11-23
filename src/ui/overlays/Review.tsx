@@ -1,8 +1,9 @@
 // End-of-day review: the report card, the root-cause forms and the draft pick. Split from `Overlays.tsx` (CL-38).
 
 import { EVIDENCE } from '../../content/evidence';
-import { triggerLabel } from '../../content/rca';
-import { rcaGroupOf } from '../../game/run/rca';
+import { idText } from '../../game/ids';
+import { pinVerdictLines } from '../../game/proof';
+import { groupAcceptedOf, primaryTextOf, rcaAnswerText, rcaGroupOf } from '../../game/run/rca';
 import { hhmm } from '../../sim/core/clock';
 import { TICKS_PER_HOUR } from '../../sim/core/units';
 import type { ViewModel } from '../../game/view';
@@ -45,10 +46,10 @@ export function Review({ v, game, investigate }: { v: ViewModel; game: GameHandl
             <div className="row">
               <span>
                 #{i.id} {i.workloadId}
-                {linked(i.id)}: you said {i.rca!.mechanism}/{triggerLabel(i.rca!.trigger)}
+                {linked(i.id)}: {rcaAnswerText(rcaGroupOf(v.incidents, i.id), i.rca!.mechanism, i.rca!.trigger, groupAcceptedOf(rcaGroupOf(v.incidents, i.id)))}
               </span>
               <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
-                +{i.rca!.points} (was {i.truth.mechanism}/{triggerLabel(i.truth.trigger)})
+                +{i.rca!.points} (was {primaryTextOf(rcaGroupOf(v.incidents, i.id))})
               </span>
             </div>
             {i.rca!.explain && (
@@ -57,12 +58,12 @@ export function Review({ v, game, investigate }: { v: ViewModel; game: GameHandl
               </div>
             )}
             <AlsoAccepted group={rcaGroupOf(v.incidents, i.id)} />
-            {(i.rca!.evidence ?? []).map((e) => (
-              <div key={e.pinId} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
-                {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
+            {pinVerdictLines(i.rca!.proof, i.rca!.evidence ?? [], (id) => idText('pin', id)).map((line, k) => (
+              <div key={k} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+                {line}
               </div>
             ))}
-            {i.rca!.proof && <ProofView proof={i.rca!.proof} />}
+            {i.rca!.proof && <ProofView proof={i.rca!.proof} note={i.rca!.hourNote} />}
             {(i.rca!.evidencePoints ?? 0) > 0 && (
               <div style={{ fontSize: 12, paddingLeft: 12 }}>
                 Evidence +{i.rca!.evidencePoints}

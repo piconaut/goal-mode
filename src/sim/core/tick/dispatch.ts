@@ -5,6 +5,7 @@ import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../
 import { decayInto, emptyAcc, goalInfo, initialDp, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
 import { holderTopology, servedKeys } from '../../wlm/holders';
 import { addToBuckets } from '../../wlm/goals';
+import { effectiveDispatchEngines } from '../../hw/cpc';
 import type { CpuGrant, LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { DP } from '../../zos/dispatcher';
@@ -185,7 +186,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     pool.deliveredEngines = efficiency > 0 ? used / efficiency : 0;
     pool.effectiveEngines = used;
   }
-  rt.msuRate = (cpRt?.deliveredEngines ?? 0) * img.msuPerCp;
+  rt.msuRate = cpRt ? effectiveDispatchEngines(cpRt) * img.msuPerCp : 0;
   // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
   // with the storage delays; APPROX: one delayed sample per swapped job).
   for (const j of swappedBy[l.id] ?? []) {

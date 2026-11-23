@@ -1,7 +1,8 @@
 import { EVIDENCE, PROOF } from '../../content/evidence';
+import { triggerLabel } from '../../content/rca';
 import type { Scenario } from '../../sim/core/scenario';
 import { judgeGroupEvidence } from '../evidence';
-import { judgeProof } from '../proof';
+import { judgeProof, hourBaseNote } from '../proof';
 import { mechanismExplanation } from '../rcaExplain';
 import { scoreAccepted } from '../sla';
 import {
@@ -30,29 +31,88 @@ export function rcaGroupOf(incidents: readonly Incident[], incidentId: number): 
 
 /** A group's accepted answers: the union of its members', led by the lead's primary (docs/rca-design.md §4.5). One
  * RCA covers one cause, so an answer that is right for any victim is right for the filing. */
-export function groupAcceptedOf(group: readonly Incident[]): { mechanisms: Mechanism[]; triggers: Trigger[]; notes: Record<string, string> } {
+export function groupAcceptedOf(group: readonly Incident[]): {
+  mechanisms: Mechanism[];
+  triggers: Trigger[];
+  notes: Record<string, string>;
+  noteFrom: Record<string, string>;
+} {
   const mechanisms: Mechanism[] = [];
   const triggers: Trigger[] = [];
   const notes: Record<string, string> = {};
+  const noteFrom: Record<string, string> = {};
   for (const inc of group) {
     const accepted = inc.truth.accepted;
     for (const m of accepted.mechanisms) if (!mechanisms.includes(m)) mechanisms.push(m);
     for (const t of accepted.triggers) if (!triggers.includes(t)) triggers.push(t);
     // The first reason offered for an answer is the one shown, and the lead's comes first.
-    for (const [answer, why] of Object.entries(inc.truth.notes ?? {})) notes[answer] ??= why;
+    for (const [answer, why] of Object.entries(inc.truth.notes ?? {})) {
+      if (notes[answer] !== undefined) continue;
+      notes[answer] = why;
+      noteFrom[answer] = inc.workloadId;
+    }
   }
-  return { mechanisms, triggers, notes };
+  return { mechanisms, triggers, notes, noteFrom };
 }
 
-/** The group's answers that are not the lead's primary, each with its reason: the reply's "also accepted" (RT-07). */
+/** The group's answers that are not the lead's primary, each with its reason: the reply's "also accepted" (RT-07).
+ *  A reason belongs to one victim's hour, so in a group it names the victim it came from (RT-28). */
 export function alsoAcceptedOf(group: readonly Incident[]): { answer: Mechanism | Trigger; why?: string }[] {
   const lead = group[0];
   if (!lead) return [];
   const accepted = groupAcceptedOf(group);
+  const whyOf = (answer: string) => {
+    const why = accepted.notes[answer];
+    if (why === undefined) return undefined;
+    return group.length > 1 ? `${accepted.noteFrom[answer]}: ${why}` : why;
+  };
   return [
-    ...accepted.mechanisms.filter((m) => m !== lead.truth.mechanism).map((m) => ({ answer: m, why: accepted.notes[m] })),
-    ...accepted.triggers.filter((t) => t !== lead.truth.trigger).map((t) => ({ answer: t, why: accepted.notes[t] })),
+    ...accepted.mechanisms.filter((m) => m !== lead.truth.mechanism).map((m) => ({ answer: m, why: whyOf(m) })),
+    ...accepted.triggers.filter((t) => t !== lead.truth.trigger).map((t) => ({ answer: t, why: whyOf(t) })),
   ];
+}
+
+/** One distinct primary of a group, with the workloads whose truth it is. */
+export interface GroupPrimary {
+  mechanism: Mechanism;
+  trigger: Trigger;
+  workloads: string[];
+}
+
+/** The group's distinct primaries, the lead's first (RT-28). */
+export function groupPrimariesOf(group: readonly Incident[]): GroupPrimary[] {
+  const out: GroupPrimary[] = [];
+  for (const inc of group) {
+    const same = out.find((p) => p.mechanism === inc.truth.mechanism && p.trigger === inc.truth.trigger);
+    if (same) {
+      if (!same.workloads.includes(inc.workloadId)) same.workloads.push(inc.workloadId);
+    } else out.push({ mechanism: inc.truth.mechanism, trigger: inc.truth.trigger, workloads: [inc.workloadId] });
+  }
+  return out;
+}
+
+/** The reply's header text for the group's primary: one primary as before, or each distinct primary with the
+ *  workloads whose truth it is (RT-28). A single incident, or a group whose members agree, reads unchanged. */
+export function primaryTextOf(group: readonly Incident[]): string {
+  const primaries = groupPrimariesOf(group);
+  const one = (p: GroupPrimary) => `${p.mechanism}/${triggerLabel(p.trigger)}`;
+  if (primaries.length <= 1) return primaries.length ? one(primaries[0]!) : '';
+  return primaries.map((p) => `${one(p)}: ${p.workloads.join(', ')}`).join('; ');
+}
+
+/** The reply's answer line: what was filed, accepted or not, and the primary when it was not that (RT-30). The play
+ *  CLI and the RCA card both render this, so the answer wording cannot drift. */
+export function rcaAnswerText(
+  group: readonly Incident[],
+  mechanism: Mechanism,
+  trigger: Trigger,
+  accepted: { mechanisms: Mechanism[]; triggers: Trigger[] },
+): string {
+  const lead = group[0];
+  if (!lead) return '';
+  const offPrimary = mechanism !== lead.truth.mechanism || trigger !== lead.truth.trigger;
+  const primary = offPrimary || groupPrimariesOf(group).length > 1 ? ` (primary ${primaryTextOf(group)})` : '';
+  return `Mechanism ${mechanism} ${accepted.mechanisms.includes(mechanism) ? 'accepted' : 'not accepted'}, trigger ${triggerLabel(trigger)} ${accepted.triggers.includes(trigger) ? 'accepted' : 'not accepted'}${primary}`;
 }
 
 /** Root-cause analysis for an incident and every incident linked to it; scored once against the ground truth. */
@@ -93,7 +153,10 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   // would otherwise rule out an answer another victim proves (N1). A single incident keeps the unlabelled wording.
   const explainInc = group.find((m) => m.truth.mechanism === mechanism) ?? group[0]!;
   const explain = mechanismExplanation(explainInc, group.length > 1 ? explainInc.workloadId : undefined);
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}) };
+  // The hour-base note is recorded now, from the filed pins, so a later unpin or a rolled-off pin cannot change the
+  // reply (RT-30). A group's victims have their own hours, so the note is only for a single incident.
+  const hourNote = judged && group.length === 1 ? hourBaseNote(judged, pins, group[0]!.basis) : null;
+  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}), ...(hourNote ? { hourNote } : {}) };
   return {
     ...run,
     trust,

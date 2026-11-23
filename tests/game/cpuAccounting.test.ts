@@ -1,10 +1,11 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { SCENARIOS } from '../../src/content/scenarios';
-import { newRun } from '../../src/game/run';
+import { advance, newRun, startDay } from '../../src/game/run';
 import { accumulateHour, newHour } from '../../src/game/run/hourly';
 import { addHour } from '../../src/game/sla';
 import type { HourAcc } from '../../src/game/types';
 import { step } from '../../src/sim/core/step';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { emptyScpTick } from '../../src/sim/wlm/evaluate';
 import { SERVER_KEY } from '../../src/sim/wlm/holders';
 
@@ -184,4 +185,22 @@ it('adds legacy grant rows lacking IIPCP without NaNs or backfilling earlier tic
   }] } } }).hour!;
   const expected = addHour(old, fresh);
   for (const key of ['cpByScpLpar', 'cpByRoleLpar', 'cpByWorkloadLpar'] as const) expect(one[key]).toEqual(expected[key]);
+});
+
+it('keeps prior hour snapshots intact when advances fork and cross an hour boundary', () => {
+  const scenario = SCENARIOS.midwest!;
+  const game = MIDWEST_GAME;
+  const start = startDay(newRun(scenario, game, 42), game);
+  const prior = advance(start, scenario, game, TICKS_PER_HOUR - 2);
+  const priorHour = structuredClone(prior.hour);
+
+  const across = advance(prior, scenario, game, 4);
+  const boundary = advance(prior, scenario, game, 2);
+  const closedHour = structuredClone(boundary.smfHours?.[0]);
+  const split = advance(boundary, scenario, game, 2);
+
+  expect(prior.hour).toEqual(priorHour);
+  expect(split.hour?.ticks).toBe(2);
+  expect(split.smfHours?.[0]?.workloads).toEqual(closedHour?.workloads);
+  expect(split).toEqual(across);
 });

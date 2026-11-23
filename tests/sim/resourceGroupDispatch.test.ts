@@ -6,7 +6,7 @@ import { discretionaryCaps, resourceGroupCaps, rgSysplexShares, step } from '../
 import { planLpar } from '../../src/sim/core/tick/demand';
 import type { TickCtx } from '../../src/sim/core/tick/ctx';
 import { buildLparPlan } from '../../src/sim/core/tick/plan';
-import { msuPerCp, SU_PER_SEC_PER_MSU, suPerCpuSecOf } from '../../src/sim/hw/cpc';
+import { effectiveDispatchEngines, msuPerCp, SU_PER_SEC_PER_MSU, suPerCpuSecOf } from '../../src/sim/hw/cpc';
 import { poolEntitlement } from '../../src/sim/hw/pools';
 import { dispatchableDemand, evaluateLpar, prepareLpar, sliceSpec } from '../../src/sim/wlm/evaluate';
 import { ACC_DECAY, emptyAcc } from '../../src/sim/wlm/runtime';
@@ -177,7 +177,7 @@ describe('resource group dispatchability', () => {
       const cp = rt.pools.find((p) => p.pool === 'CP')!;
       expect(cp.deliveredEngines).toBeLessThanOrEqual(freeRt.pools.find((p) => p.pool === 'CP')!.deliveredEngines + 1e-8);
       expect(rt.msuRate).toBeLessThanOrEqual(freeRt.msuRate + 1e-8);
-      expect(rt.msuRate).toBeCloseTo(cp.deliveredEngines * msuPerCp(cpc), 8);
+      expect(rt.msuRate).toBeCloseTo(effectiveDispatchEngines(cp) * msuPerCp(cpc), 8);
       const sys = capped.wlm.systems.find((s) => s.lparId === rt.id)!;
       const oldSys = prev.wlm.systems.find((s) => s.lparId === rt.id)!;
       const used = (keys: string[]) => sys.scps.filter((s) => keys.includes(s.scKey.split('#')[0]!)).reduce((sum, s) => sum + s.acc.cpuEngines - (oldSys.scps.find((x) => x.scKey === s.scKey)?.acc.cpuEngines ?? 0) * ACC_DECAY, 0);

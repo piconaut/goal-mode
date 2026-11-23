@@ -91,27 +91,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-48 · Play CLI pins: CF and DASD interval ids, PROCU history, pin labels
-`list: playtest-fixes · status: ready · priority: high · size: S · area: tooling`
-
-Source: agent playtest 2026-11-21 (runs not committed). `tools/playCore.ts` `pin` turns the interval id the CLI
-shows into an interval index for WLMGL and CPC only, so `pin CF CF02 CF_SYNC 678` passes 678 as an index and fails
-"No such CF Activity row" although `report CF 678` shows CF02; `pin DASD … <id>` has the same bug. Without an id a CF
-or DASD pin reads the latest interval, not the incident's: say so in the pin's reply. Also: a pin's label shows the
-interval end ("D1 12:30" for 12:00–12:30); label it with the interval's range as `report` does. Reported, not yet
-confirmed: `pin PROCU --at` refused a past range (Revenue seed 23 D8). Done when: CF and DASD pins by interval id are
-tested in the play CLI tests, labels match `report`, and the PROCU report is confirmed or fixed.
-
-### PT-49 · Business-calendar facts and application owners are Midwest's in every scenario
-`list: playtest-fixes · status: ready · priority: low · size: S · area: content`
-
-Source: agent playtest 2026-11-21, Revenue seed 23. `src/content/inquiries.ts` `CALENDAR_FACTS` ("Payday is the 15th:
-… mostly from their phones") and `APP_OWNERS` (Midwest workloads only) are not per scenario, so the revenue agency's
-CALENDAR reply talks about bank paydays, and `ask APP_ENTRY ANALYTICS` falls back to "the ANALYTICS owner" (it gave no
-reply within 17 h; check whether that is the 20 % don't-know or a bug). Move both into the scenario content for
-Midwest, Revenue and Harbourline. Done when: each scenario's CALENDAR and APP_ENTRY replies use its own facts and
-owners, with a test per scenario.
-
 ## rca-truth
 
 RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating, ending in design
@@ -129,64 +108,21 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-17 · Healthy baseline per hour of day
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-Unblocked by the user 2026-11-21 (docs/rca-design.md §7 Q6: yes for this entry; RT-19 and RT-20 stay parked). Agent
-playtest 2026-11-21 evidence: Harbourline seed 37 MKTORD at 318/s and 345/s against 133–204/s in other hours was
-judged not ≥ 1.25 × "recent normal" (the daily peaks feed the rolling baseline); RT-18's surge test reads this slot.
-
-One baseline per workload per clock hour (EWMA over days), with the rolling EWMA as fallback until a slot has data;
-co-dominant groups (≥ ⅓ of the excess) are accepted; a floor of 10 % of the SLA budget below which no delay group
-wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done when: R-6's and R-15's 20:00
-`LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
-
-### RT-28 · A grouped RCA reply says which victim each line is about
-`list: rca-truth · status: ready · priority: high · size: S · area: game`
-
-Source: agent playtest 2026-11-21, Midwest seed 11 D8 INC11 (run not committed). The reply's header names the lead's
-primary (`CPU_PRIORITY/Change regression`, RBANK), while the explanation comes from the member whose truth matches the
-filed mechanism (`src/game/run/rca.ts` `explainInc`: MOBILE, `CPU_CAPACITY`) and reads "MOBILE: … the machine, not the
-policy, was short", so the reply seems to contradict itself. The accepted reasons are the union of the members'
-(`groupAcceptedOf`) without naming whose they are, so RBANK, the REBIND's direct victim, reads as accepted "as a
-neighbour". Harbourline seed 37 D8 INC63 shows the same header/explanation clash. Change: when members' primaries
-differ, the header names each distinct primary with its workloads, and every accepted reason names the member it came
-from. After RT-32 because RT-32 rewrites `mechanismExplanation`. Done when: a test with a two-member group whose
-members have different primaries shows both primaries and per-member reasons, and a single incident's reply is
-unchanged (`npm run compare` reporting-only).
-
 ### RT-29 · A complete proof for a mechanism the truth does not accept
-`list: rca-truth · status: blocked: design (after RT-17) · priority: high · size: M · area: game`
+`list: rca-truth · status: blocked: design · priority: high · size: M · area: game`
 
 Source: agent playtest 2026-11-21 (runs not committed). Harbourline seed 37 D4 INC35: both THREAD_LIMIT predicates
 green (CICS 110 MXT wait 6762 ms/txn, CPU per transaction ×1.01), primary `QR_TCB/POLICY`, reply "THREAD_LIMIT proven,
 but it was not the cause, so it earns nothing"; the same MXT-queue symptom was QR_TCB on D3/D4 and CPU_PRIORITY on
 D2/D3, and on D1 one hour gave INC1 QR_TCB and INC2 CPU_PRIORITY. Midwest Hard seed 54 D3 INC22: CF02 sync service
 1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗", apparently because CF02 has always
-been slow (a standing misconfiguration is its own baseline). Part of this is RT-17's (co-dominant groups) and RT-19's
-(THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the two repros after RT-17;
+been slow (a standing misconfiguration is its own baseline). Part of this was RT-17's (co-dominant groups, since
+merged) and RT-19's (THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the
+two repros now that RT-17 has landed;
 what remains needs a design call: accept a mechanism whose complete recipe (including its ruling-out half) holds on the
 incident's own rows and window, or keep it at zero with a reply that says which number made the primary win; and
 whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.
 Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
-
-### RT-30 · RCA reply wording: what was accepted, what was proven, and every pin
-`list: rca-truth · status: blocked: after RT-28 · priority: high · size: M · area: game`
-
-Source: agent playtest 2026-11-21, all four runs. Changes:
-- "Mechanism right" beside "✗ not proven" (Midwest seed 11 INC11; Midwest Hard seed 54 INC27, INC31; Harbourline
-  seed 37 INC11, INC63): say "accepted" for
-  the answer and "your pins did not prove it" for the recipe.
-- An accepted alternate never says it was not the primary: say "accepted (primary: X)".
-- Ruling-out predicates read backwards when they fail, e.g. "✗ they failed rather than ran late: CPU or I/O wait
-  < 25 %" beside a 61 % pin (Revenue seed 23 INC14, Midwest Hard seed 54 INC31): word each predicate as the fact the pin must show,
-  and quote the pin's value when it fails.
-- Pins that meet no predicate are left out of the verdict (Midwest seed 11 INC1 PIN2/PIN4, INC11 PIN16; Revenue seed 23
-  PIN9, PIN16): list every filed pin with why it did not count (wrong window, wrong subject, value inside normal).
-- When a pin meets a line the verdict's hour average does not (Midwest seed 11 INC6: pin CPC 90.1 % for 13:00–13:30, hour average 87.1 %), say that
-  the truth reads the clock hour.
-After RT-28 (same reply code). Done when: reply snapshots in the play CLI tests cover each case, and the browser RCA
-panel shows the same text.
 
 ### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
 `list: rca-truth · status: blocked: design · priority: low · size: M · area: game`
@@ -198,7 +134,8 @@ clock-hour average of every tick (87.1 %). Every CPU line and every RT-32 band i
 in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
 use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
 whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-32,
-so the choice applies to its bands. The reply wording half is RT-30's. Done when: the user decides, the INC6 shape
+so the choice applies to its bands. The reply wording half is RT-30's (landed: the reply now says the truth reads the
+clock hour). Done when: the user decides, the INC6 shape
 (one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
@@ -244,14 +181,6 @@ After RT-13. The player opens a problem on a subject and window and files mechan
 a problem the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT and a roomy-day REGRESSION open no
 incident (§5.1). Done when: browser and play CLI can open, file and review one, with tests.
 
-### RT-23 · A discriminator for the retry storm
-`list: rca-truth · status: blocked: research (what a real analyst reads to tell retries from new demand; docs/rca-design.md §5.3, Q9) · priority: low · size: M · area: sim`
-
-RETRY_STORM and CAMPAIGN are the same command and identical in every report (R-5). Find the real signal with the
-`zos-docs` skill (candidates: rolled-back or abnormally ended DDF threads in Db2 accounting or statistics, connection
-timeouts; not confirmed, see §5.3), add a ledger row, then model it on the card. Until then MOBILE_BACKOFF and
-REFSTAT_BACKOFF are not gated by RT-24.
-
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
 
@@ -270,9 +199,9 @@ is skipped: an open PR for the same entry uses it.) 29 of the 108 mechanism × t
 so with `EVIDENCE.perRca` = 3 they earn the mechanism's 3 points but never strong evidence. Those a shipped card can
 produce: CPU_CAPACITY, CAPPING and DEPENDENCY × RUNAWAY_WORK (RUNAWAY, SHADOW_IT), CPU_PRIORITY and CAPPING ×
 HARDWARE_FAULT (POWER_CAP, CF_LINK, CF_FAILURE), and the CPU family and DEPENDENCY × APPLICATION_ERROR (RETRY_STORM's
-alternate, unprovable anyway until RT-23). Options: a fourth pin for strong evidence only; a trigger predicate that a
-mechanism pin can also meet where the data honestly shows both; or accept the gap. Done when: the user decides and
-the test's list matches the decision.
+alternate; RT-23's rollback share now proves the two-pin trigger, so the pair is a card's, not a data gap). Options: a
+fourth pin for strong evidence only; a trigger predicate that a mechanism pin can also meet where the data honestly
+shows both; or accept the gap. Done when: the user decides and the test's list matches the decision.
 
 ## wlm-truth
 
@@ -310,68 +239,26 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
-### RF-05 · MSU is counted from total dispatch time, LPAR management included
-`list: realism-fixes · status: blocked: balance · priority: low · size: M · area: sim`
-
-Source: cross-report invariant suite (2026-11-14; identity `mon3-sysinfo-cpc`, left-out part). Real RMF computes a
-partition's MSU from effective dispatch time: Partition Data `MSU ACT` is the "actual consumption based on the logical
-processor effective dispatch time", and Monitor III CPC `MSU Act` likewise (RMF Report Analysis 3.1 p.402, p.98). The
-sim's Monitor III CPC `msuAct` already does that, but `LparRuntime.msuRate` (`src/sim/core/tick/dispatch.ts`) is
-`deliveredEngines × msuPerCp`, total dispatch time with LPAR management and polarity loss in it, and it feeds the
-header MSU, Partition Data MSU AVG, the R4HA, soft capping, the SCRT-style bill and TFP MSU-hours. So one image has
-two MSU figures at one moment (Midwest seed 7, 11:20: PROD2 CPC MSU Act 644, header 663, LPAR management 2.9 %).
-Change: take `msuRate` from effective dispatch time; keep `deliveredEngines` for LPAR BUSY and physical busy. This
-lowers every R4HA and bill by the overhead share, so it is a balance change: goldens, a Behaviour change note and a
-three-scenario sweep. Done when: the identity "MSU Act = header MSU = Partition Data MSU AVG at the same time" is
-added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Matches", SPEC §17 is updated and the
-sweep is recorded.
-
-### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
-`list: realism-fixes · status: blocked: research · priority: low · size: M · area: sim`
-
-Source: cross-report invariant suite (2026-11-14; identity `soft-cap-flag`, left-out part). The Partition Data header
-shows GROUP NAME, LIMIT and `AVAILABLE`, the "long-term average of CPU service in MSUs/h which would be allowed by the
-limit of the capacity group but is not used by its members. If the value is negative, the group is capped" (RMF Report
-Analysis 3.1 p.399–400); LIMIT is flagged with `*` when the partition joined its group less than four hours ago. The
-game shows the group and its limit (Monitor III CPC header) but not the group's average, so a player cannot work out
-from any report why a group is or is not capping: the members' R4HAs do not add up to it, because the sim starts a
-new group's window empty (`newR4ha(g.id)` in `src/sim/core/tick/control.ts`), as if the group had been IPLed. In the
-suite's runs a group limit at 60 % of its members' summed R4HA never capped within an hour for that reason.
-Research first (zos-docs): how WLM builds the group's average when a group is defined or a member joins (WLM Planning
-3.1 p.46–47 says capping starts "when the 4-hour rolling average for the combined usage exceeds" the limit; whether
-that is the sum of the members' own averages is not stated on the pages read). Then: show AVAILABLE (and the `*`) on
-Partition Data and the CPC header, and build the group average as research says. Done when: the suite's `soft-cap-flag`
-reads the group's state from a report instead of the sim, and docs/research.md has the row.
-
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
 Tune after the RT entries that move truth labels have landed (RT-00, RT-02, RT-09, RT-14), because they change what
 the strategy bots do (docs/rca-design.md §4.8); tuning before them would be redone.
 
-### BL-01 · Harbourline expert wins 5 of 10
-`list: balance · status: ready · priority: low · size: M · area: content`
-
-Release sweep 2026-11-10 (dev `1300e69`, Normal, seeds 1–10): expert 5/10. All five losses are trust losses, mostly
-on Markets (seeds 1, 2, 4, 7, 9); seed 4 (day 38) is new against the 6/10 the user accepted. Harbourline is gated
-against Midwest's bands for reference only. The user accepted 5/10 for the release. Find why Markets trust runs out
-for an expert player (event mix, Markets SLA tightness, the expert bot's blind spots such as never raising Db2 above
-CICS) and decide whether to tune content or the bot. Done when: a 20-seed three-bot Harbourline sweep is recorded in
-PROGRESS.md M8.2 with the decision, and any content change carries `// FICTIONAL:` notes.
-Cross-note: the `wlm-truth` core (WT-04 … WT-09) changes how equal-priority crowding arises (docs/archive/wlm-audit-2026-11.md W2,
-§6.2); tuning before WT-09 would be redone (§8 Q2).
-
-### BL-02 · Revenue: do-nothing survives close to textbook
-`list: balance · status: ready · priority: low · size: M · area: content`
-
-Release sweep 2026-11-10: do-nothing median day 19 (p10 16, p90 23), textbook 27, expert 10/10. Do-nothing is inside
-its 8–22 band (it moved there with #167's G1 retune), but the gap to textbook is 8 days against Midwest's 11 and
-Harbourline's 19.5, so diagnosing earns less on Revenue. The textbook PREFILL losses around day 22 (PROGRESS.md
-M8.2 follow-ups) belong here too. Decide whether the spread is wanted; if not, tune G1/G2 pressure or the deadline
-week. Done when: a 20-seed three-bot Revenue sweep and the decision are recorded in PROGRESS.md M8.2.
-Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2, §8 Q2).
-
 ## cleanup
+
+### CL-63 · Reconcile the stale "Fix queued" rows in docs/research.md
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: M8.7 close-out (2026-11-23). List `realism-fixes` is empty, but six docs/research.md rows still say "Fix
+queued" with an old M8.7 item number and no entry behind them: IIPHONORPRIORITY/offline zIIPs (item 6), MAXDBAT and
+MXT queue wait (item 3, two rows), resource group capping of a server region (item 1), an AOR cap reaching
+transaction CPU (item 2), plus SPEC §17's R4HA row ("not phantom weight … fix queued, M8.7"). The code suggests most
+shipped (SPEC §5 polarity under a soft cap, §5.5 region groups, `src/sim/subsys/slots.ts`, `dispatch.ts`
+`iipcpReported`). Change: for each row, check the sim against the cited page (zos-docs skill) and set its status to
+Matches/Modelled/Approx with what the sim does now, or, where the gap is real, file an RF entry and keep "Fix queued"
+pointing at it; fix the SPEC §17 sentence to match. Docs only, no sim change. Done when: no research.md row says "Fix
+queued" without a BACKLOG entry ID, and SPEC §17 agrees.
 
 ### CL-19 · One field table for the service-class accumulators
 `list: cleanup · status: blocked: design · priority: high · size: M · area: sim`

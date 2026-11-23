@@ -268,6 +268,38 @@ export function cfServiceForSystem(
   t: CfTunables,
   requestRate: number,
 ): CfSystemResult {
+  return withSystemRate(cfServiceAtSite(results, structures, kmTo, t), requestRate);
+}
+
+/** Systems at the same site share this tick's service times, with traffic weighted by each system's own rate. */
+export function cfServiceForSystems(
+  results: readonly CfResult[],
+  structures: readonly CfStructureConfig[],
+  systems: readonly { id: string }[],
+  siteKmOf: Readonly<Record<string, number>>,
+  t: CfTunables,
+  requestRates: Readonly<Record<string, number>>,
+): Record<string, CfSystemResult> {
+  const bySite = new Map<number, ReturnType<typeof cfServiceAtSite>>();
+  const bySystem: Record<string, CfSystemResult> = {};
+  for (const { id } of systems) {
+    const here = siteKmOf[id] ?? 0;
+    let service = bySite.get(here);
+    if (!service) {
+      service = cfServiceAtSite(results, structures, (cfId) => Math.abs((siteKmOf[cfId] ?? 0) - here), t);
+      bySite.set(here, service);
+    }
+    bySystem[id] = withSystemRate(service, requestRates[id] ?? 0);
+  }
+  return bySystem;
+}
+
+function cfServiceAtSite(
+  results: readonly CfResult[],
+  structures: readonly CfStructureConfig[],
+  kmTo: (cfLparId: string) => number,
+  t: CfTunables,
+) {
   const up = results.map((r) => r.lparId);
   let share = 0;
   let distKm = 0;
@@ -275,29 +307,42 @@ export function cfServiceForSystem(
   let asyncW = 0;
   let serviceW = 0;
   let cpuW = 0;
-  const byStructure: CfSystemStructureResult[] = [];
+  const rows: { sample: CfSystemStructureResult; requestShare: number; copyFrac: number }[] = [];
   for (const r of results) {
     for (const st of r.structures) {
       const x = structures.find((s) => s.name === st.name);
       if (!x) continue;
       const sec = duplexSecondary(x, up);
-      const km = Math.max(kmTo(st.cfLparId), sec ? kmTo(sec) : 0);
+      const primaryKm = kmTo(st.cfLparId);
+      const secondaryKm = sec ? kmTo(sec) : 0;
+      const km = Math.max(primaryKm, secondaryKm);
       const link = km * CF_LINK_ROUND_TRIP_SEC_PER_KM;
       const sync = st.syncSec + link;
       const threshold = t.syncThresholdSec * CF_ASYNC_THRESHOLD_MULT[st.type];
       const asyncFrac = sync <= threshold ? 0 : Math.min(0.98, 1 - threshold / sync);
       const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
+      const serviceSec = (1 - asyncFrac) * sync + asyncFrac * asyncSec;
       distKm = Math.max(distKm, km);
       share += x.requestShare;
       syncW += x.requestShare * sync;
       asyncW += x.requestShare * asyncFrac;
-      serviceW += x.requestShare * ((1 - asyncFrac) * sync + asyncFrac * asyncSec);
+      serviceW += x.requestShare * serviceSec;
       cpuW += x.requestShare * ((1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec);
-      const row = { name: st.name, type: st.type, requestRate: requestRate * x.requestShare, syncSec: sync, asyncFrac, asyncSec, serviceSec: (1 - asyncFrac) * sync + asyncFrac * asyncSec };
-      byStructure.push({ ...row, ...(sec ? { role: 'PRIM' as const } : {}), cfLparId: st.cfLparId, distKm: kmTo(st.cfLparId) });
-      if (sec) byStructure.push({ ...row, requestRate: row.requestRate * duplexFrac(x), role: 'SEC', cfLparId: sec, distKm: kmTo(sec) });
+      const sample: CfSystemStructureResult = {
+        name: st.name, type: st.type, requestRate: 0, syncSec: sync, asyncFrac, asyncSec, serviceSec,
+        ...(sec ? { role: 'PRIM' } : {}), cfLparId: st.cfLparId, distKm: primaryKm,
+      };
+      rows.push({ sample, requestShare: x.requestShare, copyFrac: 1 });
+      if (sec) rows.push({ sample: { ...sample, role: 'SEC', cfLparId: sec, distKm: secondaryKm }, requestShare: x.requestShare, copyFrac: duplexFrac(x) });
     }
   }
   const n = share > 0 ? share : 1;
-  return { distKm, requestRate, syncSec: syncW / n, asyncFrac: asyncW / n, serviceSec: serviceW, zosCpuSec: cpuW, byStructure };
+  return { distKm, syncSec: syncW / n, asyncFrac: asyncW / n, serviceSec: serviceW, zosCpuSec: cpuW, rows };
+}
+
+function withSystemRate(site: ReturnType<typeof cfServiceAtSite>, requestRate: number): CfSystemResult {
+  const { distKm, syncSec, asyncFrac, serviceSec, zosCpuSec, rows } = site;
+  return { distKm, requestRate, syncSec, asyncFrac, serviceSec, zosCpuSec,
+    byStructure: rows.map(({ sample, requestShare, copyFrac }) => ({ ...sample, requestRate: requestRate * requestShare * copyFrac })),
+  };
 }
