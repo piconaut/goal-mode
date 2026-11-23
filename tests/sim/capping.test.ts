@@ -3,6 +3,7 @@ import { MIDWEST_PRODUCTS, tieredMonthlyCost } from '../../src/content/pricing';
 import { accrueUsage, closeMonth, estimateMonth, newCost, recordHour, startTfp } from '../../src/sim/cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
 import { initState } from '../../src/sim/core/init';
+import { effectiveDispatchEngines } from '../../src/sim/hw/cpc';
 import { step } from '../../src/sim/core/step';
 import { TICKS_PER_R4HA_SLOT } from '../../src/sim/core/units';
 import { renderPartitionData, renderReport, renderWlmDetail, renderWlmSummary, renderCfActivity, renderDasdSummary } from '../../src/sim/measure/reports';
@@ -96,6 +97,14 @@ describe('R4HA and soft capping', () => {
       expect(rt.msuRate).toBeGreaterThan(300 * (1 - cp.overheadFrac) + 1);
     }
     expect(bindingTicks).toBeGreaterThan(10);
+  });
+});
+
+describe('MSU basis', () => {
+  it('effective dispatch engines are the delivered engines less the LPAR management share', () => {
+    expect(effectiveDispatchEngines({ deliveredEngines: 4, overheadFrac: 0.025 })).toBeCloseTo(3.9, 12);
+    expect(effectiveDispatchEngines({ deliveredEngines: 2.5, overheadFrac: 0 })).toBe(2.5);
+    expect(effectiveDispatchEngines({ deliveredEngines: 0, overheadFrac: 0.03 })).toBe(0);
   });
 });
 
