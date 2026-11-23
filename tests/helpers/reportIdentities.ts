@@ -342,9 +342,9 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'partition-msu',
-    title: "Partition Data: MSU AVG is the dispatched CP engines at the CPC's MSU per CP (Monitor III CPC capacity ÷ CPs)",
+    title: "Partition Data: MSU AVG is the effective CP dispatch at the CPC's MSU per CP (Monitor III CPC capacity ÷ CPs)",
     basis: 'game',
-    source: 'SPEC §5.11.1 (MSU from general-CP dispatch time); Monitor III CPC header',
+    source: 'SPEC §5.11.1 (MSU from general-CP effective dispatch time, RF-05); Monitor III CPC header',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -353,9 +353,47 @@ export const IDENTITIES: Identity[] = [
           const h = o.mon3.cpcHeaders.find((x) => x.lparId === r.lparId);
           const cpc = o.config.cpcs.find((x) => x.id === h?.cpcId);
           if (!h || !cpc || cpc.engines.CP === 0) continue;
-          c.close(r.msuAvg, (r.physicalEngines * h.cpcCapacityMsu) / cpc.engines.CP, ROUNDING, () => `${at(o)} ${r.lparId} MSU AVG vs PHYS ENG × MSU/CP`);
+          c.close(r.msuAvg, (o.lpars[r.lparId]!.effectiveDispatchCp * h.cpcCapacityMsu) / cpc.engines.CP / n, ROUNDING, () => `${at(o)} ${r.lparId} MSU AVG vs EFFECTIVE ENG × MSU/CP`);
           c.close(r.msuAvg, o.lpars[r.lparId]!.msu / n, ROUNDING, () => `${at(o)} ${r.lparId} MSU AVG vs sim MSU rate`);
           c.close(r.physicalEngines, o.lpars[r.lparId]!.deliveredCp / n, ROUNDING, () => `${at(o)} ${r.lparId} PHYS ENG vs sim`);
+        }
+      }
+    },
+  },
+  {
+    id: 'msu-act-everywhere',
+    title: 'One MSU figure: Monitor III CPC MSU Act is the header MSU, and its average over an interval is Partition Data MSU AVG',
+    basis: 'game',
+    // Partition Data MSU ACT is the "actual consumption based on the logical processor effective dispatch time"
+    // (RMF Report Analysis 3.1 PDF p.402 (printed 362), PDF p.98 (printed 58)), and Monitor III CPC MSU Act is the
+    // same measurement. That both RMF reports carry one figure is the real behaviour; the header gauge is the game's
+    // display of that same rate, so all three must agree: at one moment (the header and Monitor III) and over the
+    // interval (Partition Data).
+    source: 'RMF Report Analysis 3.1 PDF p.402 (printed 362), PDF p.98 (printed 58) (MSU ACT and MSU Act from effective dispatch); SPEC §5.11.1',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        const view = buildView(o.end, run.scenario);
+        for (const x of o.mon3.cpc) {
+          if (x.msuAct === null) continue;
+          c.close(x.msuAct, view.lpars.find((y) => y.id === x.lparId)!.msu, ROUNDING, () => `${at(o)} ${x.lparId} MSU Act vs header MSU`);
+        }
+      }
+      for (const w of run.windows) {
+        // views[0] is the reading at the interval's start; one reading follows each of its ticks, so their average
+        // is the rate Partition Data averages over the interval.
+        const n = w.views.length - 1;
+        for (const r of w.iv.cpu) {
+          let sum = 0;
+          let readings = 0;
+          for (const v of w.views.slice(1)) {
+            const x = v.cpc.find((y) => y.lparId === r.lparId);
+            if (x && x.msuAct !== null) {
+              sum += x.msuAct;
+              readings++;
+            }
+          }
+          if (readings === 0) continue;
+          c.close(r.msuAvg, sum / n, ROUNDING, () => `${w.phase} ${formatClock(w.iv.endTick)} ${r.lparId} MSU AVG vs Monitor III MSU Act readings`);
         }
       }
     },
@@ -1124,9 +1162,8 @@ export const IDENTITIES: Identity[] = [
     basis: 'z/OS',
     // SYSINFO Avg CPU Util% = LPAR CPU time ÷ online time; Appl% (address spaces) and EAppl% (plus enclaves) are
     // divided by the logical processors. CPC: Physical Util % LPAR = (total − effective) ÷ (physical × range); MSU Act
-    // is "based on the logical processor effective dispatch time".
-    // Left out: MSU Act equal to the MSU the header, Partition Data, the R4HA and the bill use. Those count total
-    // dispatch time, LPAR management included, where RMF's MSU is from effective time (BACKLOG RF-05).
+    // is "based on the logical processor effective dispatch time", the same field the header, Partition Data MSU AVG,
+    // the R4HA and the bill use (`msu-act-everywhere`, RF-05).
     source: 'RMF Report Analysis 3.1 p.96–99 (Table 16), p.222–224 (Table 84)',
     check: (run, c) => {
       for (const o of run.intervals) {

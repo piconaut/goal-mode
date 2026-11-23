@@ -147,6 +147,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     const poolId = l.kind === 'CF' ? 'ICF' : 'CP';
     const cfg = l.pools.find((p) => p.pool === poolId);
     const rt = sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === poolId);
+    const lrt = sim.lpars.find((x) => x.id === l.id);
     const box = sim.config.cpcs.find((c) => c.id === l.cpcId);
     const phys = box?.engines[poolId] ?? 0;
     if (l.kind === 'ZOS' && cfg && !cfg.dedicated) {
@@ -181,7 +182,10 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       cpcId: l.cpcId,
       kind: l.kind,
       msuDef: l.kind === 'ZOS' ? l.definedCapacityMsu : null,
-      msuAct: l.kind === 'ZOS' && box ? effect * msuPerCp(box) : null,
+      // MSU Act: the partition's MSU rate, from effective dispatch time (physical dispatch less LPAR management,
+      // RMF Report Analysis 3.1 PDF p.402 (printed 362), PDF p.98 (printed 58)). It is the same field the header,
+      // Partition Data MSU AVG, the R4HA and the bill use, so the reports cannot disagree.
+      msuAct: l.kind === 'ZOS' && box ? (lrt?.msuRate ?? 0) : null,
       procNum: logical,
       logicalEffectPct: logical > 0 ? (100 * effect) / logical : 0,
       logicalTotalPct: logical > 0 ? (100 * total) / logical : 0,
