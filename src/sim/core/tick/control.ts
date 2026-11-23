@@ -30,9 +30,12 @@ export function softCap(t: TickCtx): void {
     const g = l.capacityGroup ? plan.groupOf[l.capacityGroup] : undefined;
     const gs = g ? prev.capping.groups.find((x) => x.id === g.id) : undefined;
     const join = g ? prev.capping.groupJoinTicks?.[g.id]?.[l.id] : undefined;
+    // A limit change restarts the window at the end of this tick (stepCapping); do not cap on the old view against
+    // the new limit in the meantime, so a raised limit takes effect at once rather than one tick late.
+    const limitChanged = g && prev.capping.groupLimitsMsu?.[g.id] !== undefined && prev.capping.groupLimitsMsu[g.id] !== g.limitMsu;
     // Each member's own view of the group's average decides its cap (RF-08): a member that joined under four hours
     // ago sees a lower used average and may not be capped while the others are.
-    if (g && gs && join !== undefined && groupMemberR4ha(gs, join, prev.tick) > g.limitMsu) {
+    if (g && gs && join !== undefined && !limitChanged && groupMemberR4ha(gs, join, prev.tick) > g.limitMsu) {
       const members = plan.groupMembers[g.id]!;
       const shares = groupShares(
         g.limitMsu,
