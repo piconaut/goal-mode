@@ -404,7 +404,7 @@ export const CODEX: CodexEntry[] = [
     sources: [
       { label: 'IBM z/OS 3.1 MVS SMF p.1133: record type 101 (Db2 accounting)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1133' },
       { label: 'IBM Db2 13 for z/OS Managing Performance pp.709, 726, 729–731: class 1/2/3 times', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=729' },
-      { label: 'IBM OMEGAMON for Db2 PE 5.4 p.2968: QWACABRT rollbacks', url: 'https://www.ibm.com/docs/en/SSUSPS_5.4.0/kdp54/kdpuge4.pdf#page=2968' },
+      { label: 'IBM OMEGAMON for Db2 PE 5.4 PDF p.2968 (printed 2942): QWACABRT rollbacks', url: 'https://www.ibm.com/docs/en/SSUSPS_5.4.0/kdp54/kdpuge4.pdf#page=2968' },
       { label: 'IBM Db2 13 for z/OS Managing Performance pp.143, 476, 660, 703: DBAT queue and package accounting', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=143' },
     ],
     discover: { tools: ['DB2_ACCT'] },
