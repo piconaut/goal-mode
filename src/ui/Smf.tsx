@@ -10,7 +10,7 @@ import { AnalyticsLink, Empty } from './Empty';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and the rollback share of units of work (QWACABRT).' },
-  { kind: 'DB2_STATS', label: 'Db2 statistics (DISPLAY DDF)', help: 'Per Db2 member: commits and rollbacks during the hour (Q3STCOMM/Q3STABRT), and the cumulative count of DBAT requests that waited for a slot at MAXDBAT (QUEDBAT/QDSTQDBT). Db2 does not trace the wait for a thread at MAXDBAT in SMF 101.' },
+  { kind: 'DB2_STATS', label: 'Db2 statistics (DISPLAY DDF)', help: 'Per Db2 member: rollbacks during the hour (Q3STABRT), and the cumulative count of DBAT requests that waited for a slot at MAXDBAT (QUEDBAT/QDSTQDBT). Db2 does not trace the wait for a thread at MAXDBAT in SMF 101.' },
   { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share. Per region: EDSA peak against EDSALIM and time short on storage (SOS).' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
@@ -95,7 +95,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                     <td>{r.connType}</td>
                     <td className="num">{f1(r.txnPerSec)}</td>
                     <td className="num">
-                      {r.rollbacks.toFixed(0)} <span className="muted">({r.rollbackPct.toFixed(0)}%)</span>
+                      {r.rollbacks.toFixed(0)} <span className="muted">({r.rollbackPct.toFixed(1)}%)</span>
                       {r.rollbackPct > 0 && <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'ROLLBACK_PCT' }} label={`${r.package} rollback share`} />}
                     </td>
                     <td className="num">{f1(r.class1Ms)}</td>
@@ -131,7 +131,6 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                 <tr>
                   <th>Image</th>
                   <th>Db2 ssid</th>
-                  <th className="num">commits</th>
                   <th className="num">rollbacks</th>
                   <th className="num">DBAT waited</th>
                 </tr>
@@ -141,7 +140,6 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <tr key={r.lparId}>
                     <td>{r.lparId}</td>
                     <td>{r.ssid}</td>
-                    <td className="num">{r.commits.toFixed(0)}</td>
                     <td className="num">{r.rollbacks.toFixed(0)}</td>
                     <td className="num">
                       {r.dbatQueued.toFixed(0)}

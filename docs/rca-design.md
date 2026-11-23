@@ -104,7 +104,7 @@ brackets (tier 0 has WLMGL only).
 | 2 | RUNAWAY | CPU_PRIORITY × RUNAWAY_WORK: one enclave's CPU soars with its end rate flat; it shares DDFPRD with MOBILE (F3) and runs on CPs on PROD2 (F7) | MOBILE, ADHOC: CPU split / `RUNAWAY_WORK`. Other PROD2 work: fallback | DDFPRD#2 `APPL` pinnable (half weight). The ENCLAVE view and IIPCP are not pinnable | **agrees** for listed work; **game wrong** for collateral |
 | 3 | REGRESSION | CPU or DEPENDENCY × CHANGE_REGRESSION for everything sharing the regions and the image | RBANK: any mechanism / `CHANGE_REGRESSION` for 30 h. R-3: RBANK had **no** incident; CARDAUTH did, `DEPENDENCY/POLICY` (Db2 in STCMED starved on PROD2: STCMED#1 PI 1.65, CPU delay 76 %) | `CPU_VS_BASE` ×3 on RBANK [DB2_ACCT or CICS_MON]. For the CARDAUTH incident that pin is "not about CARDAUTH" | **game wrong** (collateral, A2); long unfiltered card (A3) |
 | 4 | BOT_ATTACK | CPU or THREAD_LIMIT (DBATs) × DEMAND_SURGE: END/S ×4 at *lower* CPU per transaction | MOBILE: any mechanism / `DEMAND_SURGE` (no incident on R day 12) | The discriminator against a campaign is CPU per transaction ×0.4: `CPU_VS_BASE` 0.4 is below the ×1.3 notable line, so "unremarkable" | label **agrees**; **unpinnable** |
-| 5 | RETRY_STORM | CPU × DEMAND_SURGE, or APPLICATION_ERROR (clients retrying without backoff) | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-2: CPC 99 %, donors 12 %) | None exists. R-5: with the same start hour the WLMGL and Partition Data rows of RETRY_STORM and CAMPAIGN are identical to the last digit (both are `rate ×2.5`). Only the campaign's inbox forewarning separates them | **ambiguous by nature** (§5.3) |
+| 5 | RETRY_STORM | CPU × DEMAND_SURGE, or APPLICATION_ERROR (clients retrying without backoff) | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-2: CPC 99 %, donors 12 %) | At the audit there was none. R-5: with the same start hour the WLMGL and Partition Data rows of RETRY_STORM and CAMPAIGN were identical to the last digit (both are `rate ×2.5`), and only the campaign's inbox forewarning separated them. RT-23 now backs a share of the storm's units out, and the Db2 rollback share (`QWACABRT`) separates it from a campaign (§5.3) | **ambiguous by nature** at the audit (§5.3); RT-23 gives it a discriminator |
 | 6 | XLOG_LOOP | CPU_PRIORITY × RUNAWAY_WORK *or* POLICY: a looping STC in STCHI because the `CICS*` rule is too broad. The card's two fixes are "cancel it" and "add a classification rule" | TELLER, PAYMQ: CPU split / `RUNAWAY_WORK`. RBANK, CARDAUTH, MOBILE on PROD1: fallback. The victim is importance 2 and the loop importance 1, so the loop is never a "donor": at a full CPC the verdict is `CPU_CAPACITY` (U-11 shape) | STCHI `APPL` up with CICS END/S flat: pinnable at half weight. "CICSXLOG is the top consumer" (Mon III job row) is not pinnable | **defensible but unfair** (A1, A4) |
 | 7 | ENCRYPTION_MANDATE | CPU × "a change made the same work cost more". By the form's own help text that is CHANGE_REGRESSION; GROWTH is arguable | `…/POLICY` on every later incident of CARDAUTH, TELLER, PAYMQ, whatever the mechanism, for the rest of the run, and it outranks any other card that covers the hour (U-1, R-8) | CPU per transaction ×1.06 is below the notable line | **game wrong** (A3); label **defensible but unfair** (A8) |
 | 8 | VENDOR_PRICE | no performance effect | none (`affects` empty) | Finance tab | **n/a** |
@@ -884,11 +884,11 @@ application abends, deadlocks and thread abends from resource shortage (OMEGAMON
 
 **What the game does.** RETRY_STORM (and its Revenue/Harbourline adaptations) raises MOBILE's arrival rate ×2.5 and
 backs out a FICTIONAL fixed 20 % of its completed units; a CAMPAIGN's same ×2.5 surge backs out none. The DB2 (SMF
-101) view shows the rollback count and share per workload-hour, the Db2 statistics view shows commits and rollbacks
-per member, and `ROLLBACK_PCT` is a pin. APPLICATION_ERROR's recipe accepts the pair: rollbacks ≥ 10 % (the abandoned
-work) and either the volume rise or an unchanged work cost, so a storm proves as APPLICATION_ERROR while a campaign
-fails the first predicate. The same rollback share alone does not prove it, because the second predicate still needs
-the volume.
+101) view shows the rollback count and share per workload-hour, the Db2 statistics view shows rollbacks per member
+(frozen at close), and `ROLLBACK_PCT` is a pin. APPLICATION_ERROR's recipe accepts the pair: rollbacks ≥ 10 % (the
+abandoned work) and either the volume rise or an unchanged work cost, so a storm proves as APPLICATION_ERROR while a
+campaign fails the first predicate. The same rollback share alone does not prove it, because the second predicate
+still needs the volume.
 
 **What stays the game's inference.** That a rising rollback share means client retries is not IBM's statement: a
 retry that commits at Db2 is another unit of work, and per-client identity is SMF 102 (out of scope). The card's

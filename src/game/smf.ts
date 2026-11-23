@@ -23,10 +23,10 @@ export function smfHourRefs(run: RunState): SmfHourRef[] {
   return out;
 }
 
-function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number>; dbatQueuedByLpar?: Record<string, number> } | null {
+function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number>; dbatQueuedByLpar?: Record<string, number>; db2RollbacksByLpar?: Record<string, number> } | null {
   if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC, dbatQueuedByLpar: run.hour.dbatQueuedByLpar } : null;
   const h = run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key);
-  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}), ...(h.dbatQueuedByLpar ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}) } : null;
+  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}), ...(h.dbatQueuedByLpar ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}), ...(h.db2RollbacksByLpar ? { db2RollbacksByLpar: h.db2RollbacksByLpar } : {}) } : null;
 }
 
 /** A closed hour's frozen ratio (none if the workload had no baseline yet then, e.g. a new workload's first hour);
@@ -103,31 +103,40 @@ export interface Db2StatRow {
   ssid: string;
   /** Cumulative count of requests that waited for a DBAT during the hour. */
   dbatQueued: number;
-  /** Units of work that committed / rolled back on this member during the hour (Q3STCOMM / Q3STABRT, RT-23). */
-  commits: number;
+  /** Units of work that rolled back on this member during the hour (Q3STABRT, RT-23). */
   rollbacks: number;
+}
+
+/** Db2 rollbacks per LPAR running a Db2 member, for one hour's workload counts (RT-23). The work is split by the
+ *  routing weights in force: a transaction routed to an image is served by the member there. */
+export function db2RollbacksByLpar(run: RunState, scenario: Scenario, workloads: Record<string, WorkloadHour>): Record<string, number> {
+  const rollbacks: Record<string, number> = {};
+  const db2Work = allWorkloads(scenario, run).filter(usesDb2);
+  for (const m of scenario.world.db2) {
+    let rb = 0;
+    for (const w of db2Work) {
+      const h = workloads[w.id];
+      if (!h || h.completions <= 0) continue;
+      const share = (run.sim.routing[w.id] ?? w.routing)[m.lparId] ?? 0;
+      if (share > 0) rb += Math.min(h.completions, h.rolledBack ?? 0) * share;
+    }
+    if (rb > 0) rollbacks[m.lparId] = rb;
+  }
+  return rollbacks;
 }
 
 export function db2Statistics(run: RunState, scenario: Scenario, key: string): Db2StatRow[] {
   const d = hourData(run, key);
   if (!d) return [];
   const byLpar = d.dbatQueuedByLpar ?? {};
-  const db2Work = allWorkloads(scenario, run).filter(usesDb2);
-  return scenario.world.db2.map((m) => {
-    // The member sees the work routed to its image; dynamic routing shares are the sim's current weights.
-    let commits = 0;
-    let rollbacks = 0;
-    for (const w of db2Work) {
-      const h = d.workloads[w.id];
-      if (!h || h.completions <= 0) continue;
-      const share = (run.sim.routing[w.id] ?? w.routing)[m.lparId] ?? 0;
-      if (share <= 0) continue;
-      const rb = Math.min(h.completions, h.rolledBack ?? 0);
-      rollbacks += rb * share;
-      commits += (h.completions - rb) * share;
-    }
-    return { lparId: m.lparId, ssid: m.ssid, dbatQueued: byLpar[m.lparId] ?? 0, commits, rollbacks };
-  });
+  // A closed hour keeps the split it was reported with; only the open hour follows live routing.
+  const rollbacks = d.db2RollbacksByLpar ?? db2RollbacksByLpar(run, scenario, d.workloads);
+  return scenario.world.db2.map((m) => ({
+    lparId: m.lparId,
+    ssid: m.ssid,
+    dbatQueued: byLpar[m.lparId] ?? 0,
+    rollbacks: rollbacks[m.lparId] ?? 0,
+  }));
 }
 
 export interface CicsTxnRow {

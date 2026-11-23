@@ -71,19 +71,25 @@ describe.each(PACKS)('$name retry storm (RT-23)', ({ scenario, game, storm, work
     expect(pinned.run.pins.at(-1)!.value).toBeCloseTo(stormRow.rollbackPct, 6);
   });
 
-  it('the Db2 statistics view counts commits and rollbacks per member', () => {
+  it('the Db2 statistics view counts rollbacks per member', () => {
     const rows = db2Statistics(backedOut, scenario, 'current');
     expect(rows.reduce((a, x) => a + x.rollbacks, 0)).toBeCloseTo(rowOf(backedOut, scenario, workloadId).rollbacks, 6);
-    expect(rows.reduce((a, x) => a + x.commits, 0)).toBeGreaterThan(rowOf(backedOut, scenario, workloadId).rollbacks * 4);
+    expect(rows.some((x) => x.rollbacks > 0)).toBe(true);
     expect(db2Statistics(surged, scenario, 'current').reduce((a, x) => a + x.rollbacks, 0)).toBe(0);
   });
 
-  it('keeps the share in a closed hour as well as the open one', () => {
+  it('keeps the share, and the member split, in a closed hour', () => {
     const closed = advance(backedOut, scenario, contentOf(game), HOUR - 30);
     const h = closed.smfHours.at(-1)!;
-    const row = db2Accounting(closed, scenario, `${h.day}:${h.hourOfDay}`).find((x) => x.workloadId === workloadId)!;
-    expect(row.rollbackPct).toBeCloseTo(20, 6);
+    const key = `${h.day}:${h.hourOfDay}`;
+    const before = db2Statistics(closed, scenario, key).map((x) => x.rollbacks);
     expect(h.workloads[workloadId]!.rolledBack).toBeGreaterThan(0);
+    expect(h.db2RollbacksByLpar).toBeDefined();
+    expect(db2Accounting(closed, scenario, key).find((x) => x.workloadId === workloadId)!.rollbackPct).toBeCloseTo(20, 6);
+    // A later routing change must not rewrite the closed report (the frozen-SMF rule, as for "vs base").
+    const first = Object.keys(scenario.workloads.find((w) => w.id === workloadId)!.routing)[0]!;
+    const rerouted = advance({ ...closed, pendingCommands: [{ kind: 'SET_ROUTING', workloadId, routing: { [first]: 1 } }] }, scenario, contentOf(game), 30);
+    expect(db2Statistics(rerouted, scenario, key).map((x) => x.rollbacks)).toEqual(before);
   });
 });
 

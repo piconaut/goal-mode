@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-23: RT-23 the retry storm backs out 20 % of its units, so Db2 accounting shows a rollback share (QWACABRT) and the Db2 statistics view shows commits/rollbacks per member (Q3STCOMM/Q3STABRT); APPLICATION_ERROR's recipe accepts the rollback share with the volume, which proves a storm and not a same-rate campaign. Reporting-only: the units still consume their CPU and time.
+- 2026-11-23: RT-23 the retry storm backs out 20 % of its units, so Db2 accounting shows a rollback share (QWACABRT) and the Db2 statistics view shows rollbacks per member (Q3STABRT); APPLICATION_ERROR's recipe accepts the rollback share with the volume, which proves a storm and not a same-rate campaign. Reporting-only: the units still consume their CPU and time.
 - 2026-11-22: PT-49 application owners and business-calendar facts move into each scenario's game content, so Midwest, Revenue and Harbourline answer `APP_ENTRY` with their own owner and `CALENDAR` with their own facts; absent data keeps the old fallbacks ("the <app> owner", no standing facts).
 - 2026-11-22: RT-30 RCA replies separate the accepted answer from the proof (accepted / your pins did not prove it), mark an accepted alternate with the primary, quote the pin's reading on a failed predicate, list every filed pin with why it did not count, and say the truth reads the clock hour when a pin met a line the hour average misses; the RCA card renders the same text.
 - 2026-11-22: RT-17 one healthy baseline per workload per clock hour (EWMA 0.5 over days, rolling EWMA as fallback) feeds the mechanism judgement, the CPU drill-down, AIOps and the frozen SMF "vs base" ratio; a delay group with ≥ ⅓ of the excess is accepted, and under 10 % of the response-time goal none explains the miss, so the 20:00 lock incidents (R-6, R-15) read as CPU.
@@ -112,8 +112,8 @@ Recent work, one line each (details in the PRs and Git history):
 retry storm) is offered only once the player has pinned proof of the cause; generic levers stay open, and wrong
 guesses cost something. Design, notes and user decisions: [docs/rca-design.md](docs/rca-design.md) §5 (on the truth
 model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; RT-16 and RT-17 unblocked after an agent playtest
-(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm cannot
-yet be told from a demand surge in any report, so RT-23 researches a discriminator and its fix stays ungated.
+(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm could not
+be told from a demand surge in any report until RT-23, whose Db2 rollback share now separates them; its fix is still ungated.
 
 ### WLM policy adjustment audit (2026-11-10 … 2026-11-13): closed
 

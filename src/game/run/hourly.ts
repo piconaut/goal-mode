@@ -24,6 +24,7 @@ import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
 import { allWorkloads, isNewWorkload } from '../workloads';
 import { incidentSubjects } from '../evidence';
 import { snapshotCpuConsumers } from '../displaceable';
+import { db2RollbacksByLpar } from '../smf';
 import { cpuAlternates } from '../sla';
 import type { GameContent } from './shared';
 import { addGroupedIncident } from './grouping';
@@ -392,6 +393,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   r = { ...r, capacityToday: hourPeaks(r, h) };
   const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
   if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };
+  const db2Rollbacks = db2RollbacksByLpar(r, scenario, h.workloads);
   const smfHours = [...(r.smfHours ?? []), {
     day: r.day,
     hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay),
@@ -399,6 +401,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
     ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
     ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
+    ...(Object.keys(db2Rollbacks).length > 0 ? { db2RollbacksByLpar: db2Rollbacks } : {}),
   }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, hourBaselines, smfHours, hour: newHour(r.sim.tick) };
 }
