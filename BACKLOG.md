@@ -257,6 +257,21 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
+### RF-10 · Utility drains on the settlement partition ignore online writers
+`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
+
+Source: PR #488 review (PT-51, finding N1). A drain prevents new claims in each claim class it drains and waits for
+existing claims in those classes to be released; `DRAIN ALL` and `DRAIN WRITERS` both include the write class
+([Db2 13 Managing Performance PDF pp.249–250 (printed 229–230)](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=249)).
+The PT-51 model (`startDb2Contention`, `readClaims` in `src/sim/subsys/db2Contention.ts`) waits only for, and blocks
+only, the tracked BI readers: the authored writers (`MIDWEST_DB2_CONTENTION.writes`) see no drain wait, and a
+writers-only drain is granted at once and affects nothing. Design call needed: whether the Settlement REORG should
+delay online postings (an SLA cost the player then has to diagnose) and how long writer claims last.
+
+Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims, the writers'
+SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 drops the APPROX note, goldens are
+regenerated with a behaviour note and the three-scenario sweep is recorded.
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
