@@ -81,19 +81,45 @@ releasing it restores the price; the surcharge shows in the UI with its reason; 
 the rule; the strategy bots' sweep (three scenarios) is recorded, since a bot that caps TSO now pays.
 
 ### PT-51 · A starved BI query holds its Db2 locks and claims longer
-`list: playtest-fixes · status: blocked: research · priority: low · size: L · area: sim`
+`list: playtest-fixes · status: ready · priority: low · size: L · area: sim`
 
-Source: PT-21 (playtest round 2; design decided 2026-11-23, user). ADHOC runs over DDF against production Db2 on
-PROD2, so starving it has a real-world cost: a long-running query that gets little CPU holds its locks and claims
-longer, online work waits on locks, and utilities cannot drain claims. The sim cannot show this: lock contention is
-one global index built only from running batch jobs' `lockIntensity` (`src/sim/core/step.ts`), independent of how
-starved the holder is. Research first, with the zos-docs skill, cited per the realism policy: whether WLM or IRLM
-promotes a Db2 lock holder that others wait on (the sim's enqueue promotion, docs/research.md, covers ENQs, which Db2
-locks are not); how claims held by readers block a utility's drain, and what reports show it (Db2 accounting
-lock/latch suspension classes, the statistics trace's drain/claim counters, IRLM timeouts); and whether
-isolation level (CS, UR, RR) changes what a BI query holds. Then scope the model: hold time stretched by the holder's
-CPU delay, a lock contention contribution from DDF holders on the same Db2, and a clue path that names the holder.
-Done when: the research rows are in docs/research.md, and this entry is rewritten with the model and set to `ready`.
+Source: PT-21 (playtest round 2, user design decision 2026-11-23). IBM sources and limits are in the
+[Db2 locks, claims and drains research](docs/research.md#db2-locks-claims-and-drains). Midwest ADHOC runs over DDF on
+PROD2 (DB1B). The existing lock index (`src/sim/core/step.ts`) sums running batch `lockIntensity` and the event
+modifier. Add the cost of starving a DDF reader through the following model.
+
+- **Holders.** Use fluid cohorts of admitted queries keyed by workload, Db2 member and an authored page set or
+  partition. Start holdings at first access. Use actual CP/zIIP service after dispatch to pace the remaining CPU
+  work before lock release and commit. CPU shortfalls stretch elapsed hold time and carry holders across ticks.
+  Requests waiting for a DBAT start without holdings. Close holdings on commit or abort and default missing holder
+  state in older saves to empty. Use the existing tick order and feed the resulting holder state into the next
+  tick's delays.
+- **Online contention.** Add DDF lock wait only for conflicting access to the authored resource on that member
+  or an explicitly shared data-sharing peer. Keep the existing batch/event index and leave independent Db2s such
+  as DEVT outside the new path. Use CS for the Midwest example, with a small cursor-lock footprint subject to
+  lock avoidance, RR with more lock coverage through commit, and UR with negligible data-lock pressure in this
+  read-only approximation. Use content profiles for isolation, overlap and hold coefficients (`// FICTIONAL:`).
+- **Utility drains.** Model one authored drain phase on the same page set or partition. Read claims last until
+  commit or abort, including for UR. Use a CS-class read claim for CS/UR and an RR claim for RR. Once the drain
+  lock is granted, block new claims in the targeted classes and let existing holders finish. An all-class drain
+  waits for readers, and a writers-only drain can proceed past them. Use a finite, content-tuned utility wait
+  based on the IRLMRWT/UTIMOUT distinction. Reopen claims when the utility releases the drain or the attempt times out.
+- **Promotion boundary.** Use the CPU grants from the existing dispatcher, including its blocked-workload
+  support. Defer Db2-specific `IWMCNTN` promotion as a documented approximation that can overstate hold times
+  during chronic contention. Keep the ordinary DBAT queue and BI's lack of an SLA.
+- **Clues.** Use the victim's SMF 101 class 3 lock waits and separate drain/claim-release diagnostics for the
+  utility. Add member-level statistics for the modeled claim/drain request and failure counts. A snapshot based
+  on `-DISPLAY BLOCKERS ... DETAIL` should name the originating workload and member, object, lock or claim type and age.
+  Label the workload name and cohort age as game approximations. Pair holder evidence with the holder's RMF
+  CPU/cap delay and the affected workload or utility. Offer relief through restoring CPU service or reducing
+  overlapping query work.
+
+Done when: controlled replays show slower admitted CS/RR holders delaying conflicting online work and a read
+drain, recovery after CPU is restored and the holders release, UR retaining drain impact with little online
+lock impact, and a writers-only drain, a disjoint object, an unrelated Db2 and a pre-DBAT waiter isolated from
+those effects. Verify that a timed-out drain reopens admissions and that report/evidence identities name the
+correct holder and distinguish the two waits. Update SPEC §5.10.2 and §17 and add a sourced Codex entry. Regenerate
+goldens, record the behaviour change and run the three-scenario sweep.
 
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
