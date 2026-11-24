@@ -871,6 +871,26 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   Diagnosable only via Db2 accounting (SMF 101) with the package (PK) breakdown, or by
   noticing CPU/txn (service per transaction) jump for that class in RMF.
 - **Data sharing:** inter-system lock contention and GBP traffic through the CF (§5.9).
+- **DDF read holders and utility drains (PT-51):** Midwest BI first accesses an authored settlement partition
+  after DBAT admission. DB1A and DB1B share that partition. The authored BI client pool limits outstanding
+  queries. One fluid cohort per member tracks unfinished CP and zIIP work and mean holder age.
+  Unfinished service carries forward in the same service-class
+  period. Existing owners consume each pool's grant first within their period. Commits and timeouts release
+  holdings. Cancelling the runaway BI query releases the modeled active cohort. The next tick adds lock wait to
+  authored conflicting writes on that partition. CS has a small
+  cursor-lock footprint, RR a larger footprint through commit, and UR has read claims with zero modeled
+  data-lock pressure. Existing batch/event lock contention still uses the sysplex index.
+- **Settlement REORG:** weekdays at 14:50, Db2 takes a drain lock and waits for current readers to release
+  their claims. The tracked readers cannot start another read claim in the targeted class during the drain.
+  An all-class drain waits for CS, RR and UR readers. A writers-only drain permits those readers to continue.
+  The drain ends on completion or timeout, after which new read claims can proceed. Pre-attachment DBAT
+  waits hold no locks or claims. The authored drain times and footprint coefficients are fictional.
+- **Clues:** Db2 accounting shows transaction-lock wait and drain-lock wait separately. Hourly statistics
+  show per-member request/failure counts and separate reader drain-lock and utility claim-release wait totals.
+  The live Db2 blockers view identifies the holder, member, object, lock or claim, average cohort age and its
+  CPU shortfall/CAP. Correlate the pin with the affected SMF 101 row and the holder's RMF service class.
+  Restore BI CPU service or move BI toward available capacity. When DDF holds dominate the lock wait and
+  no incident card explains it, the RCA trigger is POLICY. [IBM research](docs/research.md#db2-locks-claims-and-drains)
 - **Db2 accounting** class 1/2/3 times (unlock): in-Db2 elapsed, CPU, and suspensions (lock,
   I/O, log, other) for diagnosis.
 
@@ -2148,6 +2168,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: the server period `$SRMS001` (TRANSACTION; one per system, APPROX: IBM has one per set of regions serving the same classes), which the served classes move as goal receivers and donors (free ride), or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
 | Percentile PI in WLM projections | **Simplified** | Reported PI stops at 4.0 (bucket layout); receiver value and donor harm use the bucketed PI of the projection at sustained demand (`base` and `after`, never this tick's own), extended past 4.0 by a log-normal quantile of the mean RT (sigma 0.5, FICTIONAL), so work far past its goal can still be helped and harm to it still vetoes a move |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
+| DDF reader locks and claims | **Approximation** | One fluid reader cohort per configured member and one shared page set. Scoped lock wait uses the previous tick's held readers. The utility has a single drain phase and its wait budget is content. DBAT admission uses the member's estimated traffic mix. Existing blocked-workload CPU grants still apply. Db2-specific chronic-contention promotion via IWMCNTN, detailed lock granularity and full utility execution are outside this model. APPROX: the drain gates only the tracked readers. Online writers' claims are neither waited for nor blocked, although a drain stops new claims in every class it drains, write included (Db2 13 Managing Performance PDF p.249 (printed 229); RF-10). The live blocker snapshot reports game workload ID and mean cohort age. [IBM research](docs/research.md#db2-locks-claims-and-drains) |
 | Db2 statistics (DISPLAY DDF) view | **Approximation** | Rollbacks during the hour, per Db2 member (Q3STABRT, RT-23; split across members by the work's routing shares and frozen at close; real counters accumulate since Db2 restart), and the cumulative count of DBAT requests that waited for a slot (QUEDBAT/QDSTQDBT, Db2 13 Command Reference PDF p.303 (printed 287)). APPROX: real QUEDBAT is cumulative since Db2 restart, and the sim reports it per interval; the statistics rollback split is the game's routing model. The SMF 101 view no longer carries a DBAT queue column (Db2 does not trace the wait, Db2 13 Managing Performance PDF p.143 (printed 123)). The queue model is unchanged |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |

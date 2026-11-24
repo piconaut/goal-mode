@@ -1,3 +1,5 @@
+import type { Db2ContentionTick } from '../../subsys/db2Contention';
+import type { ReaderDispatch } from './db2Contention';
 import type { PoolDemand } from '../../hw/pools';
 import type { IoClass } from '../../io/dasd';
 import { jobShape, type JobRuntime } from '../../subsys/batch';
@@ -45,6 +47,7 @@ export interface TickCtx {
   plan: LparPlan;
   def: SimState['wlm']['definition'];
   env: EnvState;
+  db2Contention: Db2ContentionTick | undefined;
   config: SimState['config'];
   clock: ReturnType<typeof clockAt>;
   cpcOf: Record<string, CpcConfig>;
@@ -88,6 +91,7 @@ export interface TickCtx {
   onlineDb2Rate: number;
   /** Transactions queued for a task slot (MXT, MAXDBAT) per `lparId:kind`. */
   slotQueue: Record<string, number>;
+  readerDispatch?: Record<string, ReaderDispatch>;
   /** DBAT requests that waited for a slot this tick, per LPAR (reporting: QUEDBAT/IFCID 73). */
   dbatWaitedByLpar: Record<string, number>;
   /** CICS region storage per LPAR (reporting only). */

@@ -14,7 +14,7 @@ import { BATCH_INCIDENT } from './sla';
 import { cfPeer, lcuPeer, type PeerReading } from './peerSlow';
 import { PEER_SLOW_RATIO } from '../content/sla';
 import type { NightSummary } from '../sim/subsys/batch';
-import { cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics } from './smf';
+import { cicsMonitoring, cicsStorageStats, db2Accounting, db2Blockers, db2Statistics, type Db2BlockerRow } from './smf';
 import type { CpuRecord, WlmRecord } from '../sim/measure/rmf';
 import type { Incident, IncidentSubjects, RunState } from './types';
 import { allWorkloads } from './workloads';
@@ -47,6 +47,7 @@ export interface EvidencePin {
   /** The peer reading a CF or LCU pin was judged against (RT-35): the best CF's sync time/async conversion, or the
    * all-LCU median DISC/response, frozen at pin time like `baseline`. Absent on every other pin. */
   peer?: PeerReading;
+  db2Blocker?: Db2BlockerRow;
   text: string;
 }
 
@@ -71,6 +72,7 @@ export type PinRequest =
    * `index`, the latest interval. */
   | { source: 'DASD'; lcuId: string; metric: DasdMetric; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
+  | { source: 'DB2_BLOCKERS'; member: string; holderType: Db2BlockerRow['type']; tick?: number }
   /** Db2 statistics (DISPLAY DDF): the cumulative count of DBAT requests that waited for a slot during the hour,
    * subject the Db2 member's LPAR. `hour` is an SMF hour key or `current` for the open hour. */
   | { source: 'DB2_STATS'; hour: string; lparId: string; metric: EvidenceMetric }
@@ -325,14 +327,21 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     case 'DB2': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = db2Accounting(run, scenario, key).find((x) => x.workloadId === req.workloadId);
-        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec, ROLLBACK_PCT: r.rollbackPct } : null;
+        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, DB2_DRAIN_LOCK: r.drainLockMs ?? 0, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec, ROLLBACK_PCT: r.rollbackPct } : null;
       };
       return hourlyEvidence(run, req, req.workloadId, read, 'No such package row', 'That metric is not in Db2 accounting', 'Db2 101', true);
+    }
+    case 'DB2_BLOCKERS': {
+      if (req.tick !== undefined && sim.tick !== req.tick) return 'Refresh the live Db2 blocker snapshot before pinning';
+      const r = db2Blockers(run, scenario).rows.find((x) => x.member === req.member && x.type === req.holderType);
+      if (!r) return 'No current Db2 holder of that type on this member';
+      return { source: 'DISPLAY BLOCKERS', metric: 'DB2_HOLDER', subject: r.workloadId, system: r.lparId,
+        tick: sim.tick, value: r.ageSec, db2Blocker: r };
     }
     case 'DB2_STATS': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = db2Statistics(run, scenario, key).find((x) => x.lparId === req.lparId);
-        return r ? { DBAT_QUEUE: r.dbatQueued } : null;
+        return r ? { DBAT_QUEUE: r.dbatQueued, DB2_CLAIM_RELEASE: r.contention?.claimReleaseWaitSec ?? null } : null;
       };
       return hourlyEvidence(run, req, req.lparId, read, 'No such Db2 member row', 'That metric is not in Db2 statistics', 'Db2 statistics');
     }
@@ -472,6 +481,8 @@ function pinWhen(p: Located, req: PinRequest): string {
 }
 
 function pinText(p: Located, req: PinRequest): string {
+  const holder = p.db2Blocker;
+  if (holder) return `DISPLAY BLOCKERS ${pinWhen(p, req)} ${holder.workloadId} on ${holder.member} / ${holder.lparId} held ${holder.type} on ${holder.object} (mean age ${fmtValue('DB2_HOLDER', holder.ageSec)}, CPU shortfall ${holder.cpuDelayPct.toFixed(1)}%, CAP ${holder.capPct.toFixed(1)}%)`;
   const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
   // The peer reading the pin was judged against (RT-35), shown only when the row is peer-slow, e.g.
   // "vs CF01 18.0 µs (76×)". Below 1, two decimals keep the printed multiple honest (0.07 ms, not 0.1 ms).
@@ -487,7 +498,7 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest, histo
   const loc = locate(run, scenario, req, history);
   if (typeof loc === 'string') return { run, ok: false, message: loc };
   const pins = run.pins ?? [];
-  if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
+  if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.db2Blocker?.type === loc.db2Blocker?.type && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
   // fromTick shapes the label only: a pin stores its end tick, as it always has (saves and the UI read `tick`).
   const { fromTick, ...fields } = loc;
   const pin: EvidencePin = { ...fields, id: run.nextId, text: pinText({ ...fields, ...(fromTick !== undefined ? { fromTick } : {}) }, req) };
@@ -531,6 +542,12 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
       return p.metric === 'SOS_MIN'
         ? s.servers.some((a) => a.jobname === p.subject) ? 'server' : null
         : p.subject === inc.workloadId ? 'self' : null;
+    case 'DISPLAY BLOCKERS': {
+      const holder = p.db2Blocker;
+      if (p.subject === inc.workloadId) return s.hosts.includes(p.system) ? 'self' : null;
+      return holder?.affectedWorkloads.includes(inc.workloadId) && s.hosts.some((id) => holder.affectedLpars.includes(id))
+        ? 'competitor' : null;
+    }
     case 'Db2 101':
     case 'SMF 30':
       return p.subject === inc.workloadId ? 'self' : null;

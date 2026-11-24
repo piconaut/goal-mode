@@ -1,3 +1,4 @@
+import type { Db2ContentionCounters } from '../sim/subsys/db2Contention';
 import type { DifficultyId } from '../content/difficulty';
 import type { InquiryState } from './inquiries';
 import type { TfpOffer } from './tfp';
@@ -109,6 +110,7 @@ export interface SmfHour {
   /** Db2 rollbacks during the hour, per LPAR that runs a Db2 member (Q3STABRT, RT-23), frozen at close so a later
    * routing change cannot rewrite a historical report. Absent before RT-23 and when no unit rolled back. */
   db2RollbacksByLpar?: Record<string, number>;
+  db2Contention?: Record<string, Db2ContentionCounters>;
 }
 
 /** CICS storage manager statistics for one region over an hour. */
@@ -176,6 +178,7 @@ export interface HourAcc {
   cicsStorage?: Record<string, CicsStorageHour>;
   /** Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR that runs a Db2 member. */
   dbatQueuedByLpar: Record<string, number>;
+  db2Contention?: Record<string, Db2ContentionCounters>;
 }
 
 /** The figures the capacity decision used, for the verdict the player is shown. Kept on the incident when the

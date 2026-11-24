@@ -422,6 +422,18 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['DB2_ACCT'] },
   },
   {
+    id: 'db2-drains',
+    title: 'Db2 locks, claims and drains',
+    category: 'Subsystems',
+    body: 'A Db2 reader claims a page set or partition on first access and normally keeps that claim until commit. Under cursor stability it may also hold a cursor lock. Repeatable read protects more of the scanned data until commit. Uncommitted read takes few locks but still has a read claim. An all-class REORG drain waits for readers to release claims, while a writers-only drain can let readers continue. In the game, BI that receives too little CPU can hold the settlement partition longer. Use Db2 accounting to see the online lock wait, then Db2 blockers to find the member, object and holder. Use Db2 statistics for the separate utility claim-release and reader drain-lock waits. Restore BI CPU service or move BI toward an image with available capacity.',
+    sources: [
+      { label: 'IBM Db2 13 Managing Performance PDF pp.249–250 (printed 229–230)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=249' },
+      { label: 'IBM Db2 13 Managing Performance PDF p.714 (printed 694)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=714' },
+      { label: 'IBM Db2 13 Command Reference PDF pp.216–217 (printed 200–201)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=216' },
+    ],
+    discover: { tools: ['DB2_ACCT'] },
+  },
+  {
     id: 'smf110',
     title: 'CICS monitoring (SMF 110)',
     category: 'Measurement',

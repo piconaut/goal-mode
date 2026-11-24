@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-24: PT-51 Midwest models CPU-paced DDF reader cohorts on the shared settlement partition. CS/RR readers can delay conflicting online work and all-class drains, UR readers affect drains, and Db2 accounting, statistics and blocker pins expose the separate waits and the holder. [PR #488](https://github.com/piconaut/goal-mode/pull/488)
 - 2026-11-24: PT-51 research verified WLM chronic-contention promotion, Db2 read claims under CS/UR/RR, and accounting, statistics and blocker diagnostics. PT-51 is ready with scoped DDF lock and utility drain models and a holder clue path.
 - 2026-11-23: RT-35 a CF or LCU far slower than its peers is accepted evidence: CF_SERVICE and IO accept a CF at ≥ 4× the work's best CF sync service time or async conversion, or an LCU at ≥ 4× the all-LCU median DISC or response (the pin freezes the peer reading), and the truth adds CF_SERVICE or IO when that resource carries ≥ ⅓ of the work's response time; the primary stays growth-ranked. INC22's standing CF02 flaw now proves from CF Activity but stays unaccepted at its 19.5 % share (the 1/3 line is kept), and the reply says why; the FAIL_CF structure-move state (36–44 %) is accepted. Three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45309639199, 45309638177, 45309636141): Midwest donothing 16.5 / textbook 28 / expert 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
 - 2026-11-23: RT-34 THREAD_LIMIT's ruling-out half is tied to the symptom that met its first predicate (`rulesOut`): a CICS slot queue (`MXT_WAIT`, `SOS_MIN`) needs QR wait < 5 ms/txn on the hurt work, because tasks held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction; a DBAT queue keeps CPU per transaction normal and an initiator wait the jobs' CPU wait. Every met symptom needs its own reading on its incident, so a combined queue needs both. The INC35 shape no longer completes the recipe, a too-low MXT with QR normal still does, and the reply names the QR wait line. The replay's own incident (MXT lowered while QR is saturated) is still blamed on THREAD_LIMIT but proves neither recipe: that low-limit residue stays RT-19's, as the entry says. Proof recipes only: truth labels, goldens and sweeps do not move.
@@ -171,12 +172,12 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest reference, RF-05 (2026-11-23, model `ae702cb`, #478; remote, Normal, seeds 1–10): do-nothing / textbook
-  median day, expert victories: [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45111397822)
-  17 / 28 / 10, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45115168291) 21 / 29 / 10,
-  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45115168408) 11 / 30.5 / 8. All inside the CI
-  bands; the milestone review's Midwest rerun at `de3b59f` ([run](https://github.com/piconaut/goal-mode/actions/runs/45186335693))
-  gave 16.5 / 28 / 10. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
+- Latest reference, PT-51 (2026-11-24, #488, remote, Normal). Median end day for do-nothing / textbook / expert,
+  then expert wins. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347621450), seeds 1–20,
+  17 / 27 / 40 and 20/20. Seeds 1–5 [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347615358)
+  16 / 27 / 40 and 5/5, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45342988016)
+  21 / 29 / 40 and 5/5, [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45342756292)
+  11 / 29 / 40 and 3/5. All inside the CI bands. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
 - Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
   17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) 10 / 31 / 15 of 20 (expert losses

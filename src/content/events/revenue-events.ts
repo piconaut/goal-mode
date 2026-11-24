@@ -23,6 +23,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('RUNAWAY', {
     id: 'RUNAWAY_COMPLIANCE',
     name: 'Runaway compliance query',
+    end: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ANALYTICS', value: 1 }],
     clue: 'WEBDDF APPL% and zIIP busy soar on PROD2 with the analytics end rate flat; with IIPHONORPRIORITY=NO the zIIP work queues instead of overflowing, so e-filing on PROD2 shows zIIP delay (Mon III DELAY, Partition Data). Fixes: cancel the thread, give e-filing a goal class of its own, or let zIIP work overflow to the CPs.',
   }, { MOBILE: 'EFILE', ADHOC: 'ANALYTICS' }),
   adapt('REGRESSION', {

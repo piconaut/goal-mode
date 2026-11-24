@@ -11,7 +11,7 @@ import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { hasFeature, needsText, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
-import { batchNight, cicsMonitoring, db2Accounting, db2Statistics, smf113, smfHourRefs } from '../src/game/smf';
+import { batchNight, cicsMonitoring, db2Accounting, db2Blockers, db2Statistics, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
 import { monthElapsedFrac } from '../src/sim/cost/mlc';
@@ -209,7 +209,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       // Whether the command named an interval at all: the CLI's id, or a position in a `json` command's PinRequest.
       const namedInterval = c.intervalId !== undefined || ((req.source === 'CF' || req.source === 'DASD') && req.index !== undefined);
       // Same gate as the view the browser pins from.
-      const feature = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
+      const feature = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'DB2_BLOCKERS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
       if (feature && !hasFeature(run, feature)) return fail(needsText(feature, `A ${req.source} pin`));
       const shown = buildView(run, sc(run));
       // An interval pin names the interval by its stable id, as `report` shows it. Resolve that once for every source
@@ -313,6 +313,17 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const need = SMF_FEATURE[c.kind];
       if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
       if (!hasFeature(run, need)) return fail(needsText(need, 'This SMF view'));
+      if (c.kind === 'DB2_BLOCKERS') {
+        const view = db2Blockers(run, sc(run));
+        if (c.json) return done(run, JSON.stringify(view));
+        const lines: string[] = [];
+        if (view.drain) {
+          const d = view.drain;
+          lines.push(`${d.name} ${d.member} ${d.object} · ${d.phase === 'WAITING' ? 'waiting for claim release' : 'drained'} · ${d.pendingReaders.toFixed(1)} readers waiting for a drain lock`);
+        }
+        for (const r of view.rows) lines.push(`${r.member} / ${r.lparId} · ${r.workloadId} (${r.serviceClass}) · ${r.object} · ${r.type} · mean age ${r.ageSec.toFixed(1)} s · CPU shortfall ${r.cpuDelayPct.toFixed(1)}% · CAP ${r.capPct.toFixed(1)}%`);
+        return done(run, lines.join('\n') || 'No current tracked locks or claims');
+      }
       const hourly = c.kind === 'DB2' || c.kind === 'CICS' || c.kind === 'DB2_STATS';
       const hours = smfHourRefs(run);
       const hour = hourly ? smfHourKey(run, c.hour) : undefined;
@@ -328,7 +339,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const head = hourly ? `hour ${label ?? 'none'}\n${list}\n` : '';
       const body = c.json
         ? Array.isArray(rows) ? rows.map((r) => JSON.stringify(r)).join('\n') : JSON.stringify(rows, null, 1)
-        : Array.isArray(rows) ? (rows.length ? table(rows) : '') : rows ? batchText(rows) : '';
+        : Array.isArray(rows) ? (rows.length ? table(rows.map((row) => 'contention' in row ? { ...row, ...row.contention, contention: undefined } : row)) : '') : rows ? batchText(rows) : '';
       const r = hourly ? noteReportOpened(run, `SMF:${c.kind}:${hour}`) : run;
       return done(r, head + (body || 'no data'));
     }

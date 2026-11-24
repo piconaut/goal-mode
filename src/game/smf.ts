@@ -3,9 +3,11 @@
 
 import { DB2_PACKAGES, lsprCategory, SMF113 } from '../content/smf';
 import { clockAt, hhmm, pad2 } from '../sim/core/clock';
+import { emptyDb2Counters, type Db2ContentionCounters, type Db2Isolation } from '../sim/subsys/db2Contention';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { WorkloadDef } from '../sim/workload/types';
+import { classify } from '../sim/wlm/classify';
 import { allWorkloads } from './workloads';
 import { clockHourOf, slotBaseline } from './sla';
 import type { RunState, WorkloadHour } from './types';
@@ -23,10 +25,10 @@ export function smfHourRefs(run: RunState): SmfHourRef[] {
   return out;
 }
 
-function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number>; dbatQueuedByLpar?: Record<string, number>; db2RollbacksByLpar?: Record<string, number> } | null {
-  if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC, dbatQueuedByLpar: run.hour.dbatQueuedByLpar } : null;
+function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number>; dbatQueuedByLpar?: Record<string, number>; db2RollbacksByLpar?: Record<string, number>; db2Contention?: Record<string, Db2ContentionCounters> } | null {
+  if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC, dbatQueuedByLpar: run.hour.dbatQueuedByLpar, db2Contention: run.hour.db2Contention } : null;
   const h = run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key);
-  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}), ...(h.dbatQueuedByLpar ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}), ...(h.db2RollbacksByLpar ? { db2RollbacksByLpar: h.db2RollbacksByLpar } : {}) } : null;
+  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}), ...(h.dbatQueuedByLpar ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}), ...(h.db2RollbacksByLpar ? { db2RollbacksByLpar: h.db2RollbacksByLpar } : {}), db2Contention: h.db2Contention } : null;
 }
 
 /** A closed hour's frozen ratio (none if the workload had no baseline yet then, e.g. a new workload's first hour);
@@ -49,6 +51,8 @@ export interface Db2AcctRow {
   cpuVsBaseline: number | null;
   /** Class 3 suspensions, ms per transaction. */
   lockMs: number;
+  /** Time waiting to acquire a drain lock, separate from transaction-lock suspension. */
+  drainLockMs?: number;
   syncIoMs: number;
   cfMs: number;
   /** CPU queueing (not a class 3 suspension, but shows in class 2 not-accounted time). */
@@ -81,7 +85,8 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
           class1Ms: (1000 * h.rtSumSec) / h.completions,
           cpuMs,
           cpuVsBaseline: ratioVsBase(d, w.id, cpuMs, base),
-          lockMs: perTxnMs(h, 'lock'),
+          lockMs: perTxnMs(h, 'lock') + perTxnMs(h, 'ddfLock'),
+          ...(h.parts.drainLock ? { drainLockMs: perTxnMs(h, 'drainLock') } : {}),
           syncIoMs: perTxnMs(h, 'io'),
           cfMs: perTxnMs(h, 'cf'),
           notAccountedMs: perTxnMs(h, 'cpuQueue') + perTxnMs(h, 'ziipQueue') + perTxnMs(h, 'dependency'),
@@ -105,6 +110,7 @@ export interface Db2StatRow {
   dbatQueued: number;
   /** Units of work that rolled back on this member during the hour (Q3STABRT, RT-23). */
   rollbacks: number;
+  contention?: Db2ContentionCounters;
 }
 
 /** Db2 rollbacks per LPAR running a Db2 member, for one hour's workload counts (RT-23). The work is split by the
@@ -136,7 +142,61 @@ export function db2Statistics(run: RunState, scenario: Scenario, key: string): D
     ssid: m.ssid,
     dbatQueued: byLpar[m.lparId] ?? 0,
     rollbacks: rollbacks[m.lparId] ?? 0,
+    ...(scenario.db2Contention?.members.includes(m.ssid) ? { contention: d.db2Contention?.[m.ssid] ?? emptyDb2Counters() } : {}),
   }));
+}
+
+export interface Db2BlockerRow {
+  workloadId: string;
+  member: string;
+  lparId: string;
+  object: string;
+  isolation: Db2Isolation;
+  serviceClass: string;
+  type: 'CS READ CLAIM' | 'RR READ CLAIM' | 'CURSOR LOCK' | 'REPEATABLE READ LOCK';
+  count: number;
+  ageSec: number;
+  cpuDelayPct: number;
+  capPct: number;
+  affectedWorkloads: string[];
+  affectedLpars: string[];
+}
+
+export interface Db2BlockerView {
+  rows: Db2BlockerRow[];
+  drain?: { name: string; phase: 'WAITING' | 'DRAINED'; startedTick: number; object: string; member: string; pendingReaders: number };
+}
+
+/** DISPLAY BLOCKERS DETAIL snapshot. Game cohorts carry average ages and workload IDs. */
+export function db2Blockers(run: RunState, scenario: Scenario): Db2BlockerView {
+  const rows: Db2BlockerRow[] = [];
+  const profile = scenario.db2Contention;
+  const state = run.sim.env.db2Contention;
+  if (!profile || !state) return { rows };
+  const members = run.sim.config.db2.filter((m) => profile.members.includes(m.ssid));
+  const affectedLpars = members.map((m) => m.lparId);
+  const workload = allWorkloads(scenario, run).find((w) => w.id === profile.reader);
+  let pendingReaders = 0;
+  for (const m of members) {
+    const r = state.readers[m.ssid];
+    pendingReaders += r?.pending ?? 0;
+    if (!r || r.count <= 0) continue;
+    const common = {
+      workloadId: profile.reader, member: m.ssid, lparId: m.lparId, object: profile.object,
+      isolation: profile.isolation,
+      serviceClass: workload ? classify(run.sim.wlm.definition, { ...workload.work, SY: m.lparId }).serviceClass : '',
+      count: r.count, ageSec: r.ageSec,
+      cpuDelayPct: 100 * r.cpuDelayFrac, capPct: 100 * r.capFrac, affectedLpars,
+    };
+    rows.push({ ...common, type: profile.isolation === 'RR' ? 'RR READ CLAIM' : 'CS READ CLAIM', affectedWorkloads: [] });
+    if (profile.lockSecPerReader[profile.isolation] > 0) {
+      rows.push({ ...common, type: profile.isolation === 'RR' ? 'REPEATABLE READ LOCK' : 'CURSOR LOCK',
+        affectedWorkloads: Object.keys(profile.writes).filter((id) => profile.writes[id]! > 0) });
+    }
+  }
+  const drain = state.drain;
+  return drain ? { rows, drain: { name: profile.drain.name, phase: drain.phase, startedTick: drain.startedTick,
+    object: profile.object, member: profile.drain.member, pendingReaders } } : { rows };
 }
 
 export interface CicsTxnRow {

@@ -1,5 +1,6 @@
 import type { CfTunables } from '../../sim/cf/cf';
 import type { Scenario } from '../../sim/core/scenario';
+import { MIDWEST_DB2_CONTENTION } from './midwest-db2';
 import { BASEPOL } from '../wlm/basepol';
 import { MIDWEST_BATCH_GROWTH_PER_DAY, generateMidwestNetwork } from '../batch/midwest-batch';
 import { HARBOURLINE_PRODUCTS, MIDWEST_PRODUCTS } from '../pricing';
@@ -36,6 +37,7 @@ export const MIDWEST: Scenario = {
   addressSpaces: MIDWEST_ADDRESS_SPACES,
   cfBaseEngines: MIDWEST_CF_BASE_ENGINES,
   cfTunables: MIDWEST_CF_TUNABLES,
+  db2Contention: MIDWEST_DB2_CONTENTION,
   memory: MIDWEST_MEMORY,
   products: MIDWEST_PRODUCTS,
   batchNetwork: generateMidwestNetwork,
@@ -46,6 +48,7 @@ export const MIDWEST: Scenario = {
 export const REVENUE: Scenario = {
   ...MIDWEST,
   id: 'revenue',
+  db2Contention: undefined,
   world: REVENUE_WORLD,
   definition: REVPOL,
   workloads: REVENUE_WORKLOADS,
@@ -60,6 +63,7 @@ export const REVENUE: Scenario = {
 export const HARBOURLINE: Scenario = {
   ...MIDWEST,
   id: 'harbourline',
+  db2Contention: undefined,
   world: HARBOURLINE_WORLD,
   definition: HBPOL,
   workloads: HARBOURLINE_WORKLOADS,

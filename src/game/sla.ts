@@ -69,7 +69,7 @@ export function perTxnParts(h: WorkloadHour): Record<string, number> {
 const GROUPS: Record<string, string[]> = {
   CPU: ['cpuQueue', 'ziipQueue', 'backlogWait'],
   DEPENDENCY: ['dependency'],
-  LOCK_CONTENTION: ['lock'],
+  LOCK_CONTENTION: ['lock', 'ddfLock'],
   CF_SERVICE: ['cf'],
   QR_TCB: ['qr'],
   THREAD_LIMIT: ['outsideRef'],
@@ -424,20 +424,24 @@ export function markMet(events: readonly ActiveEvent[], workloadIds: readonly st
 
 /** The trigger with no card to blame (and the one a collateral victim also accepts: the policy or headroom that left
  * it exposed, §4.4(3)). */
-export function fallbackTrigger(mechanism: Mechanism, hour: HourAcc, isNew: boolean): Trigger {
+export function fallbackTrigger(mechanism: Mechanism, hour: HourAcc, isNew: boolean, workloadId?: string): Trigger {
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;
   // Batch overlap is the lock clash between batch and online (the DASD/lock clue path). Without a card, a CPU
   // priority or dependency miss is the policy's, even at night with batch running: importance, goals and
   // classification decide who waits (playtest 2026-11-03: misrouted critical batch was labelled BATCH_OVERLAP).
-  if (lock > 1 && mechanism === 'LOCK_CONTENTION') return 'BATCH_OVERLAP';
+  if (mechanism === 'LOCK_CONTENTION') {
+    const parts = workloadId === undefined ? undefined : hour.workloads[workloadId]?.parts;
+    if ((parts?.ddfLock ?? 0) > (parts?.lock ?? 0)) return 'POLICY';
+    if (lock > 1) return 'BATCH_OVERLAP';
+  }
   if (mechanism === 'DEPENDENCY' || mechanism === 'CPU_PRIORITY' || mechanism === 'CAPPING' || mechanism === 'QR_TCB' || mechanism === 'THREAD_LIMIT' || mechanism === 'ROUTING') return 'POLICY';
   return 'GROWTH';
 }
 
 export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean, scope: WorkScope): Trigger {
   // The card the hour's truth blames, if any (the counterfactual validator reads the same choice, RT-06).
-  return qualifyingCards(events, workloadId, mechanism, hourWindow(hour.hourIndex), scope)[0]?.card.trigger ?? fallbackTrigger(mechanism, hour, isNew);
+  return qualifyingCards(events, workloadId, mechanism, hourWindow(hour.hourIndex), scope)[0]?.card.trigger ?? fallbackTrigger(mechanism, hour, isNew, workloadId);
 }
 
 /** Pseudo-workload id of a missed batch window's incident. */

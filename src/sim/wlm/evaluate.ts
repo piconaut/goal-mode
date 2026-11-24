@@ -4,7 +4,7 @@
 // Stage bodies live in ./eval/ (prepare, grants, results, accounting, io, paging,
 // types); this file orchestrates them and re-exports the public surface.
 
-import type { LparEvalInput, LparEvalResult } from './eval/types';
+import type { LparEvalInput, LparEvalResult, SliceResult } from './eval/types';
 import { baseKey, prepareLpar, SRV } from './eval/prepare';
 import { grantDispatch } from './eval/grants';
 import { healthByRole, sliceResults } from './eval/results';
@@ -27,7 +27,7 @@ export { emptyScpTick, sliceSpec } from './eval/types';
 export { backlogCpSec, dispatchableDemand, prepareLpar } from './eval/prepare';
 export { slicePagingFrac } from './eval/paging';
 
-export function evaluateLpar(input: LparEvalInput): LparEvalResult {
+export function evaluateLpar(input: LparEvalInput, settle?: (results: readonly SliceResult[]) => void): LparEvalResult {
   const { slices } = input;
   const n = slices.length;
   const scpsOnly = input.scpsOnly === true;
@@ -52,6 +52,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const prio = iosqByPriority(slices, sliceDp, input.io);
   const pgBy = slicePagingFrac(slices, input.pagingFrac, input.storageCritical, input.pagingWeight);
   const results = sliceResults(input, prepared, grants, health, prio, pgBy);
+  settle?.(results);
   const { scps, rcs } = periodTicks(input, prepared, results, scpsOnly, bucketsFor, aggDp);
   return rcs.length > 0 ? { slices: results, scps, roleHealth: health.roleHealth, rcs } : { slices: results, scps, roleHealth: health.roleHealth };
 }

@@ -3,6 +3,7 @@
 // subsystem concurrency) use the previous tick's values carried in `env`.
 // Stage bodies live in ./tick/ (ctx, control, demand, dispatch, helpers); this file orchestrates them.
 
+import { startDb2Contention } from '../subsys/db2Contention';
 import { cfServiceForSystems, evaluateCf, type CfImageInput } from '../cf/cf';
 import { cpSpeed, ziipSpeed } from '../hw/cpc';
 import type { PoolDemand } from '../hw/pools';
@@ -39,6 +40,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { config } = prev;
   const def = prev.wlm.definition;
   const env = prev.env;
+  const db2 = scenario.db2Contention ? startDb2Contention(scenario.db2Contention, env.db2Contention, clock, prev.tick) : undefined;
   const tickOfDay = prev.tick % TICKS_PER_DAY;
   const plan = lparPlan(scenario, config, def, workloads, addressSpaces);
   const cpcOf = plan.cpcOf;
@@ -60,6 +62,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     rates[w.id] = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
     return burst ? { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec, burst } : { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
   });
+  if (db2) {
+    const id = db2.profile.reader;
+    rates[id] = Math.min(rates[id] ?? 0, db2.availableClientSlots / TICK_SEC);
+  }
 
   // Batch scheduling: release tonight's network at the start of the played day.
   // Only queued and running jobs are mutated in place below (promotion copies the held jobs it
@@ -127,6 +133,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     plan,
     def,
     env,
+    db2Contention: db2,
     config,
     clock,
     cpcOf,
@@ -164,6 +171,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     lparTicks: [],
     onlineDb2Rate: 0,
     slotQueue: {},
+    readerDispatch: undefined,
     dbatWaitedByLpar: {},
     cicsStorageBy: {},
   };
@@ -251,6 +259,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const nextEnv: EnvState = t.failByWorkloadLpar
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  if (db2) {
+    nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
+  }
   if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
   if (cf.length > 0) nextEnv.cfBySystem = cfBySystem;
   nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
@@ -268,7 +279,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     workloads: workloadRt,
     backlog,
     ziipBacklog,
-    last: { lpars: lparTicks, workloads: Object.values(wlTick) },
+    last: { lpars: lparTicks, workloads: Object.values(wlTick), ...(db2 ? { db2Contention: db2.counters } : {}) },
     env: nextEnv,
     batch,
     capping: {

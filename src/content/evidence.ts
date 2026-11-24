@@ -30,6 +30,9 @@ export type EvidenceMetric =
   | 'CPU_VS_BASE'
   | 'CPU_PER_TXN'
   | 'LOCK_WAIT'
+  | 'DB2_HOLDER'
+  | 'DB2_DRAIN_LOCK'
+  | 'DB2_CLAIM_RELEASE'
   | 'SYNC_IO'
   | 'CF_WAIT'
   | 'CF_SYNC'
@@ -120,6 +123,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   // offload costs more CP per transaction (RMF Report Analysis p.530 END/S, p.534 APPL%). FICTIONAL line.
   CPU_PER_TXN: { label: 'CP ms/txn', unit: 'ms', mechanisms: [], triggers: ['CHANGE_REGRESSION'], notableAt: 0, notableMultiple: 1.3, weight: 1, relations: OWN_OR_COMPETITOR },
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
+  // FICTIONAL: one second is below the youngest modeled cohort, so any live conflicting holder qualifies.
+  DB2_HOLDER: { label: 'holder cohort age', unit: 's', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 1, weight: 1, relations: ['competitor', 'self'] },
+  DB2_DRAIN_LOCK: { label: 'drain-lock wait ms/txn', unit: 'ms', mechanisms: [], triggers: [], notableAt: 0, weight: 1, relations: OWN },
+  DB2_CLAIM_RELEASE: { label: 'utility claim-release wait', unit: 's', mechanisms: [], triggers: [], notableAt: 0, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   CF_WAIT: { label: 'CF ms/txn', unit: 'ms', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   // CF Activity and DASD Activity (RT-10, A11): the resource the work waits on, so `server` clues. The CF row's own
@@ -353,7 +360,10 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
   LOCK_CONTENTION: { predicates: [{
     label: 'lock waits on the hurt work: Db2 lock wait ≥ 2 ms/txn (Db2 101), LOCK state ≥ 35 % (WLMGL), or the jobs\' lock wait ≥ 25 % (SMF 30)',
     options: [notable('LOCK_WAIT', SELF), notable('WM_LOCK', SELF), notable('JOB_LOCK', SELF)],
-  }, OWN_CPU_LOW] },
+  }, {
+    label: 'the hurt work has normal CPU, or the shared object has an identified holder',
+    options: [...OWN_CPU_LOW.options, notable('DB2_HOLDER', ['competitor'])],
+  }] },
   CF_SERVICE: { predicates: [{
     label: 'CF time per transaction ≥ 5 ms or past its normal band (Db2 101)',
     options: [notable('CF_WAIT', SELF), ratio('CF_WAIT', PROOF.waitRiseRatio, SELF)],
@@ -486,7 +496,7 @@ export const METRIC_TIER: Record<EvidenceMetric, 0 | 1 | 2> = {
   PI: 0, VELOCITY: 1, APPL: 0, APPL_CP: 0, APPL_IIP: 0, IIPCP: 0, ENDED_RATE: 0, CPU_PER_TXN: 0,
   DELAY_CPU: 0, DELAY_ZIIP: 0, DELAY_IO: 0, DELAY_STO: 0, DELAY_CAP: 0, DELAY_OTHER: 0, WM_LOCK: 0, WM_READY: 0,
   PRSM_DELAY: 1, CAPPED: 1, CPC_BUSY: 1, LPAR_BUSY: 1, CAPACITY_ADJ: 1, JOB_APPL: 1,
-  CPU_VS_BASE: 2, LOCK_WAIT: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
+  CPU_VS_BASE: 2, LOCK_WAIT: 2, DB2_HOLDER: 2, DB2_DRAIN_LOCK: 2, DB2_CLAIM_RELEASE: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
   SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2, ROLLBACK_PCT: 2,
   JOB_CPU: 2, JOB_IO: 2, JOB_LOCK: 2, JOB_DB2: 2, JOB_SWAP: 2, JOB_INIT: 2, JOB_ABEND: 2,
 };

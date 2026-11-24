@@ -67,7 +67,7 @@ const EDITS: { cmd: Command; changes: (keyof ReturnType<typeof keyObjects>)[] }[
 ];
 /** Commands that touch none of the plan's key objects. SET_ROUTING_POLICY only edits `routingPolicies`; the shares it
  * produces arrive as a new `routing` object from `updateRouting`. */
-const NO_PLAN_INPUT: Command['kind'][] = ['SET_ROUTING_POLICY', 'SET_MODIFIER', 'SET_LOCK_BOOST', 'ABEND_JOB', 'RESTART_JOB', 'SET_MQ', 'SET_PRICING', 'SET_MLC_PRICE', 'NOTE'];
+const NO_PLAN_INPUT: Command['kind'][] = ['SET_ROUTING_POLICY', 'SET_MODIFIER', 'SET_LOCK_BOOST', 'ABEND_JOB', 'RESTART_JOB', 'SET_MQ', 'SET_PRICING', 'SET_MLC_PRICE', 'CANCEL_DB2_READERS', 'NOTE'];
 
 describe('lookup plan invalidation', () => {
   it('covers every command kind', () => {
@@ -104,6 +104,7 @@ describe('lookup plan invalidation', () => {
       { kind: 'SET_ROUTING_POLICY', workloadId: wl.id, policy: { method: 'WLM', distMethod: 'BASEWLM' } },
       { kind: 'SET_MODIFIER', mod: 'rate', key: wl.id, value: 1.2 },
       { kind: 'SET_LOCK_BOOST', value: 1 },
+      { kind: 'CANCEL_DB2_READERS', members: [base.config.db2[0]!.ssid] },
       { kind: 'NOTE', text: 'x' },
       { kind: 'ABEND_JOB', critical: false },
       { kind: 'SET_MQ', workloadId: mqWl.id, maxDepthMsgs: 50_000 },

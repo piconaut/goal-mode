@@ -42,6 +42,8 @@ export interface SliceBuildInput {
    * are cached per LPAR by that LPAR's shares, so a share change elsewhere doesn't rebuild them.
    */
   scope?: object;
+  /** A profiled reader can still be executing on a member after routing new requests away. */
+  residentReader?: string;
 }
 
 function periodsOf(def: ServiceDefinition, sc: string) {
@@ -77,7 +79,7 @@ function templateKey(input: SliceBuildInput): string {
   const { cpc, lpar } = input;
   const cp = lpar.pools.find((p) => p.pool === 'CP');
   const mult = input.cpuMultiplier ? JSON.stringify(input.cpuMultiplier) : '';
-  return `${lpar.id}|${cpc.generation}|${cpc.capacitySetting}|${cp?.logical ?? 0}|${mult}|${input.workloads.length}|${input.addressSpaces.length}`;
+  return `${lpar.id}|${cpc.generation}|${cpc.capacitySetting}|${cp?.logical ?? 0}|${mult}|${input.workloads.length}|${input.addressSpaces.length}|${input.residentReader ?? ''}`;
 }
 
 function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
@@ -92,7 +94,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
 
   for (const w of input.workloads) {
     const share = w.routing[lpar.id] ?? 0;
-    if (share <= 0) continue;
+    if (share <= 0 && w.id !== input.residentReader) continue;
     const mult = input.cpuMultiplier?.[w.id] ?? 1;
     for (const srv of w.servers) {
       (roleTerms[srv.role] ??= []).push({ workloadId: w.id, cpuSecRef: (share * srv.cpuMsRef) / 1000 });
@@ -243,6 +245,7 @@ interface LastTemplates {
   workloads: readonly WorkloadDef[];
   addressSpaces: readonly AddressSpaceDef[];
   templates: SliceTemplate[];
+  residentReader?: string;
 }
 
 // Per-LPAR shortcut past the key string and nested lookups while every input object is the same
@@ -252,11 +255,11 @@ const lastByLpar = new WeakMap<LparConfig, LastTemplates>();
 function cachedTemplates(input: SliceBuildInput): SliceTemplate[] {
   if (input.cpuMultiplier) return templatesFor(input);
   const last = lastByLpar.get(input.lpar);
-  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces) {
+  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces && last.residentReader === input.residentReader) {
     return last.templates;
   }
   const templates = templatesFor(input);
-  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates });
+  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates, residentReader: input.residentReader });
   return templates;
 }
 

@@ -89,12 +89,19 @@ function pinRequest(a: string[]): PinRequest {
     if (String(a[3] ?? '').toUpperCase() === 'SOS_MIN') return { source: 'CICS_STORAGE', hour: a[1] ?? '', region: a[2] ?? '' };
     return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
   }
+  if (src === 'DB2_BLOCKERS') {
+    const holderType = a.slice(2).join(' ').toUpperCase();
+    if (holderType === 'CS READ CLAIM' || holderType === 'RR READ CLAIM' || holderType === 'CURSOR LOCK' || holderType === 'REPEATABLE READ LOCK') {
+      return { source: 'DB2_BLOCKERS', member: a[1] ?? '', holderType };
+    }
+    throw new Error('pin DB2_BLOCKERS <member> <type from the snapshot>');
+  }
   if (src === 'DB2_STATS') {
     return { source: 'DB2_STATS', hour: a[1] ?? '', lparId: a[2] ?? '', metric: a[3] as EvidenceMetric };
   }
   if (src === 'PROCU') return { source: 'PROCU', system: a[1] ?? '', jobname: a[2] ?? '' };
   if (src === 'BATCH') return { source: 'BATCH', day: Number(String(a[1] ?? '').replace(/^D/i, '')) - 1, metric: a[2] as EvidenceMetric };
-  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | DB2_STATS | PROCU | BATCH');
+  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | DB2_STATS | DB2_BLOCKERS | PROCU | BATCH');
 }
 
 /** wlmlog [system] [--grep text] */
