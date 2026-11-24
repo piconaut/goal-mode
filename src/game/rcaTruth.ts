@@ -45,7 +45,8 @@ export interface TruthContext {
   peers?: {
     cf?: readonly CfPeerRow[];
     lcus?: readonly LcuPeerRow[];
-    /** The CFs the work's hosts connect to (Subchannel Activity); empty means every CF counts. */
+    /** The CFs the work's hosts connect to (Subchannel Activity): absent means every CF counts (an
+     *  interval without Subchannel Activity rows), empty means none is the work's (`slowCf`). */
     connectedCf?: readonly string[];
   };
   content: GameContent;
