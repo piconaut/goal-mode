@@ -57,7 +57,6 @@ export const newHour = (tick: number): ActiveHour => ({
   ziipLparBusyById: {},
   lockIndexSum: 0,
   dbatQueuedByLpar: {},
-  db2Contention: undefined,
 });
 
 function cloneRows<T>(source: Record<string, T> | undefined, copy: (value: T) => T): Record<string, T> {
@@ -91,7 +90,7 @@ export function copyHourForAdvance(run: RunState): ActiveHour {
     ziipBusyById: { ...h.ziipBusyById },
     ziipLparBusyById: { ...h.ziipLparBusyById },
     dbatQueuedByLpar: { ...h.dbatQueuedByLpar },
-    db2Contention: h.db2Contention ? cloneRows(h.db2Contention, (row) => ({ ...row })) : undefined,
+    ...(run.sim.last.db2Contention || h.db2Contention ? { db2Contention: cloneRows(h.db2Contention, (row) => ({ ...row })) } : {}),
     ...(h.cicsStorage ? { cicsStorage: { ...h.cicsStorage } } : {}),
   };
 }
@@ -187,9 +186,9 @@ export function accumulateHour(run: RunState, h = copyHourForAdvance(run)): RunS
     }
   }
   const db2 = run.sim.last.db2Contention;
-  if (db2) {
+  if (db2) for (const member in db2) {
     const members = (h.db2Contention ??= {});
-    for (const member in db2) addDb2Counters(members[member] ??= emptyDb2Counters(), db2[member]!);
+    addDb2Counters(members[member] ??= emptyDb2Counters(), db2[member]!);
   }
   h.ticks += 1;
   h.maxCappedFrac = Math.max(h.maxCappedFrac, capped);
@@ -417,7 +416,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     workloads: h.workloads,
     ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
     ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
-    ...(h.db2Contention ? { db2Contention: h.db2Contention } : {}),
+    ...(h.db2Contention && Object.keys(h.db2Contention).length > 0 ? { db2Contention: h.db2Contention } : {}),
     ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
     ...(Object.keys(db2Rollbacks).length > 0 ? { db2RollbacksByLpar: db2Rollbacks } : {}),
   }].slice(-SMF_HOURS_KEPT);

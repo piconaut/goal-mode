@@ -252,10 +252,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
 
   const nextEnv: EnvState = t.failByWorkloadLpar
-    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar, db2Contention: undefined }
-    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, db2Contention: undefined };
+    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
+    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
   const db2 = t.db2Contention;
-  if (db2 && (db2.drain || Object.keys(db2.readers).length)) {
+  if (db2) {
     nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
   }
   if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
@@ -275,7 +275,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     workloads: workloadRt,
     backlog,
     ziipBacklog,
-    last: { lpars: lparTicks, workloads: Object.values(wlTick), db2Contention: db2 && Object.keys(db2.counters).length ? db2.counters : undefined },
+    last: { lpars: lparTicks, workloads: Object.values(wlTick), ...(db2 ? { db2Contention: db2.counters } : {}) },
     env: nextEnv,
     batch,
     capping: {
