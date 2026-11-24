@@ -873,8 +873,8 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 - **Data sharing:** inter-system lock contention and GBP traffic through the CF (§5.9).
 - **DDF read holders and utility drains (PT-51):** Midwest BI first accesses an authored settlement partition
   after DBAT admission. DB1A and DB1B share that partition. One fluid cohort per member carries unfinished
-  CP and zIIP work and keeps a mean holder age. The dispatcher services its work in the next tick's
-  last service-class period. Existing owners consume each pool's grant first. Commits and timeouts release
+  CP and zIIP work and keeps a mean holder age. Unfinished service carries forward in the same service-class
+  period. Existing owners consume each pool's grant first within their period. Commits and timeouts release
   holdings. The next tick adds lock wait to authored conflicting writes on that partition. CS has a small
   cursor-lock footprint, RR a larger footprint through commit, and UR has read claims with zero modeled
   data-lock pressure. Existing batch/event lock contention still uses the sysplex index.

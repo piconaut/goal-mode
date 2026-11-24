@@ -52,9 +52,13 @@ describe('PT-51 Db2 reader and drain', () => {
     const { state, capped, free } = fixture(s);
     const normal = until(state, startDrain, s);
     const pressured = until(state, startDrain, s, [{ kind: 'ACTIVATE_POLICY', definition: capped }]);
-    expect(reader(pressured)!.count).toBeGreaterThan((reader(normal)?.count ?? 0) + 1);
-    expect(reader(pressured)!.ageSec).toBeGreaterThan(10);
-    expect(reader(pressured)!.capFrac).toBeGreaterThan(0.5);
+    const holder = reader(pressured)!;
+    expect(holder.count).toBeGreaterThan((reader(normal)?.count ?? 0) + 1);
+    expect(holder.ageSec).toBeGreaterThan(10);
+    expect(holder.capFrac).toBeGreaterThan(0.5);
+    expect(holder.workByPeriod[0]?.cpRefSec).toBeGreaterThan(0);
+    expect(holder.workByPeriod.reduce((sum, p) => sum + p.cpRefSec, 0)).toBeCloseTo(holder.cpRefSec, 8);
+    expect(holder.workByPeriod.reduce((sum, p) => sum + p.ziipRefSec, 0)).toBeCloseTo(holder.ziipRefSec, 8);
     if (isolation === 'UR') expect(lock(pressured)).toBeCloseTo(lock(normal), 8);
     else expect(lock(pressured)).toBeGreaterThan(lock(normal) + (isolation === 'RR' ? 0.02 : 0.01));
 

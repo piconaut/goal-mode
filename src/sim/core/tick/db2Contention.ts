@@ -1,4 +1,4 @@
-import { paceDb2Reader, readClaims } from '../../subsys/db2Contention';
+import { paceDb2Reader, readClaims, type Db2PeriodWork } from '../../subsys/db2Contention';
 import type { SliceResult, SliceSpec } from '../../wlm/eval/types';
 import { lognormCdf } from '../math';
 import { TICK_SEC } from '../units';
@@ -13,10 +13,14 @@ export interface ReaderDispatch {
   freshZiipRefSec: number;
   dbatFailed: number;
   dbatQueued: number;
+  carry: readonly Db2PeriodWork[];
 }
 
+const NO_PERIOD_WORK: readonly Db2PeriodWork[] = [];
+const EMPTY_PERIOD: Db2PeriodWork = { cpRefSec: 0, ziipRefSec: 0 };
+
 // This runs once per participating image. Use the member's existing DBAT queue's admissions, allocated
-// proportionally to the offered queue mix. Existing claims carry CPU demand in the reader's last period.
+// proportionally to the offered queue mix. Existing claims carry CPU demand in their service-class periods.
 export function prepareDb2Reader(
   t: TickCtx, img: ImagePlan, slices: readonly SliceSpec[],
   offeredToDbat: number, totalAdmitted: number, totalQueued: number, accessFrac: number,
@@ -53,13 +57,27 @@ export function prepareDb2Reader(
     freshCp = last.cpEngines = last.rate * last.cpuSecPerTxn;
     freshZiip = last.ziipEngines = last.rate * last.ziipSecPerTxn;
   }
-  if (last && old) {
-    last.cpEngines += old.cpRefSec / (TICK_SEC * img.cpSpeed);
-    last.ziipEngines += old.ziipRefSec / (TICK_SEC * img.ziipSpeed);
+  let carry = old?.workByPeriod ?? NO_PERIOD_WORK;
+  if (carry.length > slices.length) {
+    // Policy changes can remove periods. Put the removed periods' work in the last remaining period.
+    const lastIndex = slices.length - 1;
+    const shortened = carry.slice(0, lastIndex);
+    let cpRefSec = 0;
+    let ziipRefSec = 0;
+    for (let i = lastIndex; i < carry.length; i++) {
+      cpRefSec += carry[i]!.cpRefSec;
+      ziipRefSec += carry[i]!.ziipRefSec;
+    }
+    shortened.push({ cpRefSec, ziipRefSec });
+    carry = shortened;
+  }
+  for (let i = 0; i < carry.length; i++) {
+    slices[i]!.cpEngines += carry[i]!.cpRefSec / (TICK_SEC * img.cpSpeed);
+    slices[i]!.ziipEngines += carry[i]!.ziipRefSec / (TICK_SEC * img.ziipSpeed);
   }
   (t.readerDispatch ??= {})[img.lpar.id] = {
     member, slices, intake, freshCpRefSec: freshCp * TICK_SEC * img.cpSpeed,
-    freshZiipRefSec: freshZiip * TICK_SEC * img.ziipSpeed, dbatFailed, dbatQueued,
+    freshZiipRefSec: freshZiip * TICK_SEC * img.ziipSpeed, dbatFailed, dbatQueued, carry,
   };
 }
 
@@ -69,34 +87,65 @@ export function finishDb2Reader(
   const d = t.db2Contention!;
   let cpRefSec = 0;
   let ziipRefSec = 0;
+  let oldCpGrant = 0;
+  let oldZiipGrant = 0;
   let cappedRefSec = 0;
+  let remaining: Db2PeriodWork[] | undefined;
+  const cpScale = TICK_SEC * img.cpSpeed;
+  const ziipScale = TICK_SEC * img.ziipSpeed;
   // Slices for a workload are adjacent and in period order.
   const start = slices.indexOf(reader.slices[0]!);
   const end = start + reader.slices.length;
   for (let i = start; i < end; i++) {
+    const s = slices[i]!;
     const r = results[i]!;
-    cpRefSec += r.cpGranted * TICK_SEC * img.cpSpeed;
+    const cpGrant = r.cpGranted * cpScale;
     // The dispatcher debits IIPCP from eligible demand in the same engine-seconds as native zIIP service.
-    ziipRefSec += (r.ziipGranted + r.iipcpGranted) * TICK_SEC * img.ziipSpeed;
-    cappedRefSec += r.delayCap * TICK_SEC * img.cpSpeed;
+    const ziipGrant = (r.ziipGranted + r.iipcpGranted) * ziipScale;
+    cpRefSec += cpGrant;
+    ziipRefSec += ziipGrant;
+    cappedRefSec += r.delayCap * cpScale;
+    const period = i - start;
+    const carry = reader.carry[period];
+    if (carry) {
+      oldCpGrant += Math.min(carry.cpRefSec, cpGrant);
+      oldZiipGrant += Math.min(carry.ziipRefSec, ziipGrant);
+    }
+    const cpLeft = Math.max(0, s.cpEngines * cpScale - cpGrant);
+    const ziipLeft = Math.max(0, s.ziipEngines * ziipScale - ziipGrant);
+    if (cpLeft > 1e-12 || ziipLeft > 1e-12) {
+      (remaining ??= Array.from({ length: reader.slices.length }, () => EMPTY_PERIOD))[period] = {
+        cpRefSec: cpLeft, ziipRefSec: ziipLeft,
+      };
+    }
   }
   const old = d.before?.readers[reader.member];
   const demand = (old?.cpRefSec ?? 0) + (old?.ziipRefSec ?? 0) + reader.freshCpRefSec + reader.freshZiipRefSec;
   const workload = t.workloadById[d.profile.reader]!;
   const result = paceDb2Reader(old, reader.intake, reader.freshCpRefSec, reader.freshZiipRefSec,
-    cpRefSec, ziipRefSec, demand > 0 ? Math.min(1, cappedRefSec / demand) : 0, workload.timeoutSec);
-  if (result.reader.count > 1e-9 || result.reader.pending > 1e-9 || reader.dbatQueued > 1e-9) {
-    d.readers[reader.member] = { ...result.reader, dbatQueued: reader.dbatQueued };
-  }
+    cpRefSec, ziipRefSec, oldCpGrant, oldZiipGrant, demand > 0 ? Math.min(1, cappedRefSec / demand) : 0, workload.timeoutSec);
   // Stamp actual commits before the usual WLM and workload accounting consume the same slice results.
-  // Carryover belongs to the last period, where its CPU was demanded.
   for (let i = start; i < end; i++) {
     const s = slices[i]!;
     const r = results[i]!;
-    const last = i === end - 1;
-    const ageCompletions = last ? result.completedOld : 0;
+    const period = i - start;
+    const carry = reader.carry[period];
+    let ageCompletions = 0;
+    if (carry && (result.completedOld > 0 || result.aborted > 0)) {
+      const paidCp = Math.min(carry.cpRefSec, r.cpGranted * cpScale);
+      const paidZiip = Math.min(carry.ziipRefSec, (r.ziipGranted + r.iipcpGranted) * ziipScale);
+      ageCompletions = (oldCpGrant + oldZiipGrant > 0)
+        ? result.completedOld * (paidCp + paidZiip) / (oldCpGrant + oldZiipGrant) : 0;
+      const left = remaining?.[period];
+      if (result.aborted > 0 && left) {
+        remaining![period] = {
+          cpRefSec: Math.max(0, left.cpRefSec - (carry.cpRefSec - paidCp)),
+          ziipRefSec: Math.max(0, left.ziipRefSec - (carry.ziipRefSec - paidZiip)),
+        };
+      }
+    }
     r.completions = ageCompletions + (reader.intake.starting > 0 ? result.completedFresh * s.rate * TICK_SEC / reader.intake.starting : 0);
-    r.failed = last ? reader.intake.failed + reader.dbatFailed + result.aborted : 0;
+    r.failed = i === end - 1 ? reader.intake.failed + reader.dbatFailed + result.aborted : 0;
     if (ageCompletions > 0) {
       const additionalSec = Math.max(0, (old?.ageSec ?? 0) - r.rtMeanSec) * ageCompletions / r.completions;
       r.rtMeanSec += additionalSec;
@@ -104,5 +153,8 @@ export function finishDb2Reader(
       if (r.parts) r.parts.backlogWait += additionalSec;
     }
     r.withinSla = s.slaRtSec === null ? 0 : r.completions * lognormCdf(s.slaRtSec, r.userRtSec, s.rtSigma);
+  }
+  if (result.reader.count > 1e-9 || result.reader.pending > 1e-9 || reader.dbatQueued > 1e-9) {
+    d.readers[reader.member] = { ...result.reader, dbatQueued: reader.dbatQueued, workByPeriod: remaining ?? NO_PERIOD_WORK };
   }
 }

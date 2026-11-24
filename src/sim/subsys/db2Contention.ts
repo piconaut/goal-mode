@@ -24,6 +24,11 @@ export interface Db2ContentionProfile {
   };
 }
 
+export interface Db2PeriodWork {
+  cpRefSec: number;
+  ziipRefSec: number;
+}
+
 /** One fluid cohort per member. CPU balances are reference-engine seconds by eligibility. */
 export interface Db2Reader {
   count: number;
@@ -32,6 +37,8 @@ export interface Db2Reader {
   ageSec: number;
   cpuDelayFrac: number;
   capFrac: number;
+  /** Unfinished service stays in the slice period where it was demanded. */
+  workByPeriod: readonly Db2PeriodWork[];
   /** This reader's share of the member queue before DBAT attachment. */
   dbatQueued: number;
   pending: number;
@@ -164,31 +171,32 @@ export function paceDb2Reader(
   intake: ReturnType<typeof readClaims>,
   freshCpRefSec: number, freshZiipRefSec: number,
   cpRefSec: number, ziipRefSec: number,
+  oldCpGrant: number, oldZiipGrant: number,
   capFrac: number,
   timeoutSec: number,
-): { reader: Omit<Db2Reader, 'dbatQueued'>; aborted: number; completedOld: number; completedFresh: number } {
+): { reader: Omit<Db2Reader, 'dbatQueued' | 'workByPeriod'>; aborted: number; completedOld: number; completedFresh: number } {
   const oldCp = old?.cpRefSec ?? 0;
   const oldZiip = old?.ziipRefSec ?? 0;
-  const leftCp = Math.max(0, oldCp + freshCpRefSec - cpRefSec);
-  const leftZiip = Math.max(0, oldZiip + freshZiipRefSec - ziipRefSec);
+  const oldLeftCp = Math.max(0, oldCp - oldCpGrant);
+  const oldLeftZiip = Math.max(0, oldZiip - oldZiipGrant);
+  const freshLeftCp = Math.max(0, freshCpRefSec - (cpRefSec - oldCpGrant));
+  const freshLeftZiip = Math.max(0, freshZiipRefSec - (ziipRefSec - oldZiipGrant));
   const residual = (cp: number, ziip: number, cpLeft: number, ziipLeft: number) =>
     Math.max(cp > 0 ? cpLeft / cp : 0, ziip > 0 ? ziipLeft / ziip : 0);
-  let oldCount = (old?.count ?? 0) * residual(oldCp, oldZiip, Math.max(0, oldCp - cpRefSec), Math.max(0, oldZiip - ziipRefSec));
+  let oldCount = (old?.count ?? 0) * residual(oldCp, oldZiip, oldLeftCp, oldLeftZiip);
   const oldAge = oldCount > 0 ? (old?.ageSec ?? 0) + TICK_SEC : 0;
   const aborted = oldAge >= timeoutSec ? oldCount : 0;
   oldCount -= aborted;
-  const oldLeftCp = aborted > 0 ? Math.max(0, oldCp - cpRefSec) : 0;
-  const oldLeftZiip = aborted > 0 ? Math.max(0, oldZiip - ziipRefSec) : 0;
   const freshCount = intake.starting * residual(
-    freshCpRefSec, freshZiipRefSec, Math.min(leftCp, freshCpRefSec), Math.min(leftZiip, freshZiipRefSec),
+    freshCpRefSec, freshZiipRefSec, freshLeftCp, freshLeftZiip,
   );
   const count = oldCount + freshCount;
   const wanted = oldCp + oldZiip + freshCpRefSec + freshZiipRefSec;
   return {
     reader: {
-      count, cpRefSec: leftCp - oldLeftCp, ziipRefSec: leftZiip - oldLeftZiip,
+      count, cpRefSec: freshLeftCp + (aborted > 0 ? 0 : oldLeftCp), ziipRefSec: freshLeftZiip + (aborted > 0 ? 0 : oldLeftZiip),
       ageSec: count > 0 ? (oldCount * oldAge + freshCount * TICK_SEC / 2) / count : 0,
-      cpuDelayFrac: wanted > 0 ? (leftCp + leftZiip) / wanted : 0, capFrac,
+      cpuDelayFrac: wanted > 0 ? (freshLeftCp + freshLeftZiip + oldLeftCp + oldLeftZiip) / wanted : 0, capFrac,
       pending: intake.pending, pendingClaims: intake.pendingClaims,
     },
     aborted,
