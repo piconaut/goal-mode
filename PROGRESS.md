@@ -172,12 +172,12 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest reference, RF-05 (2026-11-23, model `ae702cb`, #478; remote, Normal, seeds 1–10): do-nothing / textbook
-  median day, expert victories: [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45111397822)
-  17 / 28 / 10, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45115168291) 21 / 29 / 10,
-  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45115168408) 11 / 30.5 / 8. All inside the CI
-  bands; the milestone review's Midwest rerun at `de3b59f` ([run](https://github.com/piconaut/goal-mode/actions/runs/45186335693))
-  gave 16.5 / 28 / 10. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
+- Latest reference, PT-51 (2026-11-24, #488, remote, Normal). Median end day for do-nothing / textbook / expert,
+  then expert wins. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347621450), seeds 1–20,
+  17 / 27 / 40 and 20/20. Seeds 1–5 [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347615358)
+  16 / 27 / 40 and 5/5, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45342988016)
+  21 / 29 / 40 and 5/5, [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45342756292)
+  11 / 29 / 40 and 3/5. All inside the CI bands. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
 - Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
   17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) 10 / 31 / 15 of 20 (expert losses

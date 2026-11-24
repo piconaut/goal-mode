@@ -1,10 +1,12 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
-import { addPin } from '../../src/game/evidence';
+import { addPin, incidentSubjects } from '../../src/game/evidence';
+import { judgeProof } from '../../src/game/proof';
 import { newRun } from '../../src/game/run';
 import { accumulateHour, newHour } from '../../src/game/run/hourly';
 import { fallbackTrigger } from '../../src/game/sla';
 import { db2Accounting, db2Blockers, db2Statistics } from '../../src/game/smf';
+import type { Incident } from '../../src/game/types';
 import { tickOfClock } from '../../src/sim/core/clock';
 import type { Command } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
@@ -12,6 +14,7 @@ import type { Scenario } from '../../src/sim/core/scenario';
 import { step } from '../../src/sim/core/step';
 import type { SimState } from '../../src/sim/core/types';
 import type { Db2Isolation } from '../../src/sim/subsys/db2Contention';
+import { truthOf } from '../helpers/truth';
 
 const profile = MIDWEST.db2Contention!;
 const start = tickOfClock('D1 14:48')!;
@@ -146,6 +149,14 @@ describe('PT-51 Db2 reader and drain', () => {
       ok: false, message: 'Refresh the live Db2 blocker snapshot before pinning',
     });
     expect(db2Accounting(run, s, 'current').find((r) => r.workloadId === 'RBANK')?.lockMs).toBeGreaterThan(0);
+    const waits = addPin(pin.run, s, { source: 'DB2', workloadId: 'RBANK', hour: 'current', metric: 'LOCK_WAIT' });
+    expect(waits.ok).toBe(true);
+    const incident: Incident = {
+      id: 1, workloadId: 'RBANK', day: 0, startTick: moved.tick - 1, endTick: null, hours: 1,
+      worstAttainmentPct: 80, truth: truthOf('LOCK_CONTENTION', 'POLICY'), rca: null, trustLost: 0,
+      subjects: incidentSubjects(run, s, 'RBANK', moved.tick),
+    };
+    expect(judgeProof(waits.run, s, [incident], 'LOCK_CONTENTION', 'POLICY', waits.run.pins!).mechanism.complete).toBe(true);
     expect(db2Statistics(run, s, 'current').find((r) => r.ssid === 'DB1B')?.contention).toEqual(stats(moved));
     expect(fallbackTrigger('LOCK_CONTENTION', run.hour!, false, 'RBANK')).toBe('POLICY');
   });

@@ -123,7 +123,8 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   // offload costs more CP per transaction (RMF Report Analysis p.530 END/S, p.534 APPL%). FICTIONAL line.
   CPU_PER_TXN: { label: 'CP ms/txn', unit: 'ms', mechanisms: [], triggers: ['CHANGE_REGRESSION'], notableAt: 0, notableMultiple: 1.3, weight: 1, relations: OWN_OR_COMPETITOR },
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
-  DB2_HOLDER: { label: 'holder cohort age', unit: 's', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 0, weight: 1, relations: ['competitor', 'self'] },
+  // FICTIONAL: one second is below the youngest modeled cohort, so any live conflicting holder qualifies.
+  DB2_HOLDER: { label: 'holder cohort age', unit: 's', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 1, weight: 1, relations: ['competitor', 'self'] },
   DB2_DRAIN_LOCK: { label: 'drain-lock wait ms/txn', unit: 'ms', mechanisms: [], triggers: [], notableAt: 0, weight: 1, relations: OWN },
   DB2_CLAIM_RELEASE: { label: 'utility claim-release wait', unit: 's', mechanisms: [], triggers: [], notableAt: 0, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },

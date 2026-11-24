@@ -107,6 +107,7 @@ function placeFor(kind: Kind, o: PredicateOption, relation: string): Pick<Eviden
   }
   if (m === 'CF_SYNC' || m === 'CF_ASYNC_PCT') return relation === 'server' ? { source: 'CF', subject: 'CF01', system: 'CF01' } : null;
   if (m.startsWith('DASD_')) return relation === 'server' ? { source: 'DASD', subject: '21', system: '*PLEX' } : null;
+  if (m === 'DB2_HOLDER') return relation === 'competitor' && kind !== 'BATCH' ? { source: 'DISPLAY BLOCKERS', subject: 'ADHOC', system: 'PROD2' } : null;
   if (m === 'DBAT_QUEUE') {
     // Db2 statistics names the member's LPAR, not the workload row.
     const lparId = MIDWEST.world.db2[0]?.lparId;
@@ -155,6 +156,13 @@ function pinFor(r: RunState, kind: Kind, o: PredicateOption, id: number, only?: 
     const [value, baseline] = readingFor(o);
     const tick = r.sim.rmf.intervals.at(-1)!.endTick;
     const base = { id, metric: o.metric, tick, text: `fixture ${o.metric}`, ...place };
+    if (o.metric === 'DB2_HOLDER') return {
+      ...base, value, db2Blocker: {
+        workloadId: place.subject, lparId: place.system, member: 'DB1B', object: MIDWEST.db2Contention!.object,
+        isolation: 'CS', serviceClass: 'DDFPRD', type: 'CURSOR LOCK', count: 3, ageSec: value,
+        cpuDelayPct: 80, capPct: 60, affectedWorkloads: ['RBANK', 'MOBILE'], affectedLpars: ['PROD1', 'PROD2'],
+      },
+    };
     if (o.reading === 'rate') return { ...base, value: 100, baseline: 100, rate: { value, ...(baseline !== undefined ? { baseline } : {}) } };
     return { ...base, value, ...(baseline !== undefined ? { baseline } : {}), ...(o.test.kind === 'peerSlow' ? { peer: { value: 100, of: 'a peer' } } : {}) };
   }
@@ -365,7 +373,7 @@ describe('documented values (RT-13)', () => {
       CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a consumer WLM could have taken CPU from'],
       CAPPING: ['CPU delay ≥ 10 % or CAP delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
       DEPENDENCY: ['the server slow', 'the hurt class\'s own CPU delay < 10 %'],
-      LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
+      LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt work has normal CPU, or the shared object has an identified holder'],
       CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
       QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'little waiting for a slot or on the CPU'],
       THREAD_LIMIT: ['queued for a slot', 'the extra wait was the slot, not slower work'],
