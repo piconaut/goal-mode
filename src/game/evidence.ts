@@ -11,6 +11,8 @@ import { workManagerStatePct } from '../sim/wlm/reporting';
 import { buildMon3 } from './mon3';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
+import { cfPeer, lcuPeer, type PeerReading } from './peerSlow';
+import { PEER_SLOW_RATIO } from '../content/sla';
 import type { NightSummary } from '../sim/subsys/batch';
 import { cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics } from './smf';
 import type { CpuRecord, WlmRecord } from '../sim/measure/rmf';
@@ -42,6 +44,9 @@ export interface EvidencePin {
   /** A PROCU job's service class, as the row shows it, so a recipe can ask whether the job was displaceable. Absent on
    * pins of any other source. */
   serviceClass?: string;
+  /** The peer reading a CF or LCU pin was judged against (RT-35): the best CF's sync time/async conversion, or the
+   * all-LCU median DISC/response, frozen at pin time like `baseline`. Absent on every other pin. */
+  peer?: PeerReading;
   text: string;
 }
 
@@ -294,7 +299,9 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       };
       const value = req.metric === 'CF_SYNC' ? c.syncUs : c.asyncPct;
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
-      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      // The best CF of the same interval, for a resource far slower than its peers (RT-35).
+      const peer = req.metric === 'CF_SYNC' ? cfPeer(iv.cf, 'syncUs') : cfPeer(iv.cf, 'asyncPct');
+      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}), ...(peer ? { peer } : {}) };
     }
     case 'DASD': {
       const index = req.index ?? sim.rmf.intervals.length - 1;
@@ -311,7 +318,9 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (value === null)
         return req.lcuId === 'ALL' ? 'The ALL VOLUMES row has DISC only: pin an LCU for IOSQ or response time' : 'No such LCU row';
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
-      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      // An LCU's peer is the all-LCU median (RT-35); the ALL VOLUMES row is a summary, not one LCU.
+      const peer = req.lcuId === 'ALL' ? undefined : req.metric === 'DASD_DISC' ? lcuPeer(iv.lcus, 'discMs') : req.metric === 'DASD_RESP' ? lcuPeer(iv.lcus, 'rtMs') : undefined;
+      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}), ...(peer ? { peer } : {}) };
     }
     case 'DB2': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
@@ -464,7 +473,13 @@ function pinWhen(p: Located, req: PinRequest): string {
 
 function pinText(p: Located, req: PinRequest): string {
   const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
-  return `${p.source} ${pinWhen(p, req)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
+  // The peer reading the pin was judged against (RT-35), shown only when the row is peer-slow, e.g.
+  // "vs CF01 18.0 µs (76×)". Below 1, two decimals keep the printed multiple honest (0.07 ms, not 0.1 ms).
+  const peerValue = (m: EvidenceMetric, v: number) => v >= 1 ? fmtValue(m, v) : `${v.toFixed(2)}${EVIDENCE_METRICS[m].unit ? ` ${EVIDENCE_METRICS[m].unit}` : ''}`;
+  const peer = p.peer && p.peer.value > 0 && p.value >= PEER_SLOW_RATIO * p.peer.value
+    ? ` vs ${p.peer.of} ${peerValue(p.metric, p.peer.value)} (${(p.value / p.peer.value).toFixed(0)}×)`
+    : '';
+  return `${p.source} ${pinWhen(p, req)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${peer}${rate}`;
 }
 
 /** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */
@@ -583,8 +598,11 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
       return result(0, relation === 'competitor' ? "another class's row, not the hurt work's" : `about ${RELATION_TEXT[relation]}, not ${inc.workloadId}'s own work`, 1);
     if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
     // Notable against the metric's line, and against the row's own recent normal where both exist (RT-10): one line
-    // cannot serve rows whose healthy scale differs (CF02's weak ICF engine, one LCU among several).
-    if (Math.abs(p.value) < notableFloor(p.metric, p.baseline)) return result(0, 'value is unremarkable', 3);
+    // cannot serve rows whose healthy scale differs (a weak shared ICF engine against a dedicated one, one LCU among
+    // several). A resource far slower than its peers is remarkable even at its own normal (RT-35): a standing
+    // misconfiguration is a cause.
+    const peerSlow = p.peer !== undefined && p.peer.value > 0 && p.value >= PEER_SLOW_RATIO * p.peer.value;
+    if (!peerSlow && Math.abs(p.value) < notableFloor(p.metric, p.baseline)) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
     return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
   });

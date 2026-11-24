@@ -361,10 +361,11 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
     window: { startTick: nightStart, endTick: r.sim.tick },
     basis, hosts, servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew: false,
   };
-  const { accepted, notes } = acceptedAnswers(ctx);
+  const { accepted, notes, nearMiss } = acceptedAnswers(ctx);
   const truth: IncidentTruth = {
     mechanism, trigger, accepted,
     ...(Object.keys(notes).length > 0 ? { notes } : {}),
+    ...(nearMiss ? { nearMiss } : {}),
     cause: truthCause(ctx),
   };
   const inc: Incident = {
