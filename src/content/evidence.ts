@@ -223,6 +223,11 @@ export interface PredicateOption {
   /** The pin must read the same row (image and class, or workload) as a pin meeting the recipe's first predicate: the
    * two halves of a surge or a regression describe one piece of work. */
   sameWork?: true;
+  /** The symptoms this ruling-out option rules out (RT-34). A predicate with tied options is met only when every
+   * symptom the first predicate showed, on that same incident, has a matching option: a CICS slot queue needs the QR
+   * wait, a DBAT queue its own cost, an initiator wait the jobs' CPU wait. A normal cost per transaction therefore
+   * does not rule out QR saturation. */
+  rulesOut?: EvidenceMetric[];
 }
 
 export interface ProofPredicate {
@@ -357,12 +362,22 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'little waiting for a slot or on the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
     options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
   }] },
+  // The ruling-out half is tied to the symptom (RT-34): a CICS slot queue's nearest look-alike is QR saturation,
+  // which holds MXT slots longer at an unchanged cost per transaction, so only the QR wait rules it out. A DBAT
+  // queue and an initiator wait keep the cost and job readings. MXT limits concurrent user tasks (CICS Performance
+  // PDF p.89, printed 81) and QRMODDLY is a dispatched task's wait for QR redispatch (CICS Monitoring PDF p.295,
+  // printed 287), so a task waiting on QR still holds its slot.
   THREAD_LIMIT: { predicates: [{
     label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
-    label: 'the work ran no slower: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
-    options: [...COST_NORMAL, below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
+    label: 'the extra wait was the slot, not slower work: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction within ±15 % of normal for a DBAT queue, or the jobs\' CPU wait < 25 % for an initiator wait',
+    options: [
+      { ...normal('CPU_PER_TXN', SELF), rulesOut: ['DBAT_QUEUE'] },
+      { ...normal('CPU_VS_BASE', SELF), rulesOut: ['DBAT_QUEUE'] },
+      { ...below('QR_WAIT', 5, SELF), rulesOut: ['MXT_WAIT', 'SOS_MIN'] },
+      { ...below('JOB_CPU', PROOF.jobWaitPct, SELF), rulesOut: ['JOB_INIT'] },
+    ],
   }] },
   ROUTING: { predicates: [{
     label: 'transactions failed: failed share ≥ 1 % (CICS 110)',

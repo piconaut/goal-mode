@@ -134,25 +134,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-34 · THREAD_LIMIT's ruling-out half must rule out QR for CICS
-`list: rca-truth · status: ready · priority: high · size: S · area: game`
-
-Source: RT-29 (agent playtest 2026-11-21; user decision 2026-11-23, docs/rca-design.md §7 Q11). Harbourline seed 37
-D4 INC35: MXT wait 6762 ms/txn and CPU per transaction ×1.01 completed THREAD_LIMIT's recipe while the primary was
-`QR_TCB/POLICY`. The second predicate (`content/evidence.ts` `MECHANISM_RECIPES.THREAD_LIMIT`) is an *or* of CPU per
-transaction normal, QR wait < 5 ms/txn and job CPU wait low, so CPU per transaction alone passes. That cannot separate
-the claim from its nearest look-alike: tasks waiting on a saturated QR TCB hold their MXT slots longer at unchanged
-CPU per transaction. Decision: don't widen the accepted set to any completed recipe; fix the recipe. When the symptom
-half is met by a CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a region), the ruling-out half must be `QR_WAIT` below
-5 ms/txn on the same work. CPU per transaction stays an option for the DBAT queue and `JOB_CPU` for initiator waits.
-The predicate options are an unconditional *or* today, so this needs either a per-option tie (like `sameWork`) or
-separate CICS and DBAT recipes; pick whichever keeps the reply readable. Re-run the INC35 shape first: RT-17's slot
-baselines may have changed which primary wins, and the recipe fix holds either way. Real THREAD_LIMIT incidents
-where the limit is too low for normal hold times remain RT-19's. Done when: a test with an MXT queue behind QR
-saturation (CPU per transaction flat, QR wait high) fails THREAD_LIMIT's recipe, and a test with a too-low MXT and QR
-wait normal passes it; `tests/game/proofRecipes.test.ts` replays still prove THREAD_LIMIT; the reply names the failed
-predicate as "QR wait < 5 ms/txn"; SPEC §10 states the rule.
-
 ### RT-35 · A resource far slower than its peers is an accepted mechanism
 `list: rca-truth · status: ready · priority: high · size: M · area: game`
 

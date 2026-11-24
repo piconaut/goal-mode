@@ -1538,7 +1538,14 @@ the same functions (`recipeHeading`, `predicateText`, `pinVerdictLines`, `hourBa
 Notable recipes: CPU_CAPACITY reads a full processor (CPC/image busy ≥ 90 %, or a capacity adjustment), CPU_PRIORITY a
 displaceable consumer (a less important period, or a job, at ≥ 10 % of the image), CAPPING a capped image or CAP delay;
 DEMAND_SURGE is the ended rate ≥ 1.25 × its normal at a flat CPU per transaction, and a change regression the reverse
-(≥ 1.3 ×, rate flat), both halves on the same row (the same class on the same image, or the same workload). Cost pins (`CPU_PER_TXN`, and Db2 101/CICS 110 `CPU_VS_BASE`) carry the ended rate printed on
+(≥ 1.3 ×, rate flat), both halves on the same row (the same class on the same image, or the same workload). THREAD_LIMIT
+ties its ruling-out half to the symptom that met the first predicate: a CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a
+region) is ruled out only by `QR_WAIT` < 5 ms/txn on the hurt work, because tasks held on a saturated QR TCB keep
+their MXT slots longer at an unchanged cost per transaction (MXT counts user tasks, and QRMODDLY is a dispatched task's
+wait for redispatch on QR: [CICS Performance PDF p.89 (printed 81)](https://www.ibm.com/docs/en/SSGMCP_6.1.0/pdf/performance_pdf.pdf#page=89),
+[CICS Monitoring PDF p.295 (printed 287)](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=295)); a DBAT queue keeps CPU per transaction normal and an
+initiator wait the jobs' CPU wait < 25 % (RT-34, `rulesOut`). Every symptom the first predicate shows needs its own
+reading, on that incident, so a CICS queue beside a DBAT queue needs both. Cost pins (`CPU_PER_TXN`, and Db2 101/CICS 110 `CPU_VS_BASE`) carry the ended rate printed on
 the same row (`pin.rate`), so one row proves either. `CPU_PER_TXN` is Workload Activity's APPL% CP ÷ END/S in CP
 ms per transaction (RMF Report Analysis 3.1 p.530, p.534), the tier-0 cost: refused on a CICS transaction row, which
 reports no service consumption (p.524), so a CICS workload's cost comes from CICS monitoring. An ended rate's normal
