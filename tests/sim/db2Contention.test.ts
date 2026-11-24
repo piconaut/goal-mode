@@ -118,6 +118,9 @@ describe('PT-51 Db2 reader and drain', () => {
     const pin = addPin(run, s, { source: 'DB2_BLOCKERS', member: row.member, holderType: row.type, tick: moved.tick });
     expect(pin.ok).toBe(true);
     expect(pin.run.pins!.at(-1)?.text).toContain(`ADHOC on DB1B / PROD2 held REPEATABLE READ LOCK on ${profile.object}`);
+    expect(addPin(run, s, { source: 'DB2_BLOCKERS', member: row.member, holderType: row.type, tick: moved.tick - 1 })).toMatchObject({
+      ok: false, message: 'Refresh the live Db2 blocker snapshot before pinning',
+    });
     expect(db2Accounting(run, s, 'current').find((r) => r.workloadId === 'RBANK')?.lockMs).toBeGreaterThan(0);
     expect(db2Statistics(run, s, 'current').find((r) => r.ssid === 'DB1B')?.contention).toEqual(stats(moved));
     expect(fallbackTrigger('LOCK_CONTENTION', run.hour!, false, 'RBANK')).toBe('POLICY');

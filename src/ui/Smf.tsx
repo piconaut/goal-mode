@@ -194,7 +194,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <td>{r.member} / {r.lparId}</td><td>{r.workloadId} ({r.isolation}) <span className="muted">{r.serviceClass}</span></td>
                   <td>{r.object}</td><td>{r.type}</td><td className="num">{f1(r.count)}</td>
                   <td className="num">{f1(r.ageSec)}
-                    <PinButton game={game} req={{ source: 'DB2_BLOCKERS', member: r.member, holderType: r.type }} label={`${r.member} ${r.workloadId} ${r.type}`} />
+                    <PinButton game={game} req={{ source: 'DB2_BLOCKERS', member: r.member, holderType: r.type, tick: d.tick }} label={`${r.member} ${r.workloadId} ${r.type}`} />
                   </td>
                   <td className="num">{f1(r.cpuDelayPct)}%</td><td className="num">{f1(r.capPct)}%</td>
                 </tr>
