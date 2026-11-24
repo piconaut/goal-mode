@@ -12,7 +12,7 @@ export interface Db2ContentionProfile {
   writes: Readonly<Record<string, number>>;
   isolation: Db2Isolation;
   lockSecPerReader: Readonly<Record<Db2Isolation, number>>;
-  maxLockSec: number;
+  maxLockSec: Readonly<Record<Db2Isolation, number>>;
   claimTimeoutSec: number;
   drain: {
     name: string;
@@ -96,7 +96,7 @@ export function startDb2Contention(
   if (before) for (const member of profile.members) count += before.readers[member]?.count ?? 0;
   const t: Db2ContentionTick = {
     profile, before, readers: {}, drain: before?.drain, counters: {},
-    lockSec: Math.min(profile.maxLockSec, count * profile.lockSecPerReader[profile.isolation]),
+    lockSec: Math.min(profile.maxLockSec[profile.isolation], count * profile.lockSecPerReader[profile.isolation]),
   };
   const d = profile.drain;
   const startSec = d.startMinute * 60;
