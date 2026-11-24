@@ -40,6 +40,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { config } = prev;
   const def = prev.wlm.definition;
   const env = prev.env;
+  const db2 = scenario.db2Contention ? startDb2Contention(scenario.db2Contention, env.db2Contention, clock, prev.tick) : undefined;
   const tickOfDay = prev.tick % TICKS_PER_DAY;
   const plan = lparPlan(scenario, config, def, workloads, addressSpaces);
   const cpcOf = plan.cpcOf;
@@ -61,6 +62,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     rates[w.id] = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
     return burst ? { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec, burst } : { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
   });
+  if (db2) {
+    const id = db2.profile.reader;
+    rates[id] = Math.min(rates[id] ?? 0, db2.availableClientSlots / TICK_SEC);
+  }
 
   // Batch scheduling: release tonight's network at the start of the played day.
   // Only queued and running jobs are mutated in place below (promotion copies the held jobs it
@@ -128,7 +133,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     plan,
     def,
     env,
-    db2Contention: scenario.db2Contention ? startDb2Contention(scenario.db2Contention, env.db2Contention, clock, prev.tick) : undefined,
+    db2Contention: db2,
     config,
     clock,
     cpcOf,
@@ -254,7 +259,6 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const nextEnv: EnvState = t.failByWorkloadLpar
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
-  const db2 = t.db2Contention;
   if (db2) {
     nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
   }

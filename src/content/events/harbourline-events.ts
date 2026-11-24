@@ -88,6 +88,7 @@ const HB_CARDS: EventDef[] = [
     clue: 'DDF END/S for the mobile channel jumps ×2–3 on all four PRD images; CPU per transaction unchanged.',
   }),
   adapt('RUNAWAY', {
+    end: [mod('cpu', 'ADHOC', 1)],
     clue: 'DDFPRD period 2 APPL% and zIIP busy soar on PRDC/PRDD with the analytics end rate flat; with the zIIPs busy the work queues for them (Mon III DELAY, Partition Data). Fixes: cancel the thread, or give analytics a goal class of its own.',
   }),
   // FICTIONAL: RETAIL is ~half of Harbourline's online CPU (Midwest's RBANK ~a third of a much smaller estate), so one

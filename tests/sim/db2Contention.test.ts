@@ -87,6 +87,26 @@ describe('PT-51 Db2 reader and drain', () => {
     expect(lock(outside)).toBe(0); // Same workload, an independent Db2.
   });
 
+  it('releases active claims when the runaway query is cancelled', () => {
+    const s = scenario('CS');
+    const { state, capped } = fixture(s);
+    const pressured = until(state, startDrain, s, [{ kind: 'ACTIVATE_POLICY', definition: capped }]);
+    const cancelled = step(pressured, [{ kind: 'CANCEL_DB2_READERS', members: ['DB1B'] }], s);
+    expect(cancelled.env.db2Contention?.drain?.phase).toBe('DRAINED');
+    expect(reader(cancelled)?.count ?? 0).toBe(0);
+    expect(cancelled.last.workloads.find((w) => w.id === 'ADHOC')!.failed).toBeGreaterThanOrEqual(reader(pressured)!.count);
+    expect(stats(cancelled)?.claimReleaseWaitSec).toBe(0);
+  });
+
+  it('keeps outstanding queries within the client pool during sustained capping', () => {
+    const s = scenario('CS', 'WRITERS');
+    const { state, capped } = fixture(s);
+    const pressured = until(state, startDrain + 60, s, [{ kind: 'ACTIVATE_POLICY', definition: capped }]);
+    const holder = reader(pressured)!;
+    expect(holder.count).toBeGreaterThan(profile.clientConcurrency / 2);
+    expect(holder.count + holder.pending + holder.dbatQueued).toBeLessThanOrEqual(profile.clientConcurrency + 1e-9);
+  });
+
   it('leaves waiters at MAXDBAT unattached and reopens a timed-out utility drain', () => {
     const s = scenario('CS');
     const { state, capped } = fixture(s);

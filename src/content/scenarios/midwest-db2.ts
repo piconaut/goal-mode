@@ -6,6 +6,8 @@ export const MIDWEST_DB2_CONTENTION: Db2ContentionProfile = {
   object: 'SETTLE.POSTINGS P1',
   members: ['DB1B', 'DB1A'],
   reader: 'ADHOC',
+  // FICTIONAL: the BI client pool has a bounded number of outstanding queries.
+  clientConcurrency: 48,
   writes: { RBANK: 0.8, TELLER: 0.25, MOBILE: 0.06 },
   isolation: 'CS',
   lockSecPerReader: { CS: 0.00065, UR: 0, RR: 0.004 },

@@ -145,7 +145,7 @@ export function finishDb2Reader(
       }
     }
     r.completions = ageCompletions + (reader.intake.starting > 0 ? result.completedFresh * s.rate * TICK_SEC / reader.intake.starting : 0);
-    r.failed = i === end - 1 ? reader.intake.failed + reader.dbatFailed + result.aborted : 0;
+    r.failed = i === end - 1 ? reader.intake.failed + reader.dbatFailed + result.aborted + (old?.cancelled ?? 0) : 0;
     if (ageCompletions > 0) {
       const additionalSec = Math.max(0, (old?.ageSec ?? 0) - r.rtMeanSec) * ageCompletions / r.completions;
       r.rtMeanSec += additionalSec;

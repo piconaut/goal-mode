@@ -8,6 +8,8 @@ export interface Db2ContentionProfile {
   /** Explicitly shared resource. A member outside this list sees none of its locks or claims. */
   members: readonly string[];
   reader: string;
+  /** Each client issues a new query only after its previous query ends. */
+  clientConcurrency: number;
   /** Fractions of the workload's writes that encounter the modeled page set / partition. */
   writes: Readonly<Record<string, number>>;
   isolation: Db2Isolation;
@@ -39,6 +41,8 @@ export interface Db2Reader {
   capFrac: number;
   /** Unfinished service stays in the slice period where it was demanded. */
   workByPeriod: readonly Db2PeriodWork[];
+  /** Active queries cancelled by a command before this tick's accounting. */
+  cancelled?: number;
   /** This reader's share of the member queue before DBAT attachment. */
   dbatQueued: number;
   pending: number;
@@ -86,6 +90,7 @@ export interface Db2ContentionTick {
   drain: Db2Drain | undefined;
   counters: Record<string, Db2ContentionCounters>;
   lockSec: number;
+  availableClientSlots: number;
 }
 
 export function db2Counters(t: Db2ContentionTick, member: string): Db2ContentionCounters {
@@ -100,10 +105,17 @@ export function startDb2Contention(
   tick: number,
 ): Db2ContentionTick {
   let count = 0;
-  if (before) for (const member of profile.members) count += before.readers[member]?.count ?? 0;
+  let outstanding = 0;
+  if (before) for (const member of profile.members) {
+    const reader = before.readers[member];
+    if (!reader) continue;
+    count += reader.count;
+    outstanding += reader.count + reader.pending + reader.dbatQueued;
+  }
   const t: Db2ContentionTick = {
     profile, before, readers: {}, drain: before?.drain, counters: {},
     lockSec: Math.min(profile.maxLockSec[profile.isolation], count * profile.lockSecPerReader[profile.isolation]),
+    availableClientSlots: Math.max(0, profile.clientConcurrency - outstanding),
   };
   const d = profile.drain;
   const startSec = d.startMinute * 60;

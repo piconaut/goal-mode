@@ -4,6 +4,7 @@ import type { Command } from '../../sim/core/commands';
 import type { Mechanism, Trigger } from '../types';
 import type { WorkloadDef } from '../../sim/workload/types';
 import type { FootprintReach, FootprintResource } from '../footprint';
+import { MIDWEST_DB2_CONTENTION } from '../scenarios/midwest-db2';
 
 export interface EventDef {
   id: string;
@@ -154,7 +155,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [9, 15],
     durationHours: 5, // Db2 RLF governor eventually cancels it
     begin: [mod('cpu', 'ADHOC', 10)],
-    end: [mod('cpu', 'ADHOC', 1)],
+    // The game represents the runaway request with a fluid cohort. Db2 13 Command Reference PDF p.185 (printed 169).
+    end: [mod('cpu', 'ADHOC', 1), { kind: 'CANCEL_DB2_READERS', members: MIDWEST_DB2_CONTENTION.members }],
     fix: 'CANCEL_RUNAWAY',
     forewarning: null,
     announcement: null,
