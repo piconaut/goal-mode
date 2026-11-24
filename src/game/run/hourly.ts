@@ -57,6 +57,7 @@ export const newHour = (tick: number): ActiveHour => ({
   ziipLparBusyById: {},
   lockIndexSum: 0,
   dbatQueuedByLpar: {},
+  db2Contention: undefined,
 });
 
 function cloneRows<T>(source: Record<string, T> | undefined, copy: (value: T) => T): Record<string, T> {
@@ -90,8 +91,8 @@ export function copyHourForAdvance(run: RunState): ActiveHour {
     ziipBusyById: { ...h.ziipBusyById },
     ziipLparBusyById: { ...h.ziipLparBusyById },
     dbatQueuedByLpar: { ...h.dbatQueuedByLpar },
+    db2Contention: h.db2Contention ? cloneRows(h.db2Contention, (row) => ({ ...row })) : undefined,
     ...(h.cicsStorage ? { cicsStorage: { ...h.cicsStorage } } : {}),
-    ...(h.db2Contention ? { db2Contention: cloneRows(h.db2Contention, (row) => ({ ...row })) } : {}),
   };
 }
 

@@ -166,6 +166,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     lparTicks: [],
     onlineDb2Rate: 0,
     slotQueue: {},
+    readerDispatch: undefined,
     dbatWaitedByLpar: {},
     cicsStorageBy: {},
   };
@@ -251,8 +252,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
 
   const nextEnv: EnvState = t.failByWorkloadLpar
-    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
-    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar, db2Contention: undefined }
+    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, db2Contention: undefined };
   const db2 = t.db2Contention;
   if (db2 && (db2.drain || Object.keys(db2.readers).length)) {
     nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
@@ -274,7 +275,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     workloads: workloadRt,
     backlog,
     ziipBacklog,
-    last: { lpars: lparTicks, workloads: Object.values(wlTick), ...(db2 && Object.keys(db2.counters).length ? { db2Contention: db2.counters } : {}) },
+    last: { lpars: lparTicks, workloads: Object.values(wlTick), db2Contention: db2 && Object.keys(db2.counters).length ? db2.counters : undefined },
     env: nextEnv,
     batch,
     capping: {
