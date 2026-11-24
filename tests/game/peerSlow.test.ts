@@ -17,10 +17,12 @@ const lcus = [
 ];
 
 describe('peer-slow resources (RT-35)', () => {
-  it('reads the best CF of the sysplex, ignoring CFs with no requests', () => {
+  it('reads the best CF of the sysplex, ignoring CFs with no or token requests', () => {
     expect(cfPeer(cf, 'syncUs')).toEqual({ value: 18, of: 'CF01' });
     // CF01's 0 % async cannot be a denominator; the best positive peer is CF02 itself.
     expect(cfPeer(cf, 'asyncPct')).toEqual({ value: 98, of: 'CF02' });
+    // A CF with 10 of 7010 requests (0.14 %) is not a comparable peer, however fast it reads.
+    expect(cfPeer([cf[0]!, { ...cf[2]!, reqPerSec: 10, syncUs: 5 }], 'syncUs')).toEqual({ value: 18, of: 'CF01' });
   });
 
   it('finds a CF at least PEER_SLOW_RATIO times the best CF, on the work\'s connected CFs', () => {
@@ -30,10 +32,22 @@ describe('peer-slow resources (RT-35)', () => {
     expect(slow.ratio).toBeCloseTo(1368 / 18);
     // CF02 is not the work's resource when the work connects only to CF01.
     expect(slowCf(cf, ['CF01'])).toBeUndefined();
-    // No connection data means every CF counts.
+    // No connection data means every CF counts; an empty list means none is the work's.
     expect(slowCf(cf)!.row.lparId).toBe('CF02');
+    expect(slowCf(cf, [])).toBeUndefined();
     // Exactly the line holds.
-    expect(slowCf([cf[0]!, { ...cf[1]!, syncUs: 18 * PEER_SLOW_RATIO }], ['CF02'])!.ratio).toBe(PEER_SLOW_RATIO);
+    expect(slowCf([cf[0]!, { ...cf[1]!, syncUs: 18 * PEER_SLOW_RATIO }], ['CF01', 'CF02'])!.ratio).toBe(PEER_SLOW_RATIO);
+  });
+
+  it('falls through to async conversion when sync service time does not separate the CFs', () => {
+    const asyncOnly = [
+      { lparId: 'CF01', reqPerSec: 5000, syncUs: 100, asyncPct: 20 },
+      { lparId: 'CF02', reqPerSec: 2000, syncUs: 100, asyncPct: 20 * PEER_SLOW_RATIO },
+    ];
+    const slow = slowCf(asyncOnly, ['CF01', 'CF02'])!;
+    expect(slow.metric).toBe('asyncPct');
+    expect(slow.row.lparId).toBe('CF02');
+    expect(slow.ratio).toBe(PEER_SLOW_RATIO);
   });
 
   it('finds an LCU at least PEER_SLOW_RATIO times the all-LCU median', () => {
@@ -44,6 +58,10 @@ describe('peer-slow resources (RT-35)', () => {
     expect(slow.ratio).toBeCloseTo(0.4 / 0.07);
     // Response time is flat across the LCUs, so the DISC path is the only one that holds.
     expect(slowLcu(lcus.map((l) => ({ ...l, discMs: 0.07 })))).toBeUndefined();
+    // With DISC flat, a response-time outlier fires instead.
+    const resp = slowLcu(lcus.map((l) => (l.id === '30' ? { ...l, discMs: 0.07, rtMs: 0.22 * PEER_SLOW_RATIO } : l)))!;
+    expect(resp.metric).toBe('rtMs');
+    expect(resp.row.id).toBe('30');
   });
 
   it('maps an interval to the rows the truth and the pin read, with the connected CFs', () => {
@@ -60,5 +78,7 @@ describe('peer-slow resources (RT-35)', () => {
     expect(rows.cf.map((c) => c.lparId)).toEqual(['CF01', 'CF02', 'CFTEST']);
     expect(rows.lcus.map((l) => l.id)).toEqual(['10', '21', '30']);
     expect(rows.connectedCf).toEqual(['CF01', 'CF02']);
+    // An interval before Subchannel Activity has no connected set: every CF counts (old runs).
+    expect(peersOf({ cf, lcus } as unknown as RmfInterval, ['PROD1']).connectedCf).toBeUndefined();
   });
 });

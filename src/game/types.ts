@@ -250,6 +250,9 @@ export interface IncidentTruth {
   accepted: Accepted;
   /** One line per accepted answer that is not the primary, keyed by the answer, for the post-RCA reply. */
   notes?: Record<string, string>;
+  /** Why a mechanism the evidence can prove is not accepted (RT-35's peer rule below the response share): shown
+   *  beside "proven, and it earns nothing" so the player sees the number that missed the line. */
+  nearMiss?: Partial<Record<Mechanism, string>>;
   /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`,
    * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. */
   cause: string;

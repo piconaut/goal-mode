@@ -142,7 +142,7 @@ function readingFor(o: PredicateOption): [number, number | undefined] {
     case 'riseBy': return [10 + t.points + 1, 10];
     case 'shareOfImage': return [t.frac * 100 * 6 + 1, undefined];
     case 'noHistory': return [50, undefined];
-    case 'peerSlow': return [t.ratio * 100 + 1, undefined];
+    case 'peerSlow': return [t.ratio * 100, undefined];
   }
 }
 

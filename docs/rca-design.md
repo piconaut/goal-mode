@@ -505,7 +505,7 @@ Sources of accepted answers:
 | Card-declared alternates (`alsoTriggers`, `alsoMechanisms`, content) | XLOG_LOOP: POLICY. HSM: POLICY. SHADOW_IT: RUNAWAY_WORK. RETRY_STORM, SICK_AOR: APPLICATION_ERROR. CICS_SOS: STORAGE |
 | No card, no surge, no player change (§4.4) | both GROWTH and POLICY |
 | Host imbalance (one host of several carries ≥ ⅔ of the delay excess while another had room) | ROUTING |
-| A resource far slower than its peers (RT-35): a CF at ≥ `PEER_SLOW_RATIO` × the best CF's sync service time or async conversion, or an LCU at that × the all-LCU median DISC or response, carrying ≥ ⅓ of the work's response time (the CFs are those its hosts connect to, from Subchannel Activity; the I/O check uses the worst LCU because the hour does not attribute I/O to one) | CF_SERVICE, or IO |
+| A resource far slower than its peers (RT-35): a CF at ≥ `PEER_SLOW_RATIO` × the best CF's sync service time or async conversion, or an LCU at that × the all-LCU median DISC or response, carrying ≥ ⅓ of the work's response time (the CFs are those its hosts connect to, from Subchannel Activity; the I/O check uses the worst LCU because the hour does not attribute I/O to one; below the share a proven claim earns nothing and the reply names the share) | CF_SERVICE, or IO |
 
 ### 4.2 Choosing the mechanism when groups move together
 
@@ -698,7 +698,7 @@ out) the discriminator. Recipes live in `content/evidence.ts` beside the metrics
 | DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or velocity under goal) | the hurt class's own CPU delay low (< 10 %), or its work-manager state "waiting" |
 | THREAD_LIMIT | MXT wait, SOS on a region, or queued-DBAT count up; initiator wait for jobs | the symptom's own look-alike ruled out: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction normal for a DBAT queue, the jobs' CPU wait low for initiators |
 | CF_SERVICE | CF time per transaction ≥ 5 ms or past its normal band (Db2 101) | the CF itself slow: sync time or async conversion past twice its normal, or ≥ `PEER_SLOW_RATIO` × the best CF (CF Activity) |
-| IO | I/O waits on the hurt work (WLMGL, Db2 101, SMF 30) | DASD itself slow: DISC, IOSQ or response past twice normal, or ≥ `PEER_SLOW_RATIO` × the all-LCU median (DASD Activity) |
+| IO | I/O waits on the hurt work (WLMGL, Db2 101, SMF 30) | DASD itself slow: DISC, IOSQ or response past twice normal, or DISC or response at ≥ `PEER_SLOW_RATIO` × the all-LCU median (DASD Activity) |
 | DEMAND_SURGE | ended rate ≥ 1.25 × baseline on the surging workload | its CPU per transaction within ±15 % of baseline |
 | Change regression | CPU per transaction ≥ 1.3 × baseline | its ended rate within ±15 % of baseline |
 | RUNAWAY_WORK | APPL of one class or job up by ≥ half an engine | that work's ended rate flat |

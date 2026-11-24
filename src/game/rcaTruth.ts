@@ -67,10 +67,11 @@ const pct = (x: number) => `${x.toFixed(1)} %`;
  *  - a co-dominant delay group adds its mechanism (RT-17, §4.2(2));
  *  - with no card to blame, GROWTH and POLICY are both accepted.
  */
-export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth, 'accepted'>> & { notes: Record<string, string> } {
+export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth, 'accepted'>> & { notes: Record<string, string>; nearMiss?: Partial<Record<Mechanism, string>> } {
   const mechanisms: Mechanism[] = [ctx.mechanism];
   const triggers: Trigger[] = [ctx.trigger];
   const notes: Record<string, string> = {};
+  const nearMiss: Partial<Record<Mechanism, string>> = {};
   // The first reason offered for an answer is the one shown: the card's, then the band's, then the server's.
   const offerMechanism = (m: Mechanism, why: string) => {
     if (mechanisms.includes(m)) return;
@@ -143,19 +144,27 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
 
   // A resource far slower than its peers explains the work's CF or I/O time even when nothing grew (RT-35): the
   // primary stays the growth-ranked answer, but a standing misconfiguration is a defensible reading. Each part is
-  // judged against the work's own response time, as co-dominance is.
+  // judged against the work's own response time, as co-dominance is. A peer-slow resource below the share line is a
+  // near miss: the recipe can prove the claim, so the reply says why it earns nothing.
   const wh = ctx.hour.workloads[ctx.workloadId];
   if (ctx.peers && wh) {
     const parts = perTxnParts(wh);
     const total = wh.completions > 0 ? wh.rtSumSec / wh.completions : 0;
     if (total > 0) {
       const share = (part: number) => `${pct((100 * part) / total)} of ${ctx.workloadId}'s response time`;
+      const line = `${Math.round(CO_DOMINANT_SHARE * 100)} %`;
       const cf = slowCf(ctx.peers.cf ?? [], ctx.peers.connectedCf);
-      if (cf && parts.cf !== undefined && parts.cf >= CO_DOMINANT_SHARE * total)
-        offerMechanism('CF_SERVICE', `${cf.row.lparId} at ${cf.ratio.toFixed(0)}× ${cf.peer.of}'s ${cf.metric === 'syncUs' ? 'sync service time' : 'async conversion'} (${share(parts.cf)})`);
+      if (cf) {
+        const why = `${cf.row.lparId} at ${cf.ratio.toFixed(0)}× ${cf.peer.of}'s ${cf.metric === 'syncUs' ? 'sync service time' : 'async conversion'}`;
+        if (parts.cf !== undefined && parts.cf >= CO_DOMINANT_SHARE * total) offerMechanism('CF_SERVICE', `${why} (${share(parts.cf)})`);
+        else if (parts.cf !== undefined) nearMiss.CF_SERVICE = `${why}, but CF time was ${share(parts.cf)} (accepted from ${line})`;
+      }
       const lcu = slowLcu(ctx.peers.lcus ?? []);
-      if (lcu && parts.io !== undefined && parts.io >= CO_DOMINANT_SHARE * total)
-        offerMechanism('IO', `LCU ${lcu.row.id} at ${lcu.ratio.toFixed(0)}× the LCU median ${lcu.metric === 'discMs' ? 'DISC' : 'response'} time (${share(parts.io)})`);
+      if (lcu) {
+        const why = `LCU ${lcu.row.id} at ${lcu.ratio.toFixed(0)}× the LCU median ${lcu.metric === 'discMs' ? 'DISC' : 'response'} time`;
+        if (parts.io !== undefined && parts.io >= CO_DOMINANT_SHARE * total) offerMechanism('IO', `${why} (${share(parts.io)})`);
+        else if (parts.io !== undefined) nearMiss.IO = `${why}, but I/O time was ${share(parts.io)} (accepted from ${line})`;
+      }
     }
   }
 
@@ -187,7 +196,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     offerTrigger('POLICY', why);
   }
 
-  return { accepted: { mechanisms, triggers }, notes };
+  return { accepted: { mechanisms, triggers }, notes, ...(Object.keys(nearMiss).length > 0 ? { nearMiss } : {}) };
 }
 
 /** The prefixes of the causes that are not a card's `uid` (§4.5): new work, the player's own change (§4.7), or what

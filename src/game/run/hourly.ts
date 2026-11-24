@@ -351,7 +351,8 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
       const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });
       // The interval that closed this hour, for the peer-slow source (RT-35): a CF's sync/async reading against the
-      // best CF, an LCU's DISC/response against the all-LCU median.
+      // best CF, an LCU's DISC/response against the all-LCU median. The peer readings are that interval's (the hour's
+      // last 30 minutes) while the share is the whole hour's; a constant fault makes the two agree (RT-35's shape).
       const rmf = [...r.sim.rmf.intervals].reverse().find((iv) => iv.endTick <= hourEnd && iv.endTick > hourStart);
       const peers = rmf ? peersOf(rmf, hosts.map((host) => host.lparId)) : undefined;
       const ctx: TruthContext = {
@@ -361,10 +362,11 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
         ...(cpuSide ? { cpu: cpuAlternates(h, hosts, cpu) } : {}),
         ...(coDominant.length ? { coDominant } : {}),
       };
-      const { accepted, notes } = acceptedAnswers(ctx);
+      const { accepted, notes, nearMiss } = acceptedAnswers(ctx);
       const truth: IncidentTruth = {
         mechanism, trigger, accepted,
         ...(Object.keys(notes).length > 0 ? { notes } : {}),
+        ...(nearMiss ? { nearMiss } : {}),
         cause: truthCause(ctx),
       };
       let aiops: Hypothesis[] | undefined;

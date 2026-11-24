@@ -2,7 +2,7 @@
 // standing misconfiguration, which growth against the resource's own history cannot see. The recipe's discriminator
 // and the truth's accepted-set source read the same rows and the same line, so they cannot drift.
 
-import { PEER_SLOW_RATIO } from '../content/sla';
+import { PEER_MIN_REQUEST_SHARE, PEER_SLOW_RATIO } from '../content/sla';
 import type { RmfInterval } from '../sim/measure/rmf';
 
 /** A CF Activity row's fields the peer rule reads (per CF, same interval). */
@@ -25,15 +25,20 @@ export interface LcuPeerRow {
 export interface PeerRows {
   cf: CfPeerRow[];
   lcus: LcuPeerRow[];
-  connectedCf: string[];
+  /** `undefined` when the interval has no Subchannel Activity rows (an old interval): every CF counts. An empty list
+   *  means the interval has them and none belongs to the work's hosts: no CF is the work's resource. */
+  connectedCf?: string[];
 }
 
-/** The interval's CF/DASD rows for the peer rule (RT-35), filtered to the CFs the work's hosts connect to. */
+/** The interval's CF/DASD rows for the peer rule (RT-35), with the CFs the work's hosts connect to. The rows are
+ *  not filtered here: the recipe and the pin still read any CF, and the truth passes connectedCf to slowCf. */
 export function peersOf(iv: Pick<RmfInterval, 'cf' | 'lcus' | 'cfSystems'>, hostLpars: readonly string[]): PeerRows {
   return {
     cf: iv.cf.map((c) => ({ lparId: c.lparId, reqPerSec: c.reqPerSec, syncUs: c.syncUs, asyncPct: c.asyncPct })),
     lcus: iv.lcus.map((l) => ({ id: l.id, iops: l.iops, discMs: l.discMs, rtMs: l.rtMs })),
-    connectedCf: [...new Set((iv.cfSystems ?? []).filter((x) => hostLpars.includes(x.system)).map((x) => x.cfLparId))],
+    ...(iv.cfSystems
+      ? { connectedCf: [...new Set(iv.cfSystems.filter((x) => hostLpars.includes(x.system)).map((x) => x.cfLparId))] }
+      : {}),
   };
 }
 
@@ -55,11 +60,14 @@ const median = (xs: readonly number[]): number | undefined => {
 };
 
 /** The best CF of the sysplex for one metric: the lowest sync service time, or the lowest async conversion. A CF
- *  with no requests has no reading; a zero cannot be a ratio's denominator, so it has none either. */
+ *  with no requests has no reading; a zero cannot be a ratio's denominator, so it has none either. A token CF below
+ *  `PEER_MIN_REQUEST_SHARE` of the sysplex's requests is not a comparable peer (FICTIONAL). */
 export function cfPeer(cf: readonly CfPeerRow[], metric: CfPeerMetric): PeerReading | undefined {
+  const total = cf.reduce((a, c) => a + Math.max(0, c.reqPerSec), 0);
+  const minRate = Math.max(1, total * PEER_MIN_REQUEST_SHARE);
   let best: CfPeerRow | undefined;
   for (const c of cf) {
-    if (c.reqPerSec <= 0 || !Number.isFinite(c[metric]) || c[metric] <= 0) continue;
+    if (c.reqPerSec < minRate || !Number.isFinite(c[metric]) || c[metric] <= 0) continue;
     if (!best || c[metric] < best[metric] || (c[metric] === best[metric] && c.lparId < best.lparId)) best = c;
   }
   return best ? { value: best[metric], of: best.lparId } : undefined;
@@ -78,13 +86,17 @@ export function slowCf(
   cf: readonly CfPeerRow[],
   connected?: readonly string[],
 ): { row: CfPeerRow; metric: CfPeerMetric; peer: PeerReading; ratio: number } | undefined {
-  const use = connected && connected.length > 0 ? cf.filter((c) => connected.includes(c.lparId)) : cf;
+  // A peer must be a CF the work uses: with a connected list, both the best and the slow side come from it; an
+  // empty list means the interval names none (no CF is the work's resource); absent means an old interval.
+  const use = connected === undefined ? cf : cf.filter((c) => connected.includes(c.lparId));
+  if (use.length === 0) return undefined;
   for (const metric of ['syncUs', 'asyncPct'] as const) {
-    const peer = cfPeer(cf, metric);
+    const peer = cfPeer(use, metric);
     if (!peer) continue;
+    const minRate = Math.max(1, use.reduce((a, c) => a + Math.max(0, c.reqPerSec), 0) * PEER_MIN_REQUEST_SHARE);
     let slow: CfPeerRow | undefined;
     for (const c of use) {
-      if (c.reqPerSec <= 0 || !Number.isFinite(c[metric]) || c[metric] <= 0) continue;
+      if (c.reqPerSec < minRate || !Number.isFinite(c[metric]) || c[metric] <= 0) continue;
       if (!slow || c[metric] > slow[metric] || (c[metric] === slow[metric] && c.lparId < slow.lparId)) slow = c;
     }
     if (!slow) continue;

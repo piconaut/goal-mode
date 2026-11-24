@@ -27,6 +27,8 @@ export interface RecipeCheck {
   predicates: PredicateCheck[];
   /** Whether the truth accepts the claim: set when the RCA is scored (a bare `judgeProof` result has not been). */
   accepted?: boolean;
+  /** Why a proven claim earns nothing (RT-35's peer rule below the response share), shown beside the verdict. */
+  why?: string;
 }
 
 export interface ProofResult {
@@ -257,7 +259,7 @@ export function judgeProof(
 export function recipeHeading(c: RecipeCheck, what: 'Mechanism' | 'Trigger'): string {
   const name = what === 'Trigger' ? triggerLabel(c.claim as Trigger) : c.claim;
   const verdict = c.complete ? 'proven' : 'your pins did not prove it';
-  const unearned = c.complete && c.accepted === false ? ', and it earns nothing: it was not the cause' : '';
+  const unearned = c.complete && c.accepted === false ? `, and it earns nothing: it was not the cause${c.why ? ` — ${c.why}` : ''}` : '';
   return `${what} ${name}: ${verdict}${unearned}`;
 }
 

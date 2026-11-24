@@ -136,9 +136,11 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const mechanismAccepted = accepted.mechanisms.includes(mechanism);
   const triggerAccepted = accepted.triggers.includes(trigger);
   const judged = scenario && pins.length > 0 ? judgeProof(run, scenario, group, mechanism, trigger, pins) : null;
+  // Why a proven claim still earns nothing: the truth's near miss (RT-35: a peer-slow CF below the response share).
+  const nearMiss = group.map((i) => i.truth.nearMiss?.[mechanism]).find((x) => x !== undefined);
   // The reply says whether a proof earned anything, so record which claims the truth accepts beside the recipes.
   const proof = judged && {
-    mechanism: { ...judged.mechanism, accepted: mechanismAccepted },
+    mechanism: { ...judged.mechanism, accepted: mechanismAccepted, ...(nearMiss ? { why: nearMiss } : {}) },
     trigger: { ...judged.trigger, accepted: triggerAccepted },
   };
   const mechanismProven = mechanismAccepted && !!proof?.mechanism.complete;

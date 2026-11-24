@@ -396,7 +396,7 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn or past its normal band (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
     options: [notable('DELAY_IO', SELF), notable('SYNC_IO', SELF), ratio('SYNC_IO', PROOF.waitRiseRatio, SELF), notable('JOB_IO', SELF)],
   }, {
-    label: `DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes, or at least ${PEER_SLOW_RATIO}× the all-LCU median (DASD Activity)`,
+    label: `DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes, or DISC or response time at least ${PEER_SLOW_RATIO}× the all-LCU median (DASD Activity)`,
     options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server']), peer('DASD_DISC', ['server']), peer('DASD_RESP', ['server'])],
   }] },
   STORAGE: { predicates: [{

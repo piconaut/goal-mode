@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, type EvidencePin } from '../../src/game/evidence';
-import { judgeProof } from '../../src/game/proof';
-import { newRun } from '../../src/game/run';
+import { judgeProof, proofLines } from '../../src/game/proof';
+import { newRun, submitRca } from '../../src/game/run';
 import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/types';
 import type { RmfInterval } from '../../src/sim/measure/rmf';
 import { truthOf } from '../helpers/truth';
@@ -114,6 +114,33 @@ describe('CF Activity pins (RT-10)', () => {
     expect(proof.complete).toBe(true);
   });
 
+  it('says why a proven peer-slow CF earns nothing when it is under a third of the response (RT-35)', () => {
+    // INC22: the recipe completes from CF Activity, but the truth's accepted set does not include CF_SERVICE; the
+    // near miss names the share and the line, so the reply is not a bare "proven, not accepted".
+    const r = pin(withHistory({}), { source: 'CF', cfLparId: 'CF02', metric: 'CF_SYNC', index: 2 });
+    const cfWait: EvidencePin = {
+      id: 5000, source: 'Db2 101', metric: 'CF_WAIT', subject: 'RBANK', system: '*PLEX', tick: 2700, value: 12, text: 'Db2 101 CF time 12 ms/txn',
+    };
+    const base = incident('CPU_PRIORITY', 'POLICY', r);
+    const inc: Incident = {
+      ...base,
+      truth: {
+        ...base.truth,
+        nearMiss: { CF_SERVICE: "CF02 at 76× CF01's sync service time, but CF time was 19.5 % of RBANK's response time (accepted from 33 %)" },
+      },
+    };
+    const filed = submitRca(
+      { ...r, pins: [...r.pins, cfWait], incidents: [inc] },
+      inc.id, 'CF_SERVICE', 'POLICY', MIDWEST, [cfWait.id, r.pins.at(-1)!.id],
+    );
+    const rca = filed.incidents[0]!.rca!;
+    expect(rca.proof!.mechanism.complete).toBe(true);
+    expect(rca.evidencePoints).toBe(0);
+    expect(rca.proof!.mechanism.why).toMatch(/19\.5 %/);
+    expect(proofLines(rca.proof!).join(' ')).toContain('earns nothing');
+    expect(proofLines(rca.proof!).join(' ')).toContain('accepted from 33 %');
+  });
+
   it('counts async conversion only above the row normal', () => {
     const normal = pin(withHistory({}), { source: 'CF', cfLparId: 'CF01', metric: 'CF_ASYNC_PCT', index: 2 });
     expect(verdict(normal, incident('CF_SERVICE', 'HARDWARE_FAULT')).relevance).toBe(0);
@@ -138,7 +165,8 @@ describe('DASD Activity pins (RT-10)', () => {
     expect(verdict(degraded, incident('CF_SERVICE', 'POLICY')).relevance).toBe(0);
   });
 
-  it('counts one LCU\'s IOSQ for a batch overlap while an idle LCU stays unremarkable', () => {    // REORG_OVERRUN: LCU 21 IOSQ high, the others idle.
+  it('counts one LCU\'s IOSQ for a batch overlap while an idle LCU stays unremarkable', () => {
+    // REORG_OVERRUN: LCU 21 IOSQ high, the others idle.
     const busy = interval(2).lcus.map((l) => (l.id === '21' ? { ...l, iosqMs: 21.5, rtMs: 21.9 } : l));
     const hit = pin(withHistory({ lcus: busy }), { source: 'DASD', lcuId: '21', metric: 'DASD_IOSQ', index: 2 });
     expect(hit.pins.at(-1)!.value).toBeCloseTo(21.5);
@@ -156,7 +184,7 @@ describe('DASD Activity pins (RT-10)', () => {
     const p = r.pins.at(-1)!;
     expect(p.baseline).toBeCloseTo(0.4);
     expect(p.peer).toEqual({ value: 0.07, of: 'the LCU median' });
-    expect(p.text).toMatch(/vs the LCU median 0\.1 ms \(6×\)/);
+    expect(p.text).toMatch(/vs the LCU median 0\.07 ms \(6×\)/);
     expect(verdict(r, incident('IO', 'POLICY')).relevance).toBe(1);
     // The recipe completes from the DASD Activity row.
     const syncIo: EvidencePin = {
@@ -167,13 +195,42 @@ describe('DASD Activity pins (RT-10)', () => {
     expect(proof.complete).toBe(true);
   });
 
-  it('counts device response time for a recall storm, but not the DISC row on the same interval', () => {    // HSM_RECALL_STORM: LCU 30 random I/O up, response up, DISC roughly normal.
+  it('counts device response time for a recall storm, but not the DISC row on the same interval', () => {
+    // HSM_RECALL_STORM: LCU 30 random I/O up, response up, DISC roughly normal.
     const storm = interval(2).lcus.map((l) => (l.id === '30' ? { ...l, iosqMs: 0.23, rtMs: 0.48 } : l));
     const resp = pin(withHistory({ lcus: storm }), { source: 'DASD', lcuId: '30', metric: 'DASD_RESP', index: 2 });
     expect(resp.pins.at(-1)!.value).toBeCloseTo(0.48);
     expect(verdict(resp, incident('IO', 'DEMAND_SURGE')).relevance).toBe(1);
     const disc = pin(withHistory({ lcus: storm }), { source: 'DASD', lcuId: '30', metric: 'DASD_DISC', index: 2 });
     expect(verdict(disc, incident('IO', 'DEMAND_SURGE')).relevance).toBe(0);
+  });
+
+  it('freezes the peer reading at pin time and keeps the 4× guard (RT-35)', () => {
+    // A later interval makes CF01 slower; the pin already taken keeps the 18 µs peer it was judged against.
+    const r = pin(withHistory({}), { source: 'CF', cfLparId: 'CF02', metric: 'CF_SYNC', index: 2 });
+    const p = r.pins.at(-1)!;
+    const later = {
+      ...r,
+      sim: { ...r.sim, rmf: { ...r.sim.rmf, intervals: [...r.sim.rmf.intervals, interval(3, { cf: interval(3).cf.map((c) => (c.lparId === 'CF01' ? { ...c, syncUs: 200 } : c)) })] } },
+    };
+    expect(p.peer).toEqual({ value: 18, of: 'CF01' });
+    expect(p.text).toContain('vs CF01 18.0 µs (76×)');
+    expect(judgeEvidence(later, MIDWEST, incident('CF_SERVICE', 'POLICY', later), [p])[0]!.relevance).toBe(1);
+    // A CF only twice the best peer is still unremarkable by its own flat history.
+    const twice = pin(standing({ cf: interval(2).cf.map((c) => (c.lparId === 'CF02' ? { ...c, syncUs: 36 } : c)) }), {
+      source: 'CF', cfLparId: 'CF02', metric: 'CF_SYNC', index: 2,
+    });
+    expect(twice.pins.at(-1)!.text).not.toContain('vs CF01');
+    expect(verdict(twice, incident('CF_SERVICE', 'POLICY')).why).toBe('value is unremarkable');
+  });
+
+  it('keeps a peer reading only where the row has one: not on ALL VOLUMES or IOSQ', () => {
+    const all = pin(withHistory({}), { source: 'DASD', lcuId: 'ALL', metric: 'DASD_DISC', index: 2 });
+    expect(all.pins.at(-1)!.peer).toBeUndefined();
+    const iosq = pin(withHistory({}), { source: 'DASD', lcuId: '21', metric: 'DASD_IOSQ', index: 2 });
+    expect(iosq.pins.at(-1)!.peer).toBeUndefined();
+    // A DASD pin at its own normal prints no peer suffix.
+    expect(iosq.pins.at(-1)!.text).not.toContain('vs the LCU median');
   });
 
   it('rejects an LCU metric on the ALL row and an unknown CF or LCU', () => {
