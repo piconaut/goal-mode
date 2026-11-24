@@ -1,7 +1,7 @@
 import { poolEntitlement } from '../../hw/pools';
 import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
-import { slotQueueStep } from '../../subsys/slots';
+import { blockedDbats, slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
 import { bpIoMultiplier, DB2 } from '../../subsys/db2';
 import { buildSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
@@ -12,6 +12,7 @@ import { TICK_SEC } from '../units';
 import { DEFAULT_EFF_RATIO } from '../../../content/sim-tuning';
 import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
+import { prepareDb2Reader } from './db2Contention';
 import { atOrFind } from './plan';
 import { applyCpuModifiers, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
 
@@ -47,9 +48,13 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const cfZosCpuSec = cfSys ? cfSys.zosCpuSec : t.cfZosCpuSec;
   const cpSp = img.cpSpeed;
   const zSp = img.ziipSpeed;
-  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
-
   const db2 = img.db2;
+  const content = t.db2Contention;
+  const profile = db2 && content?.profile.members.includes(db2.ssid) ? content.profile : undefined;
+  const reader = profile?.reader;
+  const resident = profile ? content?.before?.readers[db2!.ssid] : undefined;
+  const residentReader = resident && reader && !workloadById[reader]?.routing[l.id] ? reader : undefined;
+  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods);
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;
@@ -104,24 +109,34 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   // Task-slot queues persist across ticks: offered load above MXT / MAXDBAT builds a backlog that only
   // drains at limit / hold time, and times out (MAXCONQW for DDF).
   const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
-    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0, waited: 0 };
+    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0, waited: 0, admitted: 0, queued: 0 };
     const key = kind === 'MXT' ? img.mxtKey : img.dbatKey;
     const hold = rate > 0 ? holdW / rate : 0;
     const refHold = rate > 0 ? refW / rate : 0;
-    const r = slotQueueStep(prev.env.slotQueue?.[key] ?? 0, rate, hold, limit, timeoutSec, TICK_SEC);
+    const queued = prev.env.slotQueue?.[key] ?? 0;
+    const r = kind === 'DBAT' && limit < 1 && resident
+      ? blockedDbats(queued, rate, timeoutSec, TICK_SEC)
+      : slotQueueStep(queued, rate, hold, limit, timeoutSec, TICK_SEC);
     if (r.queued > 1e-9) t.slotQueue[key] = r.queued;
     // Same queue at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
-    const refSec = rate * refHold >= Math.max(1, Math.floor(limit)) ? r.waitSec : slotQueueStep(0, rate, refHold, limit, timeoutSec, TICK_SEC).waitSec;
-    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac, waited: r.waited };
+    const refLimit = kind === 'DBAT' ? db2!.maxDbat : limit;
+    const refSec = rate * refHold >= Math.max(1, Math.floor(refLimit)) ? r.waitSec : slotQueueStep(0, rate, refHold, refLimit, timeoutSec, TICK_SEC).waitSec;
+    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac, waited: r.waited, admitted: r.admitted, queued: r.queued };
   };
   const mxt = slotQ('MXT', aors.length > 0, cicsRate, cicsRtWeighted, cicsRefWeighted, maxTasks, SLOT_QUEUE.cicsQueueTimeoutSec);
-  const dbat = slotQ('DBAT', !!db2, ddfRate, ddfRtWeighted, ddfRefWeighted, db2?.maxDbat ?? 0, SLOT_QUEUE.ddfQueueTimeoutSec);
+  // Active readers and admitted claim waiters already own a thread. On participating members only, reserve
+  // those threads before the existing analytic queue offers its next batch of attachments.
+  const freeDbats = Math.max(0, (db2?.maxDbat ?? 0) - (resident?.count ?? 0) - (resident?.pending ?? 0));
+  const dbat = slotQ('DBAT', !!db2, ddfRate, ddfRtWeighted, ddfRefWeighted, freeDbats, SLOT_QUEUE.ddfQueueTimeoutSec);
   if (dbat.waited > 1e-9) t.dbatWaitedByLpar[l.id] = dbat.waited;
 
+  let readSlices: typeof base | undefined;
+  let readAdmission = 1;
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {
     if (s.kind !== 'TXN' || !s.workloadId) continue;
     const w = workloadById[s.workloadId]!;
+    const trackedReader = w.id === reader;
     let extra = 0;
     let failFrac = 0;
     let cpuAdd = 0;
@@ -132,7 +147,9 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
       ioPerTxn *= ioMult;
       parts.cf = DB2.cfRequestsPerTxn * cfServiceSec;
       parts.lock = DB2.lockWaitSecPerIndex * env.lockIndex;
-      extra += parts.cf + parts.lock;
+      const ddfLock = profile ? content!.lockSec * (profile.writes[w.id] ?? 0) : 0;
+      if (ddfLock > 0) parts.ddfLock = ddfLock;
+      extra += parts.cf + parts.lock + ddfLock;
       cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
     }
     let outside = 0;
@@ -147,7 +164,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     if (w.subsystem === 'DDF') {
       outside += dbat.waitSec;
       outsideRef += dbat.refSec;
-      failFrac = Math.max(failFrac, dbat.failFrac);
+      if (!trackedReader) failFrac = Math.max(failFrac, dbat.failFrac);
     }
     if (db2Work) t.onlineDb2Rate += s.rate;
     // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
@@ -171,11 +188,19 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     s.failFrac = failFrac;
     s.cpEngines = s.cpEngines + s.rate * cpuAdd;
     s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
-    if (share < 1) {
+    if (trackedReader) {
+      (readSlices ??= []).push(s);
+      readAdmission = Math.min(readAdmission, (1 - abendFrac) * share);
+    }
+    if (share < 1 && !trackedReader) {
       // Their CPU follows completions: work that times out waiting for the starved server does not run above it.
       s.cpEngines *= share;
       s.ziipEngines *= share;
     }
+  }
+  if (readSlices) {
+    const offered = ddfRate * TICK_SEC + (prev.env.slotQueue?.[img.dbatKey] ?? 0);
+    prepareDb2Reader(t, img, readSlices, offered, dbat.admitted, dbat.queued, readAdmission);
   }
   const slices = base;
 

@@ -1,3 +1,4 @@
+import { finishDb2Reader } from './db2Contention';
 import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
@@ -174,7 +175,8 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   evalInput.prepared = evalInputs[l.id]?.prepared;
   evalInputs[l.id] = evalInput;
   const { dpOf, regions } = evalInput;
-  const res = evaluateLpar(evalInput);
+  const reader = t.readerDispatch?.[l.id];
+  const res = evaluateLpar(evalInput, reader ? (results) => finishDb2Reader(t, img, reader, slices, results) : undefined);
   // Only dispatched cycles consume CPU/MSU. An unused PR/SM offer is WAIT, not busy
   // (RMF Report Analysis 3.1 p.389, p.98). PR/SM availability remains separate from consumption.
   for (const pool of rt.pools) {
@@ -210,13 +212,14 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     t.delayQueue = (t.delayQueue ?? 0) + 1;
   }
 
+  const trackedWorkload = reader ? t.db2Contention!.profile.reader : undefined;
   const compBy: Record<string, number> = {};
   const tries: Record<string, number> = {};
   let cpByRole: Record<string, CpuGrant> | undefined;
   let cpByWorkload: Record<string, CpuGrant> | undefined;
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
-    // Reporting only; use the same grants as ScpTick, leaving IIPCP separate.
+    // Use the same grants as ScpTick, leaving IIPCP separate.
     const consumer = s.kind === 'AS' && s.role
       ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0, iipcp: 0 })
       : s.kind === 'TXN' && s.workloadId
@@ -227,7 +230,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       consumer.ziip += r.ziipGranted;
       consumer.iipcp += r.iipcpGranted;
     }
-    if (r.newBacklog > 1e-9) {
+    if (r.newBacklog > 1e-9 && (trackedWorkload === undefined || s.workloadId !== trackedWorkload)) {
       backlog[s.key] = r.newBacklog;
       if (r.newZiipBacklog > 1e-9) ziipBacklog[s.key] = r.newZiipBacklog;
     }

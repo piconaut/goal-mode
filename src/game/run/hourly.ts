@@ -4,6 +4,7 @@ import { clockAt } from '../../sim/core/clock';
 import { msuPerCp } from '../../sim/hw/cpc';
 import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
+import { addDb2Counters, emptyDb2Counters } from '../../sim/subsys/db2Contention';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { SERVER_KEY } from '../../sim/wlm/holders';
@@ -32,7 +33,8 @@ import { addGroupedIncident } from './grouping';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
 
-type ActiveHour = Required<Omit<HourAcc, 'cicsStorage'>> & Pick<HourAcc, 'cicsStorage'>;
+type OptionalHourFields = 'cicsStorage' | 'db2Contention';
+type ActiveHour = Required<Omit<HourAcc, OptionalHourFields>> & Pick<HourAcc, OptionalHourFields>;
 
 export const newHour = (tick: number): ActiveHour => ({
   hourIndex: Math.floor(tick / TICKS_PER_HOUR),
@@ -89,6 +91,7 @@ export function copyHourForAdvance(run: RunState): ActiveHour {
     ziipLparBusyById: { ...h.ziipLparBusyById },
     dbatQueuedByLpar: { ...h.dbatQueuedByLpar },
     ...(h.cicsStorage ? { cicsStorage: { ...h.cicsStorage } } : {}),
+    ...(h.db2Contention ? { db2Contention: cloneRows(h.db2Contention, (row) => ({ ...row })) } : {}),
   };
 }
 
@@ -181,6 +184,11 @@ export function accumulateHour(run: RunState, h = copyHourForAdvance(run)): RunS
       const a = cicsStorage[x.region];
       cicsStorage[x.region] = { peakMb: Math.max(a?.peakMb ?? 0, x.inUseMb), limitMb: x.limitMb, sosSec: (a?.sosSec ?? 0) + (x.sos ? TICK_SEC : 0) };
     }
+  }
+  const db2 = run.sim.last.db2Contention;
+  if (db2) {
+    const members = (h.db2Contention ??= {});
+    for (const member in db2) addDb2Counters(members[member] ??= emptyDb2Counters(), db2[member]!);
   }
   h.ticks += 1;
   h.maxCappedFrac = Math.max(h.maxCappedFrac, capped);
@@ -408,6 +416,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     workloads: h.workloads,
     ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
     ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
+    ...(h.db2Contention ? { db2Contention: h.db2Contention } : {}),
     ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
     ...(Object.keys(db2Rollbacks).length > 0 ? { db2RollbacksByLpar: db2Rollbacks } : {}),
   }].slice(-SMF_HOURS_KEPT);

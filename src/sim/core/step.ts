@@ -3,6 +3,7 @@
 // subsystem concurrency) use the previous tick's values carried in `env`.
 // Stage bodies live in ./tick/ (ctx, control, demand, dispatch, helpers); this file orchestrates them.
 
+import { startDb2Contention } from '../subsys/db2Contention';
 import { cfServiceForSystems, evaluateCf, type CfImageInput } from '../cf/cf';
 import { cpSpeed, ziipSpeed } from '../hw/cpc';
 import type { PoolDemand } from '../hw/pools';
@@ -127,6 +128,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     plan,
     def,
     env,
+    db2Contention: scenario.db2Contention ? startDb2Contention(scenario.db2Contention, env.db2Contention, clock, prev.tick) : undefined,
     config,
     clock,
     cpcOf,
@@ -251,6 +253,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const nextEnv: EnvState = t.failByWorkloadLpar
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  const db2 = t.db2Contention;
+  if (db2 && (db2.drain || Object.keys(db2.readers).length)) {
+    nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
+  }
   if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
   if (cf.length > 0) nextEnv.cfBySystem = cfBySystem;
   nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
@@ -268,7 +274,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     workloads: workloadRt,
     backlog,
     ziipBacklog,
-    last: { lpars: lparTicks, workloads: Object.values(wlTick) },
+    last: { lpars: lparTicks, workloads: Object.values(wlTick), ...(db2 && Object.keys(db2.counters).length ? { db2Contention: db2.counters } : {}) },
     env: nextEnv,
     batch,
     capping: {

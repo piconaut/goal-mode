@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CodexHints } from './CodexHint';
+import { formatClock } from '../sim/core/clock';
 import { nightClock, type BatchNight } from '../game/smf';
 import { SMF_FEATURE } from '../game/tools';
 import type { ViewModel } from '../game/view';
@@ -10,7 +11,8 @@ import { AnalyticsLink, Empty } from './Empty';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and the rollback share of units of work (QWACABRT).' },
-  { kind: 'DB2_STATS', label: 'Db2 statistics (DISPLAY DDF)', help: 'Per Db2 member: rollbacks during the hour (Q3STABRT), and the cumulative count of DBAT requests that waited for a slot at MAXDBAT (QUEDBAT/QDSTQDBT). Db2 does not trace the wait for a thread at MAXDBAT in SMF 101.' },
+  { kind: 'DB2_STATS', label: 'Db2 statistics', help: 'Per member, during the selected hour. DBAT waited counts requests queued at MAXDBAT. Claim and drain counts cover the modeled object.' },
+  { kind: 'DB2_BLOCKERS', label: 'Db2 blockers', help: 'Live DISPLAY BLOCKERS DETAIL view of the modeled object. Workload IDs, holder counts and mean ages describe simulated cohorts.' },
   { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share. Per region: EDSA peak against EDSALIM and time short on storage (SOS).' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
@@ -27,7 +29,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
   const [hour, setHour] = useState('');
   const k = kind && owned.some((o) => o.kind === kind) ? kind : (owned[0]?.kind ?? null);
   const h = hour && v.smfHours.some((x) => x.key === hour) ? hour : (v.smfHours[0]?.key ?? '');
-  const refresh = Math.floor(v.tickOfDay / 30);
+  const refresh = Math.floor(v.tickOfDay / (k === 'DB2_BLOCKERS' ? 3 : 30));
   useEffect(() => {
     if (k) game.send({ type: 'GET_SMF', kind: k, hour: h });
   }, [k, h, refresh, game.send]);
@@ -41,11 +43,13 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
       </div>
     );
   const d = game.smf && game.smf.kind === k ? game.smf : null;
+  const showDrainWait = d?.kind === 'DB2' && d.rows.some((row) => row.drainLockMs !== undefined);
+  const showDb2Contention = d?.kind === 'DB2_STATS' && d.rows.some((row) => row.contention);
   return (
     <div className="panel">
       <h3>
         SMF analytics
-        <CodexHints ids={k === 'DB2' ? ['smf101'] : k === 'CICS' ? ['smf110'] : k === 'SMF113' ? ['smf113'] : []} />
+        <CodexHints ids={k === 'DB2' ? ['smf101'] : k === 'DB2_BLOCKERS' || k === 'DB2_STATS' ? ['db2-drains'] : k === 'CICS' ? ['smf110'] : k === 'SMF113' ? ['smf113'] : []} />
       </h3>
       <div className="form">
         {owned.map((o) => (
@@ -53,6 +57,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
             {o.label}
           </button>
         ))}
+        {k === 'DB2_BLOCKERS' && <button onClick={() => game.send({ type: 'GET_SMF', kind: k, hour: h })}>Refresh snapshot</button>}
         {(k === 'DB2' || k === 'CICS' || k === 'DB2_STATS') && (
           <select aria-label="Hour" value={h} onChange={(e) => setHour(e.target.value)}>
             {v.smfHours.map((x) => (
@@ -81,6 +86,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <th className="num">CPU ms</th>
                   <th className="num">vs base</th>
                   <th className="num">lock ms</th>
+                  {showDrainWait && <th className="num">drain lock ms</th>}
                   <th className="num">sync I/O ms</th>
                   <th className="num">CF ms</th>
                   <th className="num">not acct ms</th>
@@ -108,6 +114,12 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                       {f1(r.lockMs)}
                       <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'LOCK_WAIT' }} label={`${r.package} lock wait`} />
                     </td>
+                    {showDrainWait && (
+                      <td className="num">
+                        {r.drainLockMs === undefined ? '—' : f1(r.drainLockMs)}
+                        {r.drainLockMs !== undefined && <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'DB2_DRAIN_LOCK' }} label={`${r.package} drain-lock wait`} />}
+                      </td>
+                    )}
                     <td className="num">
                       {f1(r.syncIoMs)}
                       <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'SYNC_IO' }} label={`${r.package} sync I/O`} />
@@ -133,6 +145,12 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <th>Db2 ssid</th>
                   <th className="num">rollbacks</th>
                   <th className="num">DBAT waited</th>
+                  {showDb2Contention && <>
+                    <th className="num">claims (failed)</th>
+                    <th className="num">drains (failed)</th>
+                    <th className="num">reader drain-lock wait (reader-s)</th>
+                    <th className="num">utility claim-release wait (s)</th>
+                  </>}
                 </tr>
               </thead>
               <tbody>
@@ -145,11 +163,45 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                       {r.dbatQueued.toFixed(0)}
                       <PinButton game={game} req={{ source: 'DB2_STATS', hour: h, lparId: r.lparId, metric: 'DBAT_QUEUE' }} label={`${r.ssid} DBAT queue`} />
                     </td>
+                    {r.contention ? <>
+                      <td className="num">{f1(r.contention.claims)} ({f1(r.contention.failedClaims)})</td>
+                      <td className="num">{r.contention.drains} ({r.contention.failedDrains})</td>
+                      <td className="num">{f1(r.contention.drainLockWaitSec)}</td>
+                      <td className="num">
+                        {f1(r.contention.claimReleaseWaitSec)}
+                        {r.contention.claimReleaseWaitSec > 0 && <PinButton game={game} req={{ source: 'DB2_STATS', hour: h, lparId: r.lparId, metric: 'DB2_CLAIM_RELEASE' }} label={`${r.ssid} utility claim-release wait`} />}
+                      </td>
+                    </> : showDb2Contention && <td colSpan={4} className="muted">—</td>}
                   </tr>
                 ))}
               </tbody>
             </table>
           ))}
+        {d?.kind === 'DB2_BLOCKERS' && <>
+          <div className="muted">{formatClock(d.tick)}</div>
+          {d.view.drain && <p>{d.view.drain.name} · {d.view.drain.member} · {d.view.drain.object} · {
+            d.view.drain.phase === 'WAITING' ? 'Waiting for claim release' : 'Drain held'
+          } · {f1(d.view.drain.pendingReaders)} readers waiting for a drain lock</p>}
+          {d.view.rows.length ? (
+            <table>
+              <thead><tr>
+                <th>Member / image</th><th>Holder</th><th>Object</th><th>Held resource</th>
+                <th className="num">Readers</th><th className="num">Mean age (s)</th>
+                <th className="num">CPU shortfall</th><th className="num">CAP</th>
+              </tr></thead>
+              <tbody>{d.view.rows.map((r) => (
+                <tr key={`${r.member}:${r.type}`}>
+                  <td>{r.member} / {r.lparId}</td><td>{r.workloadId} ({r.isolation}) <span className="muted">{r.serviceClass}</span></td>
+                  <td>{r.object}</td><td>{r.type}</td><td className="num">{f1(r.count)}</td>
+                  <td className="num">{f1(r.ageSec)}
+                    <PinButton game={game} req={{ source: 'DB2_BLOCKERS', member: r.member, holderType: r.type }} label={`${r.member} ${r.workloadId} ${r.type}`} />
+                  </td>
+                  <td className="num">{f1(r.cpuDelayPct)}%</td><td className="num">{f1(r.capPct)}%</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          ) : <div className="muted">No current tracked locks or claims.</div>}
+        </>}
         {d?.kind === 'CICS' &&
           (d.rows.length === 0 ? (
             <div className="muted">No CICS work in this hour.</div>

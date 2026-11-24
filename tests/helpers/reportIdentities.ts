@@ -11,7 +11,7 @@ import { tieredMonthlyCost } from '../../src/content/pricing';
 import { VELOCITY_FLOOR } from '../../src/content/wlm/tuning';
 import { financeView } from '../../src/game/finance';
 import type { Mon3Row } from '../../src/game/mon3';
-import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics, smf113 } from '../../src/game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Blockers, db2Statistics, smf113 } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { allWorkloads } from '../../src/game/workloads';
@@ -974,7 +974,7 @@ export const IDENTITIES: Identity[] = [
             c.close(x.avgRtMs, r.class1Ms, ROUNDING, where(`${r.workloadId} response time 110 vs class 1`));
             c.close(x.cpuMs, r.cpuMs, ROUNDING, where(`${r.workloadId} CPU 110 vs 101`));
           }
-          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
+          c.atMost(r.cpuMs + r.lockMs + (r.drainLockMs ?? 0) + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
           // Every unit of work ends in a commit or a rollback (QWACCOMM/QWACABRT, OMEGAMON for Db2 PE 5.4 PDF p.2968
           // (printed 2942)), and the rollbacks are the ones the sim backed out tick by tick (RT-23).
           c.ok(r.commits >= 0 && r.rollbacks >= 0, where(`${r.workloadId} SMF 101 commits and rollbacks non-negative`));
@@ -1010,6 +1010,41 @@ export const IDENTITIES: Identity[] = [
         for (const s of db2Statistics(run.final, run.scenario, 'current')) {
           const tick = run.final.sim.last.lpars.find((l) => l.lparId === s.lparId)?.dbatWaited ?? 0;
           c.atMost(tick, s.dbatQueued, ROUNDING, () => `open hour ${s.lparId} ${s.ssid} DBAT waited vs its last tick`);
+        }
+      }
+    },
+  },
+  {
+    id: 'db2-contention-reports',
+    title: 'Db2 claim/drain reports use member counts and keep drain-lock and transaction-lock times separate',
+    basis: 'game',
+    source: 'SPEC §5.10.2, CPU-paced DDF read holders and utility drains',
+    check: (run, c) => {
+      const profile = run.scenario.db2Contention;
+      if (!profile) return;
+      for (const h of run.hours) {
+        const last = h.end.smfHours.at(-1);
+        if (!last) continue;
+        const key = `${last.day}:${last.hourOfDay}`;
+        for (const m of db2Statistics(h.end, run.scenario, key)) {
+          if (!m.contention) continue;
+          for (const name of Object.keys(m.contention) as (keyof typeof m.contention)[]) {
+            c.close(m.contention[name], last.db2Contention?.[m.ssid]?.[name] ?? 0, ROUNDING,
+              () => `${key} ${m.ssid} ${name}`);
+          }
+        }
+        for (const a of db2Accounting(h.end, run.scenario, key)) {
+          const w = last.workloads[a.workloadId]!;
+          c.close(a.drainLockMs ?? 0, (w.parts.drainLock ?? 0) / w.completions * 1000, ROUNDING,
+            () => `${key} ${a.workloadId} drain-lock time`);
+        }
+        for (const r of db2Blockers(h.end, run.scenario).rows) {
+          const holder = h.end.sim.env.db2Contention!.readers[r.member]!;
+          c.close(r.ageSec, holder.ageSec, ROUNDING, () => `${key} ${r.member} holder age`);
+          c.close(r.count, holder.count, ROUNDING, () => `${key} ${r.member} held count`);
+          c.close(r.cpuDelayPct, 100 * holder.cpuDelayFrac, ROUNDING, () => `${key} ${r.member} CPU shortfall`);
+          c.close(r.capPct, 100 * holder.capFrac, ROUNDING, () => `${key} ${r.member} CAP`);
+          c.ok(r.workloadId === profile.reader && r.object === profile.object, () => `${key} ${r.member} holder identity`);
         }
       }
     },

@@ -112,7 +112,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   // it is the other half of the cause (§4.4(3)).
   const lead = ranked.find((q) => q.card.uid === card?.uid);
   if (lead && !lead.direct) {
-    offerTrigger(fallbackTrigger(ctx.mechanism, ctx.hour, ctx.isNew), `${lead.card.name} hit it as a neighbour: the policy or headroom left it exposed`);
+    offerTrigger(fallbackTrigger(ctx.mechanism, ctx.hour, ctx.isNew, ctx.workloadId), `${lead.card.name} hit it as a neighbour: the policy or headroom left it exposed`);
   }
 
   // A card that lowered capacity: the machine, not the policy, decided the hour, whatever the bands say. §4.3 scopes
