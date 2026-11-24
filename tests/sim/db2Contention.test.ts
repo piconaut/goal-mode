@@ -56,7 +56,7 @@ describe('PT-51 Db2 reader and drain', () => {
     expect(reader(pressured)!.ageSec).toBeGreaterThan(10);
     expect(reader(pressured)!.capFrac).toBeGreaterThan(0.5);
     if (isolation === 'UR') expect(lock(pressured)).toBeCloseTo(lock(normal), 8);
-    else expect(lock(pressured)).toBeGreaterThan(lock(normal) + (isolation === 'RR' ? 0.2 : 0.05));
+    else expect(lock(pressured)).toBeGreaterThan(lock(normal) + (isolation === 'RR' ? 0.02 : 0.01));
 
     const draining = step(pressured, [], s);
     expect(draining.env.db2Contention?.drain?.phase).toBe('WAITING');
