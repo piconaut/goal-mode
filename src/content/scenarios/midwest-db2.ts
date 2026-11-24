@@ -12,6 +12,8 @@ export const MIDWEST_DB2_CONTENTION: Db2ContentionProfile = {
   isolation: 'CS',
   lockSecPerReader: { CS: 0.00065, UR: 0, RR: 0.004 },
   maxLockSec: { CS: 0.018, UR: 0, RR: 0.035 },
+  // IRLMRWT's default resource timeout, which also covers claim waits (Db2 13 Installation and Migration Guide
+  // PDF p.284 (printed 266)). APPROX: IRLM detects it on its deadlock timer, so the real wait is rarely exactly this.
   claimTimeoutSec: 30,
   // FICTIONAL: a short weekday drain phase during BI hours, with a longer wait budget than a claim attempt.
   drain: { name: 'Settlement REORG', member: 'DB1B', startMinute: 14 * 60 + 50, kind: 'ALL', waitSec: 120, runSec: 20 },
