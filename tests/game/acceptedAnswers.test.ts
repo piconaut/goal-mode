@@ -124,6 +124,40 @@ describe('accepted answer sets (RT-07)', () => {
     expect(quiet.accepted.mechanisms).toEqual(['DEPENDENCY']);
   });
 
+  it('a CF or LCU far slower than its peers adds CF_SERVICE or IO when it carries a third of the response (RT-35)', () => {
+    // oneHour: the work's parts per transaction; the response time is rtSumSec / completions.
+    const oneHour = (parts: Record<string, number>, rtSumSec = 200, completions = 1000) => ({
+      ...newHour(0), ticks: TICKS_PER_HOUR,
+      workloads: { MOBILE: { completions, withinSla: completions, failed: 0, rtSumSec, parts } },
+    });
+    const cfPeers = {
+      cf: [
+        { lparId: 'CF01', reqPerSec: 5000, syncUs: 18, asyncPct: 0 },
+        { lparId: 'CF02', reqPerSec: 2000, syncUs: 1368, asyncPct: 98 },
+      ],
+      connectedCf: ['CF02'],
+    };
+    // MOBILE's CF time is 80 ms of a 200 ms response: 40 %, over the co-dominant share.
+    const cf = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour({ cf: 80 }), peers: cfPeers }));
+    expect(cf.accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CF_SERVICE']);
+    expect(cf.notes.CF_SERVICE).toMatch(/CF02 at 76× CF01's sync service time/);
+    // Under a third of the response, the peer-slow resource is not enough.
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour({ cf: 40 }), peers: cfPeers })).accepted.mechanisms)
+      .toEqual(['CPU_PRIORITY']);
+    // A slow CF the work does not connect to is not its resource.
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour({ cf: 80 }), peers: { ...cfPeers, connectedCf: ['CF01'] } })).accepted.mechanisms)
+      .toEqual(['CPU_PRIORITY']);
+    // The DASD equivalent: LCU 30's DISC against the 0.07 ms median of three LCUs.
+    const lcuPeers = { lcus: [
+      { id: '10', iops: 300, discMs: 0.07, rtMs: 0.22 },
+      { id: '21', iops: 500, discMs: 0.07, rtMs: 0.22 },
+      { id: '30', iops: 400, discMs: 0.4, rtMs: 0.22 },
+    ] };
+    const io = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour({ io: 80 }), peers: lcuPeers }));
+    expect(io.accepted.mechanisms).toEqual(['CPU_PRIORITY', 'IO']);
+    expect(io.notes.IO).toMatch(/LCU 30 at 6× the LCU median DISC time/);
+  });
+
   it('with no card to blame accepts GROWTH and POLICY together, and new work keeps one answer', () => {
     const none = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', isNew: false }));
     expect(none.accepted.triggers).toEqual(['POLICY', 'GROWTH']);

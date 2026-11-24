@@ -142,6 +142,7 @@ function readingFor(o: PredicateOption): [number, number | undefined] {
     case 'riseBy': return [10 + t.points + 1, 10];
     case 'shareOfImage': return [t.frac * 100 * 6 + 1, undefined];
     case 'noHistory': return [50, undefined];
+    case 'peerSlow': return [t.ratio * 100 + 1, undefined];
   }
 }
 
@@ -155,7 +156,7 @@ function pinFor(r: RunState, kind: Kind, o: PredicateOption, id: number, only?: 
     const tick = r.sim.rmf.intervals.at(-1)!.endTick;
     const base = { id, metric: o.metric, tick, text: `fixture ${o.metric}`, ...place };
     if (o.reading === 'rate') return { ...base, value: 100, baseline: 100, rate: { value, ...(baseline !== undefined ? { baseline } : {}) } };
-    return { ...base, value, ...(baseline !== undefined ? { baseline } : {}) };
+    return { ...base, value, ...(baseline !== undefined ? { baseline } : {}), ...(o.test.kind === 'peerSlow' ? { peer: { value: 100, of: 'a peer' } } : {}) };
   }
   return null;
 }

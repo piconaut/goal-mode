@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addPin, incidentSubjects, judgeEvidence } from '../../src/game/evidence';
+import { addPin, incidentSubjects, judgeEvidence, type EvidencePin } from '../../src/game/evidence';
+import { judgeProof } from '../../src/game/proof';
 import { newRun } from '../../src/game/run';
 import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/types';
 import type { RmfInterval } from '../../src/sim/measure/rmf';
@@ -21,6 +22,7 @@ const interval = (index: number, over: Partial<RmfInterval> = {}): RmfInterval =
   wlm: [],
   dasd: { iops: 1000, rtRandomMs: 0.22, rtSeqMs: 0.2, iosqMs: 0, pendMs: 0.1, discMs: 0.07, connMs: 0.01 },
   lcus: [
+    { id: '10', label: 'Db2 data 1', volumes: 32, aliases: 21, iops: 300, iosqMs: 0, discMs: 0.07, rtMs: 0.22, aliasesPerHotVol: 0.7 },
     { id: '21', label: 'Db2 data', volumes: 32, aliases: 21, iops: 500, iosqMs: 0, discMs: 0.07, rtMs: 0.22, aliasesPerHotVol: 0.7 },
     { id: '30', label: 'Catalogs', volumes: 32, aliases: 21, iops: 400, iosqMs: 0, discMs: 0.07, rtMs: 0.22, aliasesPerHotVol: 0.7 },
   ],
@@ -38,6 +40,12 @@ const interval = (index: number, over: Partial<RmfInterval> = {}): RmfInterval =
 const withHistory = (over: Partial<RmfInterval>): RunState => ({
   ...run,
   sim: { ...run.sim, rmf: { ...run.sim.rmf, intervals: [interval(0), interval(1), interval(2, over)] } },
+});
+
+/** Every interval carries the same state: the row's own history is flat, so only a peer can make it remarkable. */
+const standing = (over: Partial<RmfInterval>): RunState => ({
+  ...run,
+  sim: { ...run.sim, rmf: { ...run.sim.rmf, intervals: [interval(0, over), interval(1, over), interval(2, over)] } },
 });
 
 const incident = (mechanism: Mechanism, trigger: Trigger, r: RunState = run): Incident => ({
@@ -82,13 +90,28 @@ describe('CF Activity pins (RT-10)', () => {
     expect(verdict(r, incident('IO', 'POLICY')).relevance).toBe(0);
   });
 
-  it("does not count CF02's chronically slow engine as evidence for every CF incident", () => {
-    // A normal CF02 row (1.4 ms, unchanged) clears the absolute line but not its own recent normal.
+  it("counts CF02's standing slowness against its peers, not as a new fault (RT-35)", () => {
+    // A normal CF02 row (1.4 ms, unchanged) is unremarkable against its own recent normal, but far slower than CF01.
     const r = pin(withHistory({}), { source: 'CF', cfLparId: 'CF02', metric: 'CF_SYNC', index: 2 });
-    expect(r.pins.at(-1)!.value).toBeCloseTo(1368);
-    const v = verdict(r, incident('CF_SERVICE', 'HARDWARE_FAULT'));
-    expect(v.relevance).toBe(0);
-    expect(v.why).toBe('value is unremarkable');
+    const p = r.pins.at(-1)!;
+    expect(p.value).toBeCloseTo(1368);
+    expect(p.peer).toEqual({ value: 18, of: 'CF01' });
+    expect(p.baseline).toBeCloseTo(1368);
+    expect(p.text).toMatch(/vs CF01 18\.0 µs \(76×\)/);
+    // The peer rule makes it evidence for CF_SERVICE, not for an I/O incident.
+    expect(verdict(r, incident('CF_SERVICE', 'POLICY')).relevance).toBe(1);
+    expect(verdict(r, incident('IO', 'POLICY')).relevance).toBe(0);
+  });
+
+  it("proves CF_SERVICE from a CF far slower than the best CF, even at its own normal (RT-35)", () => {
+    const r = pin(withHistory({}), { source: 'CF', cfLparId: 'CF02', metric: 'CF_SYNC', index: 2 });
+    // The work's own CF time is up (Db2 101); the discriminator is the CF Activity peer reading.
+    const cfWait: EvidencePin = {
+      id: 5000, source: 'Db2 101', metric: 'CF_WAIT', subject: 'RBANK', system: '*PLEX', tick: 2700, value: 12, text: 'Db2 101 CF time 12 ms/txn',
+    };
+    const proof = judgeProof(r, MIDWEST, [incident('CPU_PRIORITY', 'POLICY', r)], 'CF_SERVICE', 'POLICY', [cfWait, r.pins.at(-1)!]).mechanism;
+    expect(proof.predicates.map((x) => x.met)).toEqual([true, true]);
+    expect(proof.complete).toBe(true);
   });
 
   it('counts async conversion only above the row normal', () => {
@@ -115,8 +138,7 @@ describe('DASD Activity pins (RT-10)', () => {
     expect(verdict(degraded, incident('CF_SERVICE', 'POLICY')).relevance).toBe(0);
   });
 
-  it('counts one LCU\'s IOSQ for a batch overlap while an idle LCU stays unremarkable', () => {
-    // REORG_OVERRUN: LCU 21 IOSQ high, the others idle.
+  it('counts one LCU\'s IOSQ for a batch overlap while an idle LCU stays unremarkable', () => {    // REORG_OVERRUN: LCU 21 IOSQ high, the others idle.
     const busy = interval(2).lcus.map((l) => (l.id === '21' ? { ...l, iosqMs: 21.5, rtMs: 21.9 } : l));
     const hit = pin(withHistory({ lcus: busy }), { source: 'DASD', lcuId: '21', metric: 'DASD_IOSQ', index: 2 });
     expect(hit.pins.at(-1)!.value).toBeCloseTo(21.5);
@@ -126,8 +148,26 @@ describe('DASD Activity pins (RT-10)', () => {
     expect(verdict(idle, incident('IO', 'BATCH_OVERLAP')).relevance).toBe(0);
   });
 
-  it('counts device response time for a recall storm, but not the DISC row on the same interval', () => {
-    // HSM_RECALL_STORM: LCU 30 random I/O up, response up, DISC roughly normal.
+  it('counts an LCU far slower than the all-LCU median, even when its own history is flat (RT-35)', () => {
+    // LCU 30 DISC 0.4 ms against the 0.07 ms median of three LCUs; its own six-interval normal is 0.4, so only
+    // the peer reading makes it remarkable.
+    const outlier = interval(2).lcus.map((l) => (l.id === '30' ? { ...l, discMs: 0.4 } : l));
+    const r = pin(standing({ lcus: outlier }), { source: 'DASD', lcuId: '30', metric: 'DASD_DISC', index: 2 });
+    const p = r.pins.at(-1)!;
+    expect(p.baseline).toBeCloseTo(0.4);
+    expect(p.peer).toEqual({ value: 0.07, of: 'the LCU median' });
+    expect(p.text).toMatch(/vs the LCU median 0\.1 ms \(6×\)/);
+    expect(verdict(r, incident('IO', 'POLICY')).relevance).toBe(1);
+    // The recipe completes from the DASD Activity row.
+    const syncIo: EvidencePin = {
+      id: 5001, source: 'Db2 101', metric: 'SYNC_IO', subject: 'RBANK', system: '*PLEX', tick: 2700, value: 8, text: 'Db2 101 sync I/O 8 ms/txn',
+    };
+    const proof = judgeProof(r, MIDWEST, [incident('CPU_PRIORITY', 'POLICY', r)], 'IO', 'POLICY', [syncIo, p]).mechanism;
+    expect(proof.predicates.map((x) => x.met)).toEqual([true, true]);
+    expect(proof.complete).toBe(true);
+  });
+
+  it('counts device response time for a recall storm, but not the DISC row on the same interval', () => {    // HSM_RECALL_STORM: LCU 30 random I/O up, response up, DISC roughly normal.
     const storm = interval(2).lcus.map((l) => (l.id === '30' ? { ...l, iosqMs: 0.23, rtMs: 0.48 } : l));
     const resp = pin(withHistory({ lcus: storm }), { source: 'DASD', lcuId: '30', metric: 'DASD_RESP', index: 2 });
     expect(resp.pins.at(-1)!.value).toBeCloseTo(0.48);

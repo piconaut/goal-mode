@@ -21,6 +21,7 @@ import {
   type RunState
 } from '../types';
 import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
+import { peersOf } from '../peerSlow';
 import { allWorkloads, isNewWorkload } from '../workloads';
 import { incidentSubjects } from '../evidence';
 import { snapshotCpuConsumers } from '../displaceable';
@@ -349,9 +350,14 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
       const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });
+      // The interval that closed this hour, for the peer-slow source (RT-35): a CF's sync/async reading against the
+      // best CF, an LCU's DISC/response against the all-LCU median.
+      const rmf = [...r.sim.rmf.intervals].reverse().find((iv) => iv.endTick <= hourEnd && iv.endTick > hourStart);
+      const peers = rmf ? peersOf(rmf, hosts.map((host) => host.lparId)) : undefined;
       const ctx: TruthContext = {
         workloadId: w.id, mechanism, trigger, hour: h, events: r.events, basis, hosts,
         servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew,
+        ...(peers ? { peers } : {}),
         ...(cpuSide ? { cpu: cpuAlternates(h, hosts, cpu) } : {}),
         ...(coDominant.length ? { coDominant } : {}),
       };

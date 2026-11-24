@@ -134,34 +134,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-35 · A resource far slower than its peers is an accepted mechanism
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-Source: RT-29 (agent playtest 2026-11-21; user decision 2026-11-23, docs/rca-design.md §7 Q11). Midwest Hard seed 54
-D3 INC22: CF02 sync service time 1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗",
-and CF_SERVICE was not accepted. Two causes: the truth ranks mechanisms only by growth against the baseline
-(`groupExcess`, `game/sla.ts`), so a standing slowdown has zero excess; and `CF_SYNC`/`CF_ASYNC_PCT` are notable only
-past twice the row's own six-interval normal. That conflates mechanism (where the time goes) with trigger (what
-changed): a standing misconfiguration is a valid mechanism with a GROWTH or POLICY trigger. Decision: judge "slow"
-for CF and DASD against peers as well as own history, and add an accepted-set source; the primary stays the
-growth-ranked one, so hints, AIOps, bots and the sim hash do not move.
-- **Recipe:** CF_SERVICE's second half also accepts a CF whose sync service time (or async conversion) is at least
-  `PEER_SLOW_RATIO` × the best CF of the same sysplex in the same interval; IO's second half accepts an LCU whose
-  DISC or response time is at least that × the all-LCU median. A pin carries the peer reading it was judged against
-  (frozen at pin time, like `baseline`), so the reply can quote it. Own-history options stay for faults arriving
-  mid-day.
-- **Truth:** a new row in the §4.1 accepted-set sources: the hurt work's CF (or I/O) time is at least
-  `CO_DOMINANT_SHARE` of its response time in the judged hour and its resource meets the peer rule → accept CF_SERVICE
-  (or IO). The trigger is unchanged; the reply's reason says "CF02 at 76× CF01's sync service time".
-- **Coefficients:** `PEER_SLOW_RATIO` in `content/` with a `// FICTIONAL:` note. Check with the zos-docs skill what
-  RMF CF Activity and DASD Activity present as typical sync service time and DISC, and cite them; do not present a
-  "normal" figure as IBM's.
-Truth labels move (accepted sets only), so the three-scenario `npm run sweep:remote` applies (§4.8 of
-docs/rca-design.md). Done when: the INC22 shape (one CF slow since day 1, Db2 missing on CF time) is a test where
-CF_SERVICE is accepted and its recipe completes from CF Activity; a CF slow against its peers but carrying under a
-third of the response time is not accepted; a DASD equivalent test; SPEC §10 and §17 and docs/rca-design.md §4.1 and
-§4.6 updated.
-
 ### RT-31 · The CPU verdict reads the clock-hour average: test it and say so
 `list: rca-truth · status: ready · priority: low · size: S · area: game`
 

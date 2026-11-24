@@ -1,5 +1,6 @@
 import type { Mechanism, Trigger } from './types';
 import { CPU_CAPACITY } from './incidents';
+import { PEER_SLOW_RATIO } from './sla';
 
 /** How a pinned value relates to the incident it is filed against (RT-12, docs/rca-design.md §4.6). A pin can only be
  * evidence for the relation its metric accepts: the hurt work's own delay is not another class's delay, and another
@@ -208,7 +209,9 @@ export type PinTest =
   /** value ≥ frac of the pinned image's online logical CPs (APPL% and EAppl %: 100 = one engine) */
   | { kind: 'shareOfImage'; frac: number }
   /** a Workload Activity or SMF row with no earlier report rows, pinned after the report had them for other rows */
-  | { kind: 'noHistory' };
+  | { kind: 'noHistory' }
+  /** value ≥ ratio × the peer reading frozen on the pin (RT-35): the best CF, or the all-LCU median */
+  | { kind: 'peerSlow'; ratio: number };
 
 export interface PredicateOption {
   metric: EvidenceMetric;
@@ -270,6 +273,9 @@ export const PROOF = {
 const at = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'atLeast', value } });
 const below = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'below', value } });
 const notable = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'notable' } });
+/** A resource far slower than its peers (RT-35): the pin's own-history normal may say nothing, but its frozen peer
+ *  reading (the best CF, or the all-LCU median) is far below it. */
+const peer = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'peerSlow', ratio: PEER_SLOW_RATIO } });
 const normal = (metric: EvidenceMetric, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'normal', band: PROOF.normalBand }, ...(reading ? { reading } : {}) });
 /** The same work as the first predicate showed (see `sameWork`). */
 const same = (o: PredicateOption): PredicateOption => ({ ...o, sameWork: true });
@@ -352,8 +358,8 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'CF time per transaction ≥ 5 ms or past its normal band (Db2 101)',
     options: [notable('CF_WAIT', SELF), ratio('CF_WAIT', PROOF.waitRiseRatio, SELF)],
   }, {
-    label: 'the CF itself slow: sync service time or async conversion past twice its normal (CF Activity)',
-    options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server'])],
+    label: `the CF itself slow: sync service time or async conversion past twice its normal, or at least ${PEER_SLOW_RATIO}× the best CF of the sysplex (CF Activity)`,
+    options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server']), peer('CF_SYNC', ['server']), peer('CF_ASYNC_PCT', ['server'])],
   }] },
   QR_TCB: { predicates: [{
     label: 'QR TCB wait ≥ 5 ms/txn (CICS 110), or the READY state past twice its normal (WLMGL)',
@@ -390,8 +396,8 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn or past its normal band (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
     options: [notable('DELAY_IO', SELF), notable('SYNC_IO', SELF), ratio('SYNC_IO', PROOF.waitRiseRatio, SELF), notable('JOB_IO', SELF)],
   }, {
-    label: 'DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes (DASD Activity)',
-    options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server'])],
+    label: `DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes, or at least ${PEER_SLOW_RATIO}× the all-LCU median (DASD Activity)`,
+    options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server']), peer('DASD_DISC', ['server']), peer('DASD_RESP', ['server'])],
   }] },
   STORAGE: { predicates: [{
     label: 'storage waits: storage delay ≥ 5 % (WLMGL), a serving region short on storage (CICS SOS), or the jobs\' swap wait ≥ 25 %',

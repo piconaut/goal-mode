@@ -6,9 +6,11 @@
 // hand-listed answer per incident, and each accepted answer carries the one line the reply shows for it.
 
 import { CPU_BANDS, CPU_CAPACITY } from '../content/incidents';
+import { CO_DOMINANT_SHARE } from '../content/sla';
 import { CPU_FAMILY } from '../content/footprint';
+import { slowCf, slowLcu, type CfPeerRow, type LcuPeerRow } from './peerSlow';
 import type { GameContent } from './run/shared';
-import { activeIn, cappedForHour, fallbackTrigger, footprintRelation, hourWindow, qualifyingCards, type WorkScope } from './sla';
+import { activeIn, cappedForHour, fallbackTrigger, footprintRelation, hourWindow, perTxnParts, qualifyingCards, type WorkScope } from './sla';
 import type { ActiveEvent, CapacityBasis, HourAcc, IncidentTruth, Mechanism, Trigger } from './types';
 
 /** The CPU family (content/footprint.ts): used here for the cause's identity and to scope the capacity-card rule (a
@@ -38,6 +40,14 @@ export interface TruthContext {
   servers?: readonly { jobname: string; lparId: string }[];
   /** Every image in the sysplex, to place a server's host on its CPC. */
   lpars: readonly { id: string; cpcId: string }[];
+  /** The CF and DASD Activity rows of the interval that closed the judged hour, for the peer-slow source (RT-35).
+   *  Absent on old hours, batch nights and fixtures. */
+  peers?: {
+    cf?: readonly CfPeerRow[];
+    lcus?: readonly LcuPeerRow[];
+    /** The CFs the work's hosts connect to (Subchannel Activity); empty means every CF counts. */
+    connectedCf?: readonly string[];
+  };
   content: GameContent;
   isNew: boolean;
 }
@@ -130,6 +140,24 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   for (const m of ctx.cpu?.mechanisms ?? []) offerMechanism(m, m === 'ROUTING' ? 'one host carried at least two thirds of the CPU excess while another had room' : 'a substantial co-host contributed this CPU verdict');
   for (const d of ctx.coDominant ?? []) offerMechanism(d.mechanism, d.why);
   if (ctx.cpu?.overflowBlocked || b?.overflowBlocked) offerTrigger('POLICY', 'zIIP work could not overflow while the host CPs had room');
+
+  // A resource far slower than its peers explains the work's CF or I/O time even when nothing grew (RT-35): the
+  // primary stays the growth-ranked answer, but a standing misconfiguration is a defensible reading. Each part is
+  // judged against the work's own response time, as co-dominance is.
+  const wh = ctx.hour.workloads[ctx.workloadId];
+  if (ctx.peers && wh) {
+    const parts = perTxnParts(wh);
+    const total = wh.completions > 0 ? wh.rtSumSec / wh.completions : 0;
+    if (total > 0) {
+      const share = (part: number) => `${pct((100 * part) / total)} of ${ctx.workloadId}'s response time`;
+      const cf = slowCf(ctx.peers.cf ?? [], ctx.peers.connectedCf);
+      if (cf && parts.cf !== undefined && parts.cf >= CO_DOMINANT_SHARE * total)
+        offerMechanism('CF_SERVICE', `${cf.row.lparId} at ${cf.ratio.toFixed(0)}× ${cf.peer.of}'s ${cf.metric === 'syncUs' ? 'sync service time' : 'async conversion'} (${share(parts.cf)})`);
+      const lcu = slowLcu(ctx.peers.lcus ?? []);
+      if (lcu && parts.io !== undefined && parts.io >= CO_DOMINANT_SHARE * total)
+        offerMechanism('IO', `LCU ${lcu.row.id} at ${lcu.ratio.toFixed(0)}× the LCU median ${lcu.metric === 'discMs' ? 'DISC' : 'response'} time (${share(parts.io)})`);
+    }
+  }
 
   // Server waits: when a transaction class misses its goal, WLM finds the regions serving it through the topology and
   // helps the ones that measured delays (SG24-7621 printed p.81 §3.5, p.126 §3.31; docs/research.md), so a server held

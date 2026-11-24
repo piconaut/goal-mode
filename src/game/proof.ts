@@ -134,6 +134,9 @@ function optionHolds(ctx: ProofContext, p: EvidencePin, relation: PinRelation | 
     }
     case 'noHistory':
       return withoutHistory(run, p);
+    case 'peerSlow':
+      // A resource far slower than its peers (RT-35): the peer reading was frozen on the pin when it was taken.
+      return p.peer !== undefined && p.peer.value > 0 && value >= t.ratio * p.peer.value;
   }
 }
 
