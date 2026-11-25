@@ -158,7 +158,7 @@ describe('problem records (RT-22)', () => {
     expect(io.filing!.points).toBe(5);
   });
 
-  it('calls a clean window no problem and charges the wrong mechanism', () => {
+  it('calls a clean window no problem and charges a wholly wrong filing', () => {
     const out = open(quiet(), { kind: 'WORKLOAD', id: 'RBANK' });
     expect(out.ok, out.message).toBe(true);
     expect(out.record!.truth.mechanism).toBeNull();
@@ -171,7 +171,7 @@ describe('problem records (RT-22)', () => {
     expect(filed.filing!.reply.join('\n')).toContain('shows no problem');
   });
 
-  it('prices a filing, allows one an hour and three a day, and takes the wrong-mechanism trust once a day', () => {
+  it('prices a filing, allows one an hour and three a day, and takes the wrong-answer trust once a day', () => {
     const truth = truthOf('CPU_PRIORITY', 'POLICY', { accepted: { mechanisms: ['CPU_PRIORITY'], triggers: ['POLICY', 'GROWTH'] } });
     const run = quiet({ quietHours: [fact('RBANK', truth)] });
     const out = open(run, { kind: 'WORKLOAD', id: 'RBANK' });
@@ -181,7 +181,7 @@ describe('problem records (RT-22)', () => {
     expect(first.filing!.trust).toBe(-PROBLEM.wrongTrust);
     // The same record cannot be filed again within the hour.
     expect(file(first.run, out.record!.id, 'LOCK_CONTENTION', 'DEMAND_SURGE').ok).toBe(false);
-    // An hour later the same wrong mechanism costs no second trust loss.
+    // An hour later the same wholly wrong answer costs no second trust loss.
     const later = { ...first.run, sim: { ...first.run.sim, tick: first.run.sim.tick + H } };
     const second = file(later, out.record!.id, 'LOCK_CONTENTION', 'DEMAND_SURGE');
     expect(second.ok, second.message).toBe(true);

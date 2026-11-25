@@ -40,7 +40,7 @@ export function Problems({ v, game }: { v: ViewModel; game: GameHandle }) {
         An incident is a problem record the game opened. Open your own record when no page has fired: a card that has
         not breached an SLA, a resource far slower than its peers, or a quiet regression you can see in the reports.
         Pick a subject and whole closed clock hours (up to {v.problems.maxWindowHours}), then file a mechanism, a trigger and the pins that prove them. A
-        filing costs <b>{v.problems.costHours} engineer-hours</b> and earns what a correct RCA earns; a wrong mechanism
+        filing costs <b>{v.problems.costHours} engineer-hours</b> and earns what a correct RCA earns; a wholly wrong filing
         costs trust once a day, and a record allows {v.problems.filingsPerDay} filings a day, one an hour. A record
         unlocks no fix yet (D1 is a separate design call).
       </p>
