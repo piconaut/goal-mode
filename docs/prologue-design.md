@@ -108,6 +108,16 @@ Four things make it hold together with Day 1:
   name and I won't be here to own them, so operations are backing them out tonight. If they were right, take them to
   the board on Monday under yours." The list is computed from the run's state against the Day 1 state (§11.2), so it
   is always accurate.
+- **Story's starting fixes.** On Story, Day 1 starts with F7, F8 and F11 already fixed, announced by the previous
+  team's inbox message (`content/game-midwest.ts` `startingFixes`; SPEC §11.2). The difficulty is picked after the
+  prologue, so Ruth's text has to hold either way:
+  - she never claims F7, F8 or F11 is left undone. Her M6 line about the RMF interval is "I've asked for that to go
+    to 15", and her handover's "never got round to" list draws only on flaws no difficulty fixes at the start (F6,
+    F9);
+  - on Story, the previous team's message then reads as Ruth's team finishing her asks over the weekend. On Normal
+    and Hard it doesn't arrive, and nothing Ruth said promised it would.
+
+  Day 1's content doesn't change.
 - **Trust, Insight, hours, fatigue and draft picks** reset to their Day 1 values without comment (user, 2026-11-25:
   the player won't notice or care). Tools are the one reset with a story, because the player bought them: they ran on
   Ruth's cost centre, which closes with the month (§8.2).
@@ -127,7 +137,7 @@ Monday to Friday before it:
 | Wed | 28th | ordinary weekday |
 | Thu | 29th | month-end traffic multipliers and month-end batch volumes (`dayOfMonth ≥ 29`) |
 | Fri | 30th | month-end; the month closes at midnight, so Friday's night writes the bill |
-| (Sat 1st, Sun 2nd) | not played | the first payday falls on the unplayed Saturday |
+| (Sat 1st) | Friday's night only | Friday's played day runs to 06:00 on Saturday the 1st, so from 00:00 the payday multiplier and the weekend flag apply (`arrivals.ts`), including F5's ~01:40 abend; the rest of Saturday and Sunday the 2nd are not played |
 
 The top bar shows the date ("Mon 26 · Shadow week") instead of "Day N". Day 1 follows, as today.
 
@@ -145,7 +155,7 @@ DDFLIMIT during the week produces exactly the Day 1 policy.
 | Harmless-ish on Monday | The maximum is tuned so Monday's normal mobile peak just fits: DDFPRD runs warm (PI near 1) around 12:30 and 20:30, with some CAP delay, and no SLA breaks. Ruth notices the warm row on Monday and says "we'll look at that tomorrow". |
 | Harmful on Tuesday | The forewarned `CAMPAIGN` card doubles mobile traffic. DDFPRD hits the maximum, MOBILE breaks its SLA, and PROD2 still has spare CPU. |
 | Clues | Monitor III DELAY: DDFPRD delayed, primary reason RG-Cap. SYSINFO or CPC: PROD2 not full. WLMGL: CAP delay on DDFPRD. Change Desk › WLM › Resource groups: DDFLIMIT and its member. |
-| Fixes | Remove DDFPRD from the group or delete the group (the real fix, and the Day 1 state); raise the maximum (a stopgap, accepted, with Wednesday's briefing asking the player to finish the job); or ride it out and plan the removal for 06:00. |
+| Fixes | Remove DDFPRD from the group or delete the group (the real fix, and the Day 1 state); raise the maximum (a stopgap, accepted, with Wednesday's briefing asking the player to finish the job); or ride it out and make the removal in Wednesday's briefing (a normal change, at 06:00 that day). |
 | Trade-off | Without the cap, a runaway DDF query can take more CPU (which Friday shows). Ruth: "Caps are a fine tool. A cap nobody remembers isn't." |
 
 It was chosen over the alternatives because:
@@ -153,7 +163,8 @@ It was chosen over the alternatives because:
 - its fix exercises the full WLM edit → install → activate path;
 - it sets up Wednesday's contrast between a WLM cap and an LPAR cap;
 - it doesn't spoil a main-game flaw. An MQ class problem would mirror F1 too closely; a new app landing in SYSOTHER
-  overlaps the booking go-live card; and the story deliberately doesn't mention ad-hoc queries, so F3 stays hidden.
+  overlaps the booking go-live card. The cap's story doesn't mention ad-hoc queries; F3 is shown on Friday (the
+  runaway) but not named, as with the other main-game flaws (§14 decision 2).
 
 ## 4. Structure at a glance
 
@@ -241,8 +252,9 @@ day-one symptom, planted per SPEC §13.3.)
    read them in the evening, until you have something better." Open it.
 3. WLMGL detail: find ONLHI period 1; read its goal, its actual, its PI and its using and delay samples. Spotlighted
    field by field. Step done when the player has opened WLMGL and selected the 10:30 interval.
-4. The interval selector: the reports are at 30 minutes ("I always meant to make that 15. Write it down."). This is
-   flaw F11; Ruth does not fix it.
+4. The interval selector: the reports are at 30 minutes ("I've asked for that to go to 15. We'll see if it happens
+   before I leave."). This is flaw F11. Ruth does not fix it, and her line holds either way on Day 1: on Story the
+   previous team's message says it was done (§3.2), otherwise it wasn't.
 5. Insight: the top bar counter went up when the reports were opened. "Reading pays. You'll spend it tomorrow."
 
 ### 5.2 Tue 27: "Who's waiting, and for what"
@@ -287,15 +299,19 @@ DDFPRD hits DDFLIMIT's maximum; MOBILE's response time grows, its SLA ticker tur
 3. **When it happens, and what it costs.** Ruth explains the two ways in:
    - install and activate now, an **emergency change**: it costs trust (×1 while an incident is active, ×3
      otherwise) and carries a small failure risk;
-   - plan it for 06:00 tomorrow, a **normal change**, at no trust cost.
+   - ride it out and make the change in tomorrow's briefing, a **normal change** that applies at 06:00 Wednesday, at
+     no trust cost. During the live day every change without a lead time is an emergency change
+     (`src/game/catalog.ts`); planned changes are made only in the briefing.
 
    Both are accepted. "In my day, we rode it out and took it to the board. You decide."
-4. Validate → Install → Activate (or Plan). Step done when a change is planned or applied whose installed policy
-   leaves DDFPRD uncapped, or raises DDFLIMIT's maximum above the campaign's demand (predicate `ddfCapRelieved`).
+4. Either Validate → Install → Activate now, or **Ride it out** (a `TUTOR_ACK` choice). Step done when an emergency
+   change is applied whose installed policy leaves DDFPRD uncapped, or raises DDFLIMIT's maximum above the campaign's
+   demand (predicate `ddfCapRelieved`), or when the player chose to ride it out. In that case W1 carries the change.
 
 **Beat T5, ~13:00 (or when the campaign ends).**
 - If the change went in live: Ruth shows the PI heat map recovering, and DELAY with no RG-Cap left on DDFPRD.
-- If planned: "Tomorrow morning you check it worked. Always check."
+- If the player rode it out: the campaign ends on its own around 13:00. "Tomorrow morning you make the change in the
+  briefing, and the morning after you check it worked. Always check."
 
 **Beat T6, review: RCA #1, fully guided.** This is the scoring lesson. Steps:
 1. The RCA form: the affected service and window (prefilled), and what an incident is (an SLA breach episode).
@@ -330,10 +346,13 @@ from work in the way, what LPAR capping does and how it differs from Tuesday's W
 change can fail, and that a temporary fix comes back out.
 
 **Beat W1, 06:00, briefing.**
-1. "Did yesterday's change work?" The Requests results, and the policy now active.
-2. **(undo)** If the player raised DDFLIMIT's maximum instead of removing it: "You raised it. Now take it out
-   properly." Step done when DDFPRD is in no resource group. Planned for 06:00 tomorrow or done now; both accepted.
-3. Turn on **Partition Data** (Insight from Monday and Tuesday).
+1. If the player made Tuesday's change live: "Did yesterday's change work?" The Requests results, and the policy now
+   active.
+2. If the player rode it out: make the change now, in the briefing. It is a normal change that applies at 06:00
+   today, at no trust cost. Step done when the planned change satisfies `ddfCapRelieved`.
+3. **(undo)** If the player raised DDFLIMIT's maximum instead of removing it: "You raised it. Now take it out
+   properly." Step done when a planned change leaves DDFPRD in no resource group (it applies at 06:00 today).
+4. Turn on **Partition Data** (Insight from Monday and Tuesday).
 
 **Beat W2, 07:00, the machine.** A quiet hour. Steps:
 1. Partition Data: one CPC, 8 shared CPs, four images, their weights, logical CPs and share. Ruth explains
@@ -382,8 +401,10 @@ less of it. Now what?" Steps (assisted: Ruth names the report and asks):
 
 **Beat W5, ~18:10, the chiller is fixed (undo).** The card ends and capacity is back. Ruth: "Take your cap off.
 Remember Tuesday." Step done when every LPAR profile and the WLM policy are back to their start-of-day values for the
-parts the player changed in W4 (DEVT weight, caps, TSO importance, held batch released). Planned or live; both
-accepted. A player who leaves it in gets the handover back-out line (§3.2) and Ruth's "you'll be the next person's
+parts the player changed in W4 (DEVT weight, caps, TSO importance, held batch released). Two ways, both accepted:
+undo it now, which is an emergency change with no incident open (trust ×3; Ruth says so), or leave it overnight and
+undo it in Thursday's briefing (a normal change at 06:00), in which case H1 carries the step. A player who leaves it
+in past Thursday's briefing gets the handover back-out line (§3.2) and Ruth's "you'll be the next person's
 DDFLIMIT".
 
 **Beat W6, review: RCA #2, assisted.** Ruth asks the questions, the player answers:
@@ -399,6 +420,8 @@ Goal: the player knows that RMF shows CPU and delays by class, but the reason in
 subsystem's own records; meets each subsystem's view once; learns that a pin has to be about the hurt work.
 
 **Beat H1, 06:00, briefing.**
+0. **(undo, carried)** If Wednesday's cooling-fault change is still in, undo it now, a normal change at 06:00 today
+   (W5).
 1. "Month-end starts today. More traffic, a heavier night."
 2. Inbox › **Ask around**: Ruth suggests asking the CICS team whether anything changed recently. It costs a little
    time; the answer arrives later in office hours as one fragment. (Scripted: the reply, around 09:30, mentions a new
@@ -427,7 +450,8 @@ service slows on PROD2 only. Steps (prompted: Ruth asks, points only on request)
 **Beat H3, ~14:10, the CICS team ships a fix (undo).** The card ends: the CICS team has fixed the leak. If the player
 raised EDSALIM, changed MXT or moved routing, Ruth asks for it back: "Storage is a budget other regions share, and
 routing that nobody remembers is how PROD1 ends up doing PROD2's job for a year." Step done when the CICS settings
-and routing are back to their start-of-day values. Nothing to do after a recycle.
+and routing are back to their start-of-day values: now, as an emergency change with no incident open (trust ×3), or
+in Friday's briefing as a normal change, in which case F1 carries the step. Nothing to do after a recycle.
 
 **Beat H4, ~14:40, the subsystem tour.** No incident. One or two steps each: "learn normal, so you can see
 abnormal".
@@ -452,6 +476,8 @@ Goal: the player handles an incident alone; meets batch, initiators and the nigh
 month's bill; is handed over.
 
 **Beat F1, 06:00, briefing.**
+0. **(undo, carried)** If Thursday's CICS or routing change is still in, undo it now, a normal change at 06:00 today
+   (H3).
 1. Ruth's licences: Capacity planner, What-if, Alerts, Automation and AIOps are on for today, on her cost centre.
    "Have a look. They go when the month closes."
 2. **What-if**: Ruth asks: "If we hadn't taken that cap out on Tuesday, what would today look like?" The player forks
@@ -464,7 +490,8 @@ month's bill; is handed over.
 5. Alerts: Ruth's own rule, "page me if a critical job abends", is already defined. Fatigue from night pages.
 
 **Beat F2, ~10:15, the runaway (solo).** The scripted `RUNAWAY` card starts at 09:30: one ad-hoc DDF query burns CPU
-and zIIP for hours. With DDFLIMIT gone, it can take more; Ruth doesn't point that out unless asked ("caps are a fine
+for hours. Its zIIP-eligible time runs on PROD2's general CPs, because PROD2 has no zIIP online (F7, shown but not
+named): PROCU shows it as IIPCP. With DDFLIMIT gone, it can take more; Ruth doesn't point that out unless asked ("caps are a fine
 tool; that one was in the wrong place"). Ruth: "This one's yours. I'm getting coffee."
 - The hint ladder is available (§6.3).
 - AIOps shows its top hypothesis on the incident card, with its confidence. Ruth: "It's right more often than it's
@@ -510,8 +537,9 @@ the page. Steps:
      temporary changes back out;
    - the **back-out list**: any change still in that isn't in the Day 1 state, by name (§3.2, §11.2), or "Nothing
      left in. Good." when there is none;
-   - a short, deliberately vague list of "things I never got round to" ("the reporting granularity is poor";
-     "development has more processors than it needs"), clearer on Story.
+   - a short, deliberately vague list of "things I never got round to" ("the reporting granularity is poor": F6;
+     "development has more processors than it needs": F9), clearer on Story. It never names F7, F8 or F11, which
+     Story fixes at the start (§3.2).
 3. The Codex gains **Ruth's notebook**: one page per lesson, in her voice, linking the Codex entries it used. It
    persists across runs.
 4. The unlocks (§8.3) are announced: Ruth's terminal theme and Ruth's pager sound.
@@ -577,6 +605,9 @@ The player may make any change at any time after Monday. Rules:
   - a fix that leaves nothing behind (an operator command, a recycle, a restart);
   - a temporary change with an (undo) beat when its problem ends.
 - Anything else still in on Friday night appears in the handover back-out list (§3.2).
+- **Timing follows the change model as it is:** during the live day a change without a lead time is an emergency
+  change; a normal change is made in the briefing and applies at that day's 06:00. Every step that asks for a change
+  accepts both routes, and a step left for the briefing is carried into the next day's first beat.
 - A change that breaks the system badly (an absurd policy) triggers Ruth's "want me to put it back?" offer, which
   reverts to the start-of-day state of the chapter (a reload, not an undo of the sim; §11.4).
 - Changes are never blocked by the script, except on Monday, when the Change Desk's submit buttons say "Monday we
@@ -830,7 +861,7 @@ month's peak"), and the sim decides whether they're true. So:
   - the back-out list is empty, and the final policy equals BASEPOL;
   - the bill's peak moves or holds as §8.4 says.
 - **Alternative playthroughs**, one per `accepts` alternative (the cap raised rather than removed, each CICS fix,
-  each cooling-fault response): the next lessons still fire, and each undo beat triggers exactly when it should.
+  each cooling-fault response, and every ride-it-out route that carries a change or an undo into the next briefing): the next lessons still fire, and each undo beat triggers exactly when it should.
 - **Coverage test**: every tab and section in §9 is the target of at least one step.
 - **Anchor test**: every step target names an anchor that exists in the UI registry.
 - **Calendar test**: a Midwest run's clock is unchanged; the prologue's Monday is the 26th, its Friday's night closes
@@ -909,3 +940,10 @@ Each content PR runs the §11.5 tests. Only PRO-01 touches the sim, and it doesn
     no story.
 11. **Continuity:** the script guides the player to undo temporary changes (the (undo) beats); anything else still in
     on Friday is listed in Ruth's handover note as backed out.
+12. **Story's starting fixes** (author's design call on review finding B1, 2026-11-25; the user may override): Ruth's
+    text never claims F7, F8 or F11 is undone, so Story's previous-team message on Day 1 stays consistent and Day 1's
+    content is unchanged (§3.2).
+13. **Change timing** (author's design call on review finding B2, 2026-11-25): no new "plan for tomorrow" mechanic.
+    During a beat, the player either makes an emergency change now or rides it out and makes the change in the next
+    briefing, as the change model already works. Undo steps offer the same two routes, and a step chosen for the
+    briefing is carried into the next day's first beat (§5).
