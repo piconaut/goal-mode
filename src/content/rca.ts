@@ -50,3 +50,20 @@ export const TRIGGER_LABEL: Record<Trigger, string> = {
 
 export const triggerLabel = (t: Trigger): string => TRIGGER_LABEL[t] ?? t;
 
+// FICTIONAL: the cost and anti-fishing limits of a problem record (RT-22, docs/rca-design.md §5.4). They are
+// defaults to be set by a sweep, not by hand.
+export const PROBLEM = {
+  /** Engineer-hours to write up one diagnosis, right or wrong. */
+  hours: 0.25,
+  /** Trust lost on the subject's facet when the mechanism is wrong, once per record per day. */
+  wrongTrust: 0.5,
+  /** Filings one record allows in a played day. */
+  filingsPerDay: 3,
+  /** Simulated hours before the same record may be filed again. */
+  refileHours: 1,
+  /** Whole closed clock hours one record may cover. */
+  maxWindowHours: 24,
+  /** Records kept in a run (the oldest with no filings is dropped first). */
+  maxRecords: 20,
+} as const;
+

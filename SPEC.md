@@ -1603,6 +1603,21 @@ read from when the row first appears. Every claim is proven from replayed report
 of them a card's own). Every mechanism × trigger pair fits in three pins, by a symbolic lower bound, except 29 whose
 four facts no row combines (listed in `tests/game/proofRecipes.test.ts`; BACKLOG RT-27).
 
+**Problem records (RT-22, `docs/rca-design.md` §5.1):** an incident is a problem record the game opened. The player
+can open one on a **workload**, a **service-class period**, an **image** or a **job** over whole closed clock hours the
+reports still hold (up to `PROBLEM.maxWindowHours`). Opening is free and freezes the window's truth: a card whose
+footprint touched the subject in the window gives its mechanism and trigger; otherwise the window's closed hours are
+judged by the same delay-group and clock-hour-baseline rules as an incident, plus a standing CF/LCU far slower than
+its peers (RT-35); when neither finds anything the truth is **no problem**, and every mechanism is wrong. Incidents
+overlapping the window are candidates too, so one record can cover hours that paged and hours that did not. A class
+covers the work classified into it (or a CICS region class's served transactions), an image the work routed to it, a
+job its batch night or the work on its image (APPROX).
+Filing costs 0.25 engineer-hours; a wrong mechanism loses 0.5 trust on the subject's facet once per record per day;
+at most three filings a day, one an hour. A correct answer earns what a correct RCA earns, on that facet, with the same
+recipes. One cause pays once: an incident RCA, a problem record, or a later RCA of the same cause earns nothing when
+the cause is already credited. A record unlocks no fix until D1 (RT-24). The Reports tab's **Problems** card and the
+play CLI (`problem ...`) open, file and review records; the window's truth stays hidden until a filing's reply.
+
 **One RCA per root cause:** an incident is linked (`rcaGroup`) to the earlier incident with the same cause
 (`truth.cause`: the blamed card's `uid`, `new:<workload>`, `change:<id>`, or `none:<family>:<host>`; `docs/rca-design.md`
 §4.5). A card's incidents group across the played day, whatever mechanisms its victims show (one power cap is one cause

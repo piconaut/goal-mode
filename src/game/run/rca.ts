@@ -148,9 +148,21 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const evidencePoints = mechanismProven ? PROOF.recipePoints : mechanismShown ? PROOF.partialPoints : 0;
   const strong = mechanismProven && triggerAccepted && !!proof?.trigger.complete;
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
+  const cause = group[0]?.truth.cause ?? '';
+  // RT-22: one cause pays once. A problem record (or an earlier incident, including one filed before this ledger
+  // existed) that already earned this cause leaves this filing recorded but worth no trust, insight or score.
+  const priorIncident = run.incidents.find((i) => i.id !== leadId && i.truth.cause === cause && i.rca);
+  const duplicateOf = cause && ((run.creditedCauses ?? []).includes(cause) || priorIncident)
+    ? (run.problemRecords?.find((rec) => rec.filings.some((f) => f.cause === cause && f.points > 0))?.id
+      ?? priorIncident?.id
+      ?? 0)
+    : null;
+  // Only a correct answer can be a duplicate: a wrong answer still costs its trust, even on an already-earned cause.
+  const duplicate = duplicateOf !== null && points > 0;
+  const awarded = !duplicate;
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
-  const trust = mapTrust(run, (t) => t + facetTrust / 2);
-  const total = points + evidencePoints;
+  const trust = awarded ? mapTrust(run, (t) => t + facetTrust / 2) : run.trust;
+  const total = awarded ? points + evidencePoints : 0;
   // The line describes the hour that backs the filed mechanism: in a group the victims' hours differ, and the lead's
   // would otherwise rule out an answer another victim proves (N1). A single incident keeps the unlabelled wording.
   const explainInc = group.find((m) => m.truth.mechanism === mechanism) ?? group[0]!;
@@ -158,12 +170,13 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   // The hour-base note is recorded now, from the filed pins, so a later unpin or a rolled-off pin cannot change the
   // reply (RT-30). A group's victims have their own hours, so the note is only for a single incident.
   const hourNote = judged && group.length === 1 ? hourBaseNote(judged, pins, group[0]!.basis) : null;
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}), ...(hourNote ? { hourNote } : {}) };
+  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints: awarded ? evidencePoints : 0, ...(awarded && strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}), ...(hourNote ? { hourNote } : {}), ...(duplicate ? { duplicateOf } : {}) };
   return {
     ...run,
     trust,
-    insight: run.insight + total + (strong ? EVIDENCE.strongInsight : 0),
+    insight: run.insight + total + (awarded && strong ? EVIDENCE.strongInsight : 0),
     score: run.score + total,
+    ...(total > 0 ? { creditedCauses: [...(run.creditedCauses ?? []), cause] } : {}),
     incidents: run.incidents.map((i) => (rcaLeadId(i) === leadId ? { ...i, rca } : i)),
   };
 }

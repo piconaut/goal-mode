@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, openPlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, openPlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, problemsText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { OLD_SAVE_MESSAGE, SAVE_VERSION } from '../../src/game/runFile';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { startTfp } from '../../src/sim/cost/mlc';
@@ -71,6 +71,27 @@ describe('saved policy actions', () => {
     expect(f.pendingPolicy).toBeNull();
     f = run(f, [{ cmd: 'advance', hours: 1 }]);
     expect(f.run.sim.wlm.definition.policyName).toBe('NIGHTPOL');
+  });
+});
+
+describe('problem records (RT-22)', () => {
+  it('opens, files and reviews a record through the play CLI', () => {
+    let f = started(1);
+    const fromTick = 0;
+    const toTick = TICKS_PER_HOUR;
+    f = run(f, [{ cmd: 'problem-open', subject: { kind: 'WORKLOAD', id: 'RBANK' }, fromTick, toTick }]);
+    const id = f.run.problemRecords!.at(-1)!.id;
+    const text = problemsText(f, id);
+    expect(text).toContain(`REC${id}`);
+    expect(text).toContain('RBANK');
+    f = run(f, [{ cmd: 'problem-file', recordId: id, mechanism: 'CPU_PRIORITY', trigger: 'POLICY' }]);
+    expect(f.run.problemRecords![0]!.filings).toHaveLength(1);
+    const after = problemsText(f, id);
+    expect(after).toContain('CPU_PRIORITY / POLICY');
+    expect(after).toContain('Filing cost: 0.25 engineer-hours');
+    // The record and its filing survive the run file round trip.
+    const back = decodePlayFile(encodePlayFile(f));
+    expect(back.run.problemRecords![0]!.filings).toHaveLength(1);
   });
 });
 

@@ -279,11 +279,106 @@ export interface Incident {
   subjects: IncidentSubjects;
   /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed. `proof` is the filed claims' recipes
    * over the attached pins (RT-13; absent when no pin was attached). */
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string; /** The hour-base note at filing (RT-30), when a met pin was over a line the hour average missed. */ hourNote?: string } | null;
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string; /** The hour-base note at filing (RT-30), when a met pin was over a line the hour average missed. */ hourNote?: string; /** RT-22: the cause already earned a diagnosis (a problem record or another incident), so this filing earned nothing. */ duplicateOf?: number } | null;
   trustLost: number;
   /** Id of the group's lead, the first incident of its cause (docs/rca-design.md §4.5): one RCA covers the group,
    * scored once (SPEC §10). Absent on a lead and on an incident listed as new. */
   rcaGroup?: number;
+}
+
+/** A closed hour that met its SLA but still shows a problem a problem record can name (RT-22): a card's footprint
+ *  reached the work, a delay group grew past the floor, or a CF/LCU is far slower than its peers. The truth is
+ *  frozen with the hour, like an incident's, so a later baseline or policy cannot rewrite it. */
+export interface QuietHour {
+  day: number;
+  hourOfDay: number;
+  /** The closed hour's half-open tick range, from the accumulator that closed it. */
+  startTick: number;
+  endTick: number;
+  workloadId: string;
+  /** Why the hour is notable: a card touched it, a delay group grew, or a resource is peer-slow. */
+  reason: 'CARD' | 'DELAY' | 'PEER';
+  truth: IncidentTruth;
+  subjects: IncidentSubjects;
+  basis?: CapacityBasis;
+  /** The hour's SLA attainment, for ranking a record's candidate hours. */
+  attainmentPct: number;
+}
+
+/** What a problem record is opened on (RT-22): a workload, a service-class period, an image or a job. */
+export type ProblemSubject =
+  | { kind: 'WORKLOAD'; id: string }
+  | { kind: 'CLASS'; id: string }
+  | { kind: 'IMAGE'; id: string }
+  | { kind: 'JOB'; id: string };
+
+/** A record's window: whole closed clock hours, half-open [fromTick, toTick). `day`/`hourOfDay` are the first hour's
+ *  clock position (the played day and wall-clock hour), the same key `smfHours` uses. */
+export interface ProblemWindow {
+  fromTick: number;
+  toTick: number;
+  day: number;
+  hourOfDay: number;
+  hours: number;
+}
+
+/** The answer a problem window accepts. A null mechanism means the window shows no problem (RT-22). */
+export interface ProblemTruth {
+  mechanism: Mechanism | null;
+  trigger: Trigger | null;
+  accepted: Accepted;
+  /** One line per accepted answer that is not the primary. */
+  notes?: Record<string, string>;
+  /** Why a proven mechanism is not accepted (RT-35's peer-share near miss). */
+  nearMiss?: Partial<Record<Mechanism, string>>;
+  /** The cause's identity for grouping and the no-double-credit rule (same vocabulary as an incident's). */
+  cause: string;
+}
+
+/** One hour's frozen truth inside a record's window, with the subjects pins are judged against. */
+export interface ProblemCandidate {
+  workloadId: string;
+  truth: IncidentTruth;
+  subjects: IncidentSubjects;
+  basis?: CapacityBasis;
+}
+
+/** One filed diagnosis on a problem record (RT-22): the answer, the proof over the attached pins, and its reward. */
+export interface ProblemFiling {
+  day: number;
+  tick: number;
+  mechanism: Mechanism;
+  trigger: Trigger;
+  points: number;
+  evidence?: PinVerdict[];
+  evidencePoints?: number;
+  strong?: boolean;
+  proof?: ProofResult;
+  /** Trust change applied to `trustFacet`; 0 when the subject has no facet or the cause already earned. */
+  trust: number;
+  trustFacet: Facet | null;
+  /** The cause this filing was judged against, for the no-double-credit ledger. */
+  cause: string;
+  /** The window shows no problem, so every mechanism is wrong. */
+  noProblem?: true;
+  /** The cause already earned elsewhere: the filing is recorded but earns no trust, insight or score. */
+  duplicateOf?: number;
+  /** The reply, one line per part, shared by the card and the CLI. */
+  reply: string[];
+}
+
+/** A diagnosis the player opened on a subject and a time window (RT-22). An incident is the record the game opened;
+ *  a player record can name a quiet card, a standing fault or no problem at all. */
+export interface ProblemRecord {
+  id: number;
+  subject: ProblemSubject;
+  window: ProblemWindow;
+  openedDay: number;
+  openedTick: number;
+  /** The window's truth, frozen when the record opened and hidden until a filing. */
+  truth: ProblemTruth;
+  candidates: ProblemCandidate[];
+  filings: ProblemFiling[];
 }
 
 export interface SlaDay {
@@ -396,6 +491,14 @@ export interface RunState {
    *  from before RT-17, which then read the rolling baseline everywhere. */
   hourBaselines?: Record<string, Record<string, Record<string, number>>>;
   incidents: Incident[];
+  /** Closed hours that met their SLA but still show a named problem (RT-22), newest last, the same ~2-day window as
+   *  `smfHours`. A record opened on a quiet hour reads these; absent in saves from before RT-22. */
+  quietHours?: QuietHour[];
+  /** Player-opened problem records (RT-22), oldest first. */
+  problemRecords?: ProblemRecord[];
+  /** Causes that already earned a correct diagnosis (an RCA or a problem record), so one cause never pays twice
+   *  (RT-22's grouping rule). Derived from incidents with an RCA for old saves. */
+  creditedCauses?: string[];
   reports: DayReport[];
   inbox: Message[];
   draft: DraftOption[] | null;

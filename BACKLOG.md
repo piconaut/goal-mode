@@ -95,8 +95,7 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
   findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
-  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1: RT-22 (problem records) is ready after the user's yes to Q8a
-  (2026-11-23); RT-24 waits for Q8b.
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1: RT-22 (problem records) landed 2026-11-24; RT-24 waits for Q8b.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
@@ -153,39 +152,10 @@ JOB_FAILURE only when the ABEND's lost time is the largest cause or the job neve
 accepted; capping by share of the night (A12). Done when: a DASD_DEGRADED at 22:00 that makes the window miss is
 IO/HARDWARE_FAULT.
 
-### RT-22 · Problem records: a diagnosis without an SLA incident
-`list: rca-truth · status: ready · priority: low · size: L · area: game`
-
-Source: docs/rca-design.md §5.1; user decision 2026-11-23 (§7 Q8a: yes, independent of Q8b). The player opens a
-**problem record** on a subject (workload, service class, image or job) and a time window of whole clock hours within
-what the reports still hold, and files mechanism, trigger and pins on the same form and judge as an incident RCA; an
-incident becomes a problem record the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT and a
-roomy-day REGRESSION open no incident, and because standing faults (RT-35) and quiet regressions are what a good
-analyst finds before anything pages. It also gives the late game a skilled use of engineer-hours (PT-22). Without D1
-(Q8b open) a problem record unlocks no fix; it earns what a correct RCA earns.
-- **Truth for a window:** a card whose footprint (§4.4) touches the subject in the window gives its mechanism and
-  trigger, as for an incident; otherwise the §4.2 rules on the window's hours against the slot baseline, plus the
-  RT-35 peer rule once it lands. When neither finds anything (no card, no delay group over the floor, no standing
-  fault), the truth is "no problem": any filed mechanism is wrong. Pins and recipes are judged as in §4.6, with the
-  relation snapshot taken from the subject when the record opens.
-- **Reward:** a correct mechanism with its complete recipe earns the trust and insight of a correct RCA, on the
-  facet of the subject's workload stakeholder (an image or job subject: the facet of the workloads it hurt in the
-  window, or none). **Cost and anti-fishing** as §5.4: 0.25 engineer-hours per filing, a wrong mechanism −0.5 trust
-  on that facet once per record per day, at most three filings per record per day, re-filing after one simulated
-  hour. These values are §5.4's defaults, in `content/rca.ts` with `// FICTIONAL:` notes; set them by a sweep, not
-  by hand.
-- **Grouping:** a record whose cause matches an open or closed incident's (§4.5) joins that group and cannot earn
-  twice for one cause.
-- **Bots:** unchanged in this entry (they file none); the expert bot may file records later, as a balance call.
-Done when: the browser and the play CLI can open, file and review a problem record, with tests for each truth case
-(a card without an incident, a standing fault, no problem) and for the anti-fishing limits; the RCA reply renders for
-a record; SPEC §10 and the Codex describe problem records; a three-scenario `npm run sweep:remote` shows the bands
-unchanged (bots file none).
-
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
 
-After RT-13, RT-14, RT-22 (and PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
+After RT-13, RT-14 and RT-22 (landed 2026-11-24; PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
 Q8a decides problem records (RT-22), Q8b the gating itself, including whether arming a forewarned fix needs proof. Per-card unlock claims and recipes (§5.2) in content;
 `visibleFixIds`/`armableEvents` require a filed diagnosis with a complete recipe; costs and limits of §5.4; hint
 ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a

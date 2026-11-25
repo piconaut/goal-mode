@@ -80,7 +80,7 @@ const GROUPS: Record<string, string[]> = {
 /** How much each mechanism group grew against the baseline, per transaction. Slower tasks hold their MXT or DBAT
  * slot longer (Little's law), so the queue also grows when something else slowed them; only the queue the work
  * would build at its unqueued service time (`outsideRef`) is the thread limit's own. */
-function groupExcess(parts: Record<string, number>, baseline: Record<string, number>): [string, number][] {
+export function groupExcess(parts: Record<string, number>, baseline: Record<string, number>): [string, number][] {
   const grew = (k: string) => (parts[k] ?? 0) - (baseline[k] ?? 0);
   return Object.entries(GROUPS).map(([g, keys]) => [g, keys.reduce((a, k) => a + grew(k), 0)]);
 }
