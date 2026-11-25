@@ -12,7 +12,7 @@ export function Projects({ v, game }: { v: ViewModel; game: GameHandle }) {
   const briefing = v.phase === 'BRIEFING';
   return (
     <>
-      <div className="help">Book engineer-hours during the briefing; each project takes several days and has a daily ceiling. Hours spent here are not there for firefighting.</div>
+      <div className="help">Book engineer-hours during the briefing; each project takes several days and has a daily ceiling. Hours spent here are not there for firefighting.{v.previewCtx.staffSurcharge ? ' A slow TSO makes hands-on changes cost more; planned project time is not surcharged.' : ''}</div>
       {v.projects.map((p) => {
         const left = Math.min(p.maxHoursPerDay - p.hoursToday, p.hours - p.hoursDone);
         return (

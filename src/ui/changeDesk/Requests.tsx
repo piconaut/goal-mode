@@ -27,6 +27,22 @@ export function PendingBanner({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
+/** Why hands-on work costs more while the team's own TSO is slow (PT-50), from the scenario's content goal. */
+export function SlowTsoBanner({ v }: { v: ViewModel }) {
+  const s = v.previewCtx.staffSurcharge;
+  if (!s) return null;
+  return (
+    <div className="banner">
+      <span>
+        <span className="tag bad">SLOW TSO</span> TSO has averaged {s.rtSec.toFixed(2)} s for {s.missedHours} hour
+        {s.missedHours === 1 ? '' : 's'} against the team’s {s.goalSec.toFixed(2)} s goal. Hands-on changes, fixes,
+        restarts and hardware orders cost <b>{s.mult}×</b> the engineer-hours until it recovers; project time is
+        planned and not surcharged. The WLMGL <b>TSO</b> row shows the response time and the goal.
+      </span>
+    </div>
+  );
+}
+
 export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
   const live = v.phase === 'LIVE';
   const planned = v.changes.filter((c) => c.status === 'PLANNED');
@@ -91,6 +107,7 @@ export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
 function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameHandle }) {
   const cancellable = c.status === 'PLANNED' && !(c.activateDay === v.day && v.phase !== 'BRIEFING');
   const refund = c.plannedDay === v.day ? `${c.hours}h back` : 'hours already spent';
+  const codHours = COD_DEACTIVATE_HOURS * (v.previewCtx.staffSurcharge?.mult ?? 1);
   return (
     <tr>
       <td className="change-label">
@@ -112,7 +129,7 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
           </button>
         )}
         {codDeactivatable(c, v.phase, v.day) && (
-          <button title={`End the On/Off CoD lease at 06:00 tomorrow (${COD_DEACTIVATE_HOURS}h)`} onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
+          <button title={`End the On/Off CoD lease at 06:00 tomorrow (${codHours}h)`} onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
             Deactivate tomorrow
           </button>
         )}
@@ -134,6 +151,7 @@ export function ChangeRequestBar({ desk, setBasket, game }: { desk: Desk; setBas
   const p = preview(v, { commands: ordered });
   const request = [
     p.emergency ? (p.trustCostEach > 0 ? `emergency: −${p.trustCostEach} trust each` : 'emergency') : 'planned: takes effect at 06:00',
+    ...(p.staffMult > 1 ? [`${p.staffMult}× slow TSO`] : []),
     ...(p.failRisk > 0 ? [`${(p.failRisk * 100).toFixed(0)}% fail risk (one roll)`] : []),
   ].join(' · ');
   return (

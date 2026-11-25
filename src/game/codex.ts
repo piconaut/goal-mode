@@ -9,6 +9,7 @@ export function codexDiscovered(run: RunState): string[] {
   const events = new Set(run.events.filter((e) => e.started).map((e) => e.defId));
   const flags = new Set<string>(run.tfpOffer ? ['TFP_OFFER'] : []);
   if (run.log.some((l) => l.includes(DB2_CONNECT_FAIL))) flags.add('DB2_CONNECT_FAIL');
+  if (run.tsoSlowSeen) flags.add('TSO_SLOW');
   return CODEX.filter(
     (e) =>
       e.discover.start ||

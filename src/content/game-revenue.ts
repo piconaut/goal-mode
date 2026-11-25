@@ -28,6 +28,9 @@ export const REVENUE_GAME = defineGame({
     // Event-added app: the same team that owns online filing (PT-49).
     PREFILL: 'Maya Chen (online filing)',
   },
+  // PT-50: the team's own TSO goal, the first period's average response aim (the 0.5 s of the shipped WLM class
+  // and IBM's TSO/E example). Not an SLA: a slow TSO costs hands-on engineer-hours, not trust.
+  internalGoal: { workloadId: 'TSO', avgRtSec: 0.5 },
   calendarFacts: [
     { id: 'deadline', text: 'Filing season runs to the deadline next month: e-filing climbs about 2 % a day until then, and the last week is the busiest of the year.' },
     { id: 'refunds', text: 'The refund file goes to the Treasury overnight and must be done before the morning cut-off: the status page is busiest the morning after each run.' },

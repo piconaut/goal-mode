@@ -22,6 +22,7 @@ export const ACTIVATE_PREVIEW = [{ kind: 'ACTIVATE_POLICY' } as Command];
 
 export const costText = (p: ChangePreview): string => {
   const parts = [`${p.hours}h`];
+  if (p.staffMult > 1) parts.push(`${p.staffMult}× slow TSO`);
   if (p.capex) parts.push(`$${Math.round(p.capex / 1000)}k`);
   if (p.emergency && p.trustCostEach > 0) parts.push(`EMERG −${p.trustCostEach} trust each`);
   if (p.failRisk > 0) parts.push(`${(p.failRisk * 100).toFixed(0)}% fail risk`);

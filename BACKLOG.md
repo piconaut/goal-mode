@@ -63,23 +63,6 @@ AORs" with a choice of regions). Each event registers a general operation that f
 effect, not on a card-specific fix id. Needs a design call, made together with RT-24 (D1): docs/rca-design.md §5.6
 limits which general operations may end a card.
 
-### PT-50 · A slow TSO costs the team engineer-hours
-`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
-
-Source: PT-21 (playtest round 2; design decided 2026-11-23, user). TSO and ADHOC have stakeholder `Internal` and SLA
-`NONE`, so capping them or making them discretionary frees CPU at no cost, which breaks the CLAUDE.md guardrail
-"every lever needs a cost". The real cost of a slow TSO falls on the people who use it, including the player's own
-sysprogs. Change: a game-rule response goal on TSO's first period in each scenario's content (not an SLA, no
-incident, no penalty in the SLA score). While its hour attainment misses over a sustained window (a tunable, e.g. two
-consecutive clock hours), operations that consume engineer-hours cost more (a `// FICTIONAL:` multiplier in
-`content/`), the Change Desk and operation dialogs show the surcharge and why, and the inbox gets one developer
-complaint per episode naming the TSO response time. The clue path: RMF WLMGL for the TSO class shows the response time
-against the goal. Also a Codex note on why TSO is usually first-period-short and importance-high in real policies.
-DEV batch stays free to starve: it runs on DEVT against its own Db2, and parking test jobs is what discretionary is
-for. Done when: a test where capping TSO past the window raises the engineer-hour cost and files one inbox item, and
-releasing it restores the price; the surcharge shows in the UI with its reason; SPEC (engineer-hours and §9) states
-the rule; the strategy bots' sweep (three scenarios) is recorded, since a bot that caps TSO now pays.
-
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
 

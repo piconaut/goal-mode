@@ -349,6 +349,12 @@ export interface RunState {
   toolTrials?: { id: string; untilDay: number }[];
   /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
   smfHours: SmfHour[];
+  /** The slow-internal-work episode already complained about (`day:hourOfDay` of its first missed hour, PT-50):
+   *  one inbox complaint per episode. It is cleared when a closed hour meets the goal, so a later episode complains
+   *  again. The surcharge itself is derived from `smfHours`, never from this marker. */
+  tsoEpisode?: string;
+  /** An internal-work episode has happened at least once in this run, for the Codex discovery (PT-50). */
+  tsoSlowSeen?: true;
   /** Daily capacity peaks so far (all days), and today's running peaks. */
   capacityDays: CapacityDay[];
   capacityToday: CapacityDay | null;
