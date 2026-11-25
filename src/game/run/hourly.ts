@@ -22,6 +22,7 @@ import {
   type RunState
 } from '../types';
 import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
+import { slowInternalOf } from '../staff';
 import { peersOf } from '../peerSlow';
 import { allWorkloads, isNewWorkload } from '../workloads';
 import { incidentSubjects } from '../evidence';
@@ -31,7 +32,7 @@ import { cpuAlternates } from '../sla';
 import type { GameContent } from './shared';
 import { addGroupedIncident } from './grouping';
 import { toolOn } from './shared';
-import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
+import { clampTrust, FACET_WEIGHT, facetOf, logLine, msg } from './shared';
 
 type OptionalHourFields = 'cicsStorage' | 'db2Contention';
 type ActiveHour = Required<Omit<HourAcc, OptionalHourFields>> & Pick<HourAcc, OptionalHourFields>;
@@ -420,5 +421,30 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
     ...(Object.keys(db2Rollbacks).length > 0 ? { db2RollbacksByLpar: db2Rollbacks } : {}),
   }].slice(-SMF_HOURS_KEPT);
-  return { ...r, trust, incidents, baselines, hourBaselines, smfHours, hour: newHour(r.sim.tick) };
+  r = { ...r, trust, incidents, baselines, hourBaselines, smfHours, hour: newHour(r.sim.tick) };
+  // A slow internal workload (PT-50): one inbox complaint per episode. The surcharge itself is derived from the
+  // hours just recorded; this marker only stops a repeat complaint, and a met hour clears it so a later episode
+  // complains again. It is not proof that the episode still runs.
+  const slow = slowInternalOf(r, content.internalGoal);
+  if (slow) {
+    if (r.tsoEpisode === undefined) {
+      const secs = (x: number) => `${x.toFixed(2)} s`;
+      const owner = content.appOwners?.[slow.workloadId] ?? `${slow.workloadId} users`;
+      r = { ...r, tsoEpisode: slow.key };
+      r = msg(
+        r,
+        owner,
+        `${slow.workloadId} response is slow`,
+        `${slow.workloadId} has averaged ${secs(slow.rtSec)} over the last hour, against the team's ${secs(slow.goalSec)} goal, for ${slow.missedHours} hours running. ` +
+          `While it lasts, hands-on changes, fixes and hardware orders cost ${slow.hoursMult}× the engineer-hours. ` +
+          `The WLMGL ${slow.workloadId} row shows the response time and the goal.`,
+      );
+      r = logLine(r, `${slow.workloadId} slow: ${secs(slow.rtSec)} average against a ${secs(slow.goalSec)} goal for ${slow.missedHours} h (engineer-hours ×${slow.hoursMult})`);
+    }
+    if (!r.tsoSlowSeen) r = { ...r, tsoSlowSeen: true };
+  } else if (r.tsoEpisode !== undefined) {
+    const { tsoEpisode: _ended, ...rest } = r;
+    r = rest;
+  }
+  return r;
 }

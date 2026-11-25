@@ -23,7 +23,7 @@ const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https:
 const WLM_SERVICES_SMF99: CodexSource = { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, receivers, donors, net value, priority unbunching (pp. 137–139)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=137' };
 const WLM_GUIDE_PA: CodexSource = { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), §2.3.2 policy adjustment (pp. 59–60)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=59' };
 /** Run milestones that reveal entries (not events or tools). */
-export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL';
+export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL' | 'TSO_SLOW';
 
 const MLC_CAPPING: CodexSource = { label: 'IntelliMagic (John Baker), MLC Capping 101', url: 'https://www.intellimagic.com/?p=7302' };
 const HORNE: CodexSource = {
@@ -525,6 +525,18 @@ export const CODEX: CodexEntry[] = [
     body: 'A batch job running TSO DSN under IKJEFT01 connects to a Db2 subsystem on the z/OS image where it runs. A job without system affinity starts wherever an initiator for its class is free, and nothing in that choice checks for Db2. If the image has no Db2, DSN has no subsystem to attach to: the connect fails and makes no more attempts (modelled as DSNE100I ssid NOT OPERATIONAL, RETRY COUNT IS ZERO, the message the book documents for a named ssid that is not active; APPROX, because an image with no Db2 defined may report a slightly different connect error). The job ends without doing its work, its successors stay held, and it needs a rerun. The clue is in the Operations log: which job, on which system. Fix: take that job class\'s initiators off the image without Db2, then restart the job. In an RCA the mechanism is JOB_FAILURE and the trigger POLICY (the initiator setup sent it there).',
     sources: [{ label: 'IBM Db2 13 for z/OS Messages, DSNE100I (p.140)', url: 'https://www.ibm.com/docs/en/db2-for-zos/13?topic=messages-dsne100i' }],
     discover: { flags: ['DB2_CONNECT_FAIL'] },
+  },
+  {
+    id: 'tso-goals',
+    title: 'Why TSO gets a short, important first period',
+    category: 'WLM',
+    body: 'TSO is interactive: someone is waiting at a terminal after every Enter, so response time is felt directly, and a slow screen costs the team the time it spends waiting. IBM\'s sample TSO/E service class shows the usual shape: period 1 aims at 85 % of commands within 0.5 s at importance 1 for 400 service units, period 2 at 80 % within 1 s at importance 3, and period 3 at 60 % within 15 s at importance 4. The short first period keeps short commands under the tight goal; a long edit or compile ages into a looser period instead of competing with them for CPU, and the high importance protects the terminal work when the machine is short. IBM recommends response-time goals for TSO rather than velocity goals because the transactions are short and numerous. In GOAL MODE the team\'s own TSO goal is a game rule in the scenario content, not a customer SLA: while the last two clock hours miss it, hands-on engineer-hours cost 1.5×, and one inbox complaint per episode names the response time. The WLMGL TSO class row shows the response time against its goal.',
+    sources: [
+      { label: 'z/OS 3.1 MVS Planning: Workload Management (SC34-2662), PDF p.71–72 (printed 51–52): example TSO/E service class with three periods', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=71' },
+      { label: 'IBM Redbook SG24-6472-03, System Programmer\'s Guide to: Workload Manager (Mar 2008), PDF p.236–237 (printed 218–219): TSO is interactive; response-time goals recommended', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=236' },
+      { label: 'z/OS 3.1 RMF Report Analysis (SC34-2665), PDF p.523 (printed 483): the WLMGL Service Class Period report prints the goal and the actual response distribution', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=523' },
+    ],
+    discover: { flags: ['TSO_SLOW'] },
   },
 ];
 

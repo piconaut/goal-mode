@@ -32,6 +32,9 @@ export const HARBOURLINE_GAME = defineGame({
     ADHOC: 'Ingrid Larsen (finance analytics)',
     TSO: 'Peter Novak (development)',
   },
+  // PT-50: the team's own TSO goal, the first period's average response aim (the 0.5 s of the shipped WLM class
+  // and IBM's TSO/E example). Not an SLA: a slow TSO costs hands-on engineer-hours, not trust.
+  internalGoal: { workloadId: 'TSO', avgRtSec: 0.5 },
   calendarFacts: [
     { id: 'trading', text: 'Trading days burst around the 09:30 open and again before the 16:00 close, and the floor notices every slow second.' },
     { id: 'payday', text: 'Paydays are the 1st and the 15th: card spending and mobile banking both jump, and the contact centre hears about it the next morning.' },
