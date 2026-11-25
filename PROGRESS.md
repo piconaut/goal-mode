@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-25: Design doc for a five-day guided prologue with an outgoing mentor ([docs/prologue-design.md](docs/prologue-design.md)); supersedes P2; awaiting the user's answers to its §14.
 - 2026-11-24: PT-50 a slow TSO costs the team engineer-hours: each scenario's content gives TSO's first period an average 0.5 s goal (not an SLA), and when the newest two clock hours miss it every hands-on change, fix, restart, hardware order and CoD deactivation costs 1.5×; the Change Desk banner and cost labels say why, one developer complaint per episode names the response time and the goal (the WLMGL TSO row), and the price returns when the newest hours meet it. Project time and inquiries are planned, not hands-on, and are not surcharged. Coefficients FICTIONAL in `content/staff.ts`; compare: no differences; goldens regenerated for the scripted capped run's complaint and Codex marker; three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45524183792, 45524184079, 45524184330): Midwest 16.5 / 28 / 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
 - 2026-11-24: PT-51 Midwest models CPU-paced DDF reader cohorts on the shared settlement partition. CS/RR readers can delay conflicting online work and all-class drains, UR readers affect drains, and Db2 accounting, statistics and blocker pins expose the separate waits and the holder. [PR #488](https://github.com/piconaut/goal-mode/pull/488)
 - 2026-11-24: PT-51 research verified WLM chronic-contention promotion, Db2 read claims under CS/UR/RR, and accounting, statistics and blocker diagnostics. PT-51 is ready with scoped DDF lock and utility drain models and a holder clue path.
@@ -134,18 +135,10 @@ Cost or trade-off: the estimate tells the player *when* a peak happened, so capp
 night-briefing artefact, not a live gauge, so the player still has to go and find the cause. Validation: reader-bot
 sweeps should show fewer cost-driven losses. That is acceptable if expert results don't move.
 
-**P2. Full-day guided tutorial.** Today's day-1 tutorial (`src/game/tutorial.ts`, `src/ui/Tutorial.tsx`) has 6
-stages and one judged step (F1: Db2 below its clients). Proposal: a separate "Guided day" scenario mode on Midwest seed
-1, with scripted events at fixed times, in the order a non-expert should learn the reports:
-1. 06:00 morning check: SYSINFO → WLMGL (read a PI, find the red class);
-2. 09:30 CPU contention: DELAY → PROCU, then fix it with a classification change through the Change Desk;
-3. 12:00 Db2 dependency (F1, the existing judged step);
-4. 14:00 a CICS short-on-storage message: Ops Console → SMF CICS storage → EDSALIM or MXT;
-5. 17:00 batch window: critical path and initiators;
-6. night: read the bill (ties in with P1).
-Each step is data in `src/content/` (trigger, the report to open, a success predicate over existing state, a hint
-ladder). Steps never auto-fix anything, and every step accepts more than one valid fix. Cost: about 2–3 PRs (content
-and engine, UI, playtests). Risk: the scripted events must not leak into normal runs (a separate scenario flag).
+**P2. Guided prologue (the shadow week).** Superseded on 2026-11-25 by
+[docs/prologue-design.md](docs/prologue-design.md): five scripted days on a replayed QA clone with a retiring mentor,
+an empty deck, pauses at fixed beats, four RCAs with less help each time, then Day 1 as today. Proposed BACKLOG list
+`prologue` (PRO-01 … PRO-06) once the user answers the doc's §14.
 
 **P3. M9 simplified mode.** Requirements are already listed under M9 below. Suggested order, each step on
 `feature/simplified-mode`:
