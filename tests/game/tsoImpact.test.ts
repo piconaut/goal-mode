@@ -39,6 +39,8 @@ describe('slow internal work (PT-50)', () => {
     expect(one).toBeNull();
     const two = slowInternalOf({ ...fresh(), smfHours: [tsoHour(0, 10, 1.2), tsoHour(0, 11, 1.4)] }, content.internalGoal);
     expect(two).toMatchObject({ key: '0:10', workloadId: 'TSO', missedHours: 2, rtSec: 1.4, goalSec: 0.5, hoursMult: 1.5 });
+    // An hour exactly at the goal meets it: only an average over the goal is a miss.
+    expect(slowInternalOf({ ...fresh(), smfHours: [tsoHour(0, 10, 1.2), tsoHour(0, 11, 0.5)] }, content.internalGoal)).toBeNull();
     // A met hour at the end ends the episode: the cost is derived from the newest hours, never a stored flag.
     expect(slowInternalOf({ ...fresh(), smfHours: [tsoHour(0, 10, 1.2), tsoHour(0, 11, 0.1)] }, content.internalGoal)).toBeNull();
     // The window is consecutive clock hours: a gap (here the 11:00 hour is missing) resets it.
