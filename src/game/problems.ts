@@ -11,7 +11,7 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import { judgeGroupEvidence, smfHourEndTick } from './evidence';
 import { clampTrust, facetOf, logLine } from './run/shared';
 import { spendHours } from './run/changes';
-import { creditedEpisode } from './run/rca';
+import { creditedEpisode, episodeOf } from './run/rca';
 import { allWorkloads } from './workloads';
 import { EVIDENCE, PROOF } from '../content/evidence';
 import { MECHANISMS, TRIGGERS, scoreAccepted } from './sla';
@@ -441,12 +441,12 @@ export function fileProblemDiagnosis(
     ?? record.candidates.find((c) => c.truth.accepted.triggers.includes(trigger))
     ?? (record.candidates[0] as ProblemCandidate | undefined);
   const cause = matching?.truth.cause ?? record.truth.cause;
-  const episode = {
+  const episode = episodeOf(run, {
     cause,
     day: matching?.day ?? record.window.day,
     startTick: matching?.startTick ?? record.window.fromTick,
     endTick: matching?.endTick ?? record.window.toTick,
-  };
+  });
   const duplicateOf = points > 0 ? creditedEpisode(run, episode) : null;
   const group = matching ? [candidateIncident(record, matching)] : [];
   const verdicts = group.length > 0 && pins.length > 0 ? judgeGroupEvidence(run, scenario, group, pins) : [];

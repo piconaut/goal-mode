@@ -7,7 +7,7 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { cardMechanisms } from '../../src/content/footprint';
 import { PROBLEM } from '../../src/content/rca';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
-import { creditedEpisode } from '../../src/game/run/rca';
+import { creditedEpisode, episodeOf } from '../../src/game/run/rca';
 import { sameEpisode } from '../../src/game/run/grouping';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { applyCommands } from '../../src/sim/core/commands';
@@ -354,6 +354,16 @@ describe('problem records (RT-22)', () => {
     expect(sameEpisode(ep('none:CPU:PROD1', 0, 9, 10), ep('none:CPU:PROD1', 0, 12, 13))).toBe(true);
     expect(sameEpisode(ep('none:CPU:PROD1', 0, 9, 10), ep('none:CPU:PROD1', 0, 13, 14))).toBe(false);
     expect(sameEpisode(ep('REGRESSION@0', 0, 9, 10), ep('REGRESSION@0', 1, 6, 7))).toBe(false);
+    // A standing fault's hourly quiet hours chain into one episode, even when the first and last are hours apart.
+    const truth = truthOf('IO', 'POLICY', { cause: 'none:IO:30' });
+    const hourly = Array.from({ length: 5 }, (_, i) => fact('RBANK', truth, { day: 0, hourOfDay: 9 + i, startTick: (9 + i) * H, endTick: (10 + i) * H }));
+    const run = quiet({ quietHours: hourly });
+    const chained = episodeOf(run, ep('none:IO:30', 0, 9, 10));
+    expect(chained).toMatchObject({ startTick: 9 * H, endTick: 14 * H });
+    expect(episodeOf(run, ep('none:IO:30', 0, 13, 14))).toMatchObject({ startTick: 9 * H, endTick: 14 * H });
+    // A gap of more than GROUP_FOLLOW_HOURS starts a separate episode.
+    const gap = quiet({ quietHours: [...hourly, fact('RBANK', truth, { day: 0, hourOfDay: 17, startTick: 17 * H, endTick: 18 * H })] });
+    expect(episodeOf(gap, ep('none:IO:30', 0, 17, 18))).toMatchObject({ startTick: 17 * H, endTick: 18 * H });
   });
 
   it('does not count a wrong prior RCA as the cause', () => {

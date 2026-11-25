@@ -13,7 +13,9 @@ import {
   type Trigger
 } from '../types';
 import { mapTrust } from './shared';
-import { sameEpisode } from './grouping';
+import { GROUP_FOLLOW_HOURS, sameEpisode } from './grouping';
+import { fallbackCause } from '../rcaTruth';
+import { TICKS_PER_HOUR } from '../../sim/core/units';
 
 /** The incident whose RCA covers this one (itself unless linked to an earlier same-cause incident that day). */
 export function rcaLeadId(inc: Incident): number {
@@ -117,12 +119,44 @@ export function rcaAnswerText(
   return `Mechanism ${mechanism} ${accepted.mechanisms.includes(mechanism) ? 'accepted' : 'not accepted'}, trigger ${triggerLabel(trigger)} ${accepted.triggers.includes(trigger) ? 'accepted' : 'not accepted'}${primary}`;
 }
 
+/** Expand a cause episode through the run's quiet hours and incidents of the same cause, chaining back-to-back
+ *  hours into one episode (RT-22): a standing fault's 09:00–14:00 quiet hours are one episode even though the first
+ *  and last hours are more than `GROUP_FOLLOW_HOURS` apart. A card cause is one episode for a played day. */
+export function episodeOf(run: RunState, seed: CauseEpisode): CauseEpisode {
+  if (!fallbackCause(seed.cause)) return seed;
+  const intervals: { start: number; end: number }[] = [{ start: seed.startTick, end: seed.endTick ?? run.sim.tick }];
+  for (const f of run.quietHours ?? []) {
+    if (f.day === seed.day && f.truth.cause === seed.cause) intervals.push({ start: f.startTick, end: f.endTick });
+  }
+  for (const i of run.incidents) {
+    if (i.day === seed.day && i.truth.cause === seed.cause) intervals.push({ start: i.startTick, end: i.endTick ?? run.sim.tick });
+  }
+  let start = seed.startTick;
+  let end = seed.endTick ?? run.sim.tick;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const x of intervals) {
+      const follow = GROUP_FOLLOW_HOURS * TICKS_PER_HOUR;
+      if (x.start > end + follow || x.end < start - follow) continue;
+      if (x.start < start || x.end > end) {
+        start = Math.min(start, x.start);
+        end = Math.max(end, x.end);
+        changed = true;
+      }
+    }
+  }
+  return { cause: seed.cause, day: seed.day, startTick: start, endTick: end };
+}
+
 /** The incident or problem record that already earned this cause episode, or null. One episode pays once: an RCA and a
  * record filing of the same §4.5 episode earn between them, while a later episode of the same cause is new. */
 export function creditedEpisode(run: RunState, episode: CauseEpisode): number | null {
-  const inc = run.incidents.find((i) => (i.rca?.points ?? 0) > 0 && sameEpisode({ cause: i.truth.cause, day: i.day, startTick: i.startTick, endTick: i.endTick }, episode));
+  const target = episodeOf(run, episode);
+  const inc = run.incidents.find((i) => (i.rca?.points ?? 0) > 0
+    && sameEpisode(episodeOf(run, { cause: i.truth.cause, day: i.day, startTick: i.startTick, endTick: i.endTick }), target));
   if (inc) return inc.id;
-  const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.points > 0 && sameEpisode(f.episode, episode)));
+  const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.points > 0 && sameEpisode(episodeOf(run, f.episode), target)));
   return rec?.id ?? null;
 }
 
