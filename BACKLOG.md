@@ -40,6 +40,7 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
 | `balance` | BL | Balance tuning: bot bands, scenario difficulty, sweep regressions. Main agent only (CLAUDE.md) |
 | `cleanup` | CL | Refactors and tooling tidy-ups with no behaviour change (prove it with `npm run compare`) |
+| `prologue` | PRO | The optional guided prologue, the shadow week (docs/prologue-design.md) |
 
 ## playtest-fixes
 
@@ -266,3 +267,159 @@ workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE
 strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
+
+## prologue
+
+Source: [docs/prologue-design.md](docs/prologue-design.md) (merged in #490; user decisions in its §14). The prologue
+is the optional scenario `midwest-prologue`, on the Midwest plant as is. Hard rule for every entry: no change to
+goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare --base origin/dev` and the Midwest and
+Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
+design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
+
+### PRO-01 · A scenario's calendar can start on another day of the month
+`list: prologue · status: ready · priority: high · size: M · area: sim`
+
+`clockAt` hard-wires a run's first Monday to the 3rd of a 30-day month (`src/sim/core/clock.ts`,
+`dayOfMonth: ((calendarDay + 2) % 30) + 1`).
+- Add `monthDayAtStart?` to the sim `Scenario` (default 3) and pass it to every reader of `dayOfMonth` (arrivals'
+  payday and month-end multipliers, the batch network's month-end volumes, `closeMonth` in `tick/control.ts`, the MLC
+  month fraction, the game layer's callers).
+- Weekday arithmetic is unchanged, so day 0 stays a Monday.
+- This is a sim change with no behaviour change: goldens untouched, no "Behaviour change" note, no sweep. Prove it
+  with `npm run compare` (exit 0) and the bench hashes.
+
+Done when:
+- `npm run compare --base origin/dev` reports no difference, and the Midwest and Harbourline bench hashes match the
+  base;
+- a unit test shows that with 26, day 0 is Monday the 26th, day 3 has the month-end multiplier, day 4's night closes
+  the month and writes a bill, and the tick after midnight is Saturday the 1st with the payday multiplier.
+
+### PRO-02 · Prologue engine: scheduled cards, starting state, tutorial state, stop ticks
+`list: prologue · status: ready · priority: high · size: L · area: game`
+
+The game-layer engine from design doc §11.1–§11.3 and §11.6, with no content beyond a two-beat test script.
+- **Content types:**
+  - `GameContent.scheduledCards?` (`{ card, day, at, durationHours?, severity? }`, existing `EventDef`s; a run with
+    it draws nothing from the deck);
+  - `startingCommands?` (applied at run creation like `startingFixes`);
+  - `startingCost?` (a seeded month-to-date `CostState`);
+  - `prologue?`.
+  All are absent on the three scenarios.
+- **Run state and commands:**
+  - `RunState.tutor` (`chapter, beat, step, done, hintsUsed, refiles, notes, undoBase`), absent on normal runs;
+  - the game commands `TUTOR_NOTE { kind, ref }` and `TUTOR_ACK`, with no sim effect.
+- **Steps:**
+  - named predicates in `src/game/tutor/predicates.ts`;
+  - beats as stop ticks in `advance` (speed set to 0 at the beat; speed isn't sim state);
+  - condition beats checked at the existing incident boundaries.
+- **Prologue-only rules**, gated on `content.prologue`: one RCA refile; a trust floor with the loss conditions
+  disabled; a scripted change failure (the first change in a named beat fails, overriding the roll); the back-out list
+  (the end state's configuration against the canonical Day 1 state, one line per difference, fixed order).
+- **Registration:** a `PROLOGUE_SCENARIOS` map, not `SCENARIOS`.
+- **Headless:** `play new --scenario midwest-prologue` and `play tutor [ack | note <kind> <ref> | hint]`.
+
+Done when:
+- compare and bench hashes are unchanged;
+- tests cover:
+  - the test script's beats stop at their ticks;
+  - a scheduled card starts at its tick with its footprint and RCA truth as a drawn card would;
+  - `startingCommands` and `startingCost` apply;
+  - each prologue-only rule;
+  - the back-out list (empty for an unchanged run, one line per changed setting);
+  - `SCENARIOS` has no prologue entry, and a Midwest run's state has no `tutor` field;
+- `docs/tools.md` lists the new `play tutor` commands.
+
+### PRO-03 · Prologue UI shell: mentor panel, spotlight, anchors, date, entry point
+`list: prologue · status: blocked: after PRO-02 · priority: high · size: L · area: ui`
+
+Design doc §6 and §11.4.
+- **Panel and spotlight:**
+  - `src/ui/tutor/` with `MentorPanel.tsx` (bottom right; bottom sheet at phone width; Hint, Next, Skip step;
+    minimisable), `Spotlight.tsx` and `anchors.ts`;
+  - the spotlight opens the tab and Change Desk section, scrolls to the target and moves focus to it, and never
+    blocks clicks.
+- **Hints:** the three-rung ladder (nudge, pointer, show me), where show me fills the Change Desk draft without
+  submitting it.
+- **Top bar:** "Mon 26 · Shadow week" in place of "Day N / 40" while the prologue runs.
+- **New-run screen:** "Shadow week with Ruth (recommended, ~70 min)" / "Go straight to Day 1", skip and leave
+  controls, and a chapter list after a first finish or skip.
+- **Accessibility:** the outline is not colour alone, the panel is an ARIA live region, and no new single-key
+  shortcuts.
+- The day-1 corner tutorial (`src/ui/Tutorial.tsx`) stays as it is.
+
+Done when the test script from PRO-02 plays end to end in the browser at desktop and phone width, with no horizontal
+page scroll, and a render test asserts each test step's target anchor is on screen in that step's state.
+
+### PRO-04 · Prologue Mon 26 and Tue 27, with the DDFLIMIT flaw
+`list: prologue · status: blocked: after PRO-01, PRO-03 · priority: high · size: L · area: content`
+
+Design doc §3.4, §5.1, §5.2.
+- **Content:** `src/content/prologue/` (`game-prologue.ts`, `flaw.ts`, `schedule.ts`, `script.ts`, `tuning.ts`), with
+  `monthDayAtStart: 26`.
+- **The flaw:** BASEPOL plus the DDFLIMIT resource group on DDFPRD, its maximum `// FICTIONAL:`, tuned so that
+  Monday's mobile peak runs warm with no SLA breach and Tuesday's scheduled `CAMPAIGN` (11:00) breaks MOBILE while
+  PROD2 has room.
+- **Beats:** M1–M6 and T1–T6, with their predicates (`ddfCapRelieved`, the ride-it-out route carried into Wednesday's
+  briefing) and the draft without the MENTOR perk.
+- **Codex:** notebook pages for Mon and Tue, and a check that the resource groups entry has its own source.
+- **Mentor text:** RCA #1 is written against the truth engine's actual answer and accepted set, not assumed.
+
+Done when, for the two days, tests show:
+- **do-nothing:** Monday has no incident and DDFPRD is warm with CAP delay; Tuesday's incident opens in T3's window,
+  with the truth and accepted set equal to the script's `expect`;
+- **reference:** every step completes, ≥ 2 engineer-hours are left each day, and the policy equals BASEPOL after the
+  fix;
+- **alternatives:** the cap raised, and ride it out;
+- **coverage and anchors** pass for these beats.
+
+### PRO-05 · Prologue Wed 28 and Thu 29: cooling fault, CICS SOS, undo beats, seeded bill
+`list: prologue · status: blocked: after PRO-04 · priority: high · size: L · area: content`
+
+Design doc §5.3, §5.4, §8.4.
+- **Wednesday:** beats W1–W6 and H1–H5, with `POWER_CAP` at 12:00 and the scripted failure on the first change in
+  W4.
+- **Thursday:** `CICS_SOS` at 10:00 on the PROD2 AORs, and the Ask around reply scripted for ~09:30.
+- **Undo beats:** W5 and H3, each either an emergency change now or a normal change in the next briefing, carried
+  into H1 or F1.
+- **Ruth's cost-centre tools:** `TOOL_TRIAL` with an expiry when the player is short of Insight.
+- **The seeded month-to-date cost state** (`cost.ts`, `// FICTIONAL:`): the 1st–25th with a peak a little below the
+  campaign afternoon's, under the opex budget.
+
+Done when the do-nothing, reference and alternative playthroughs hold for these days:
+- incidents open in their windows, with truth equal to `expect`;
+- every alternative fix reaches its undo beat exactly when it should;
+- RCA #3's planted DASD pin is judged "not about the work";
+- after the reference undos, the LPAR profiles, CICS settings and routing equal their start-of-day values.
+
+### PRO-06 · Prologue Fri 30 and the handover; rewards
+`list: prologue · status: blocked: after PRO-05 · priority: high · size: L · area: content`
+
+Design doc §5.5, §8.2, §8.3, §3.2.
+- **Friday:** `RUNAWAY` at 09:30 (solo, hint ladder, AIOps hypothesis) and `JOB_ABEND` at ~01:40 with Ruth's alert
+  and the automation rule.
+- **The bill (F6):** read from the bill's own data. The peak is set by the week or held by the seed.
+- **The handover (F7):**
+  - the handover note, with the back-out list and the "never got round to" list naming only F6 and F9 (design §3.2,
+    so Story's Day 1 message stays consistent);
+  - Ruth's notebook in the Codex;
+  - the transition to the new-run screen.
+- **Rewards:** 50 career XP once (`src/content/career.ts`), Ruth's terminal (amber theme in `ThemeToggle` and
+  `styles.css`, passing the existing contrast checks) and Ruth's pager (an alert sound in `sound.ts`). The two
+  cosmetics are viewer preferences unlocked by finishing.
+
+Done when:
+- the full five-day reference playthrough ends with an empty back-out list and a bill;
+- the do-nothing run's bill moves the peak as design §8.4 says;
+- the §9 coverage test passes for every tab and section;
+- the XP is awarded once;
+- a normal run started afterwards is identical to one started without the prologue (state hash at day 0).
+
+### PRO-07 · Prologue playtests and fixes
+`list: prologue · status: blocked: after PRO-06 · priority: high · size: M · area: tooling`
+
+- Add an intern persona brief: knows JCL and SDSF, never owned a WLM policy, experience of other platforms.
+- Play all five chapters headlessly with it, recording each step where it got lost.
+- Run one human playtest with `docs/playtest-checklist.md`, writing it up in `docs/playtests/`.
+- File findings as `playtest-fixes` entries. Fix the small ones in this PR.
+
+Done when both playtests are written up, and every finding is fixed or filed.
