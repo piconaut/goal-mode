@@ -316,6 +316,8 @@ The game-layer engine from design doc §11.1–§11.3 and §11.6, with no conten
   disabled; a scripted change failure (the first change in a named beat fails, overriding the roll); the back-out list
   (the end state's configuration against the canonical Day 1 state, one line per difference, fixed order).
 - **Registration:** a `PROLOGUE_SCENARIOS` map, not `SCENARIOS`.
+- **Chapter start states:** replayed from a reference command log in `tests/fixtures/prologue/`, not stored saves
+  (design §6.5, §11.6), so skip, replay and put it back start from them.
 - **Headless:** `play new --scenario midwest-prologue` and `play tutor [ack | note <kind> <ref> | hint]`.
 
 Done when:
@@ -326,6 +328,7 @@ Done when:
   - `startingCommands` and `startingCost` apply;
   - each prologue-only rule;
   - the back-out list (empty for an unchanged run, one line per changed setting);
+  - a chapter start state replays from its command log (the same state hash on two replays);
   - `SCENARIOS` has no prologue entry, and a Midwest run's state has no `tutor` field;
 - `docs/tools.md` lists the new `play tutor` commands.
 
@@ -345,6 +348,8 @@ Design doc §6 and §11.4.
   controls, and a chapter list after a first finish or skip.
 - **Accessibility:** the outline is not colour alone, the panel is an ARIA live region, and no new single-key
   shortcuts.
+- **Put it back:** Ruth's offer after a change that breaks the system badly reloads the chapter's start state (a
+  reload, not an undo of the sim; design §6.4, §11.4).
 - The day-1 corner tutorial (`src/ui/Tutorial.tsx`) stays as it is.
 
 Done when the test script from PRO-02 plays end to end in the browser at desktop and phone width, with no horizontal
@@ -361,6 +366,8 @@ Design doc §3.4, §5.1, §5.2.
   PROD2 has room.
 - **Beats:** M1–M6 and T1–T6, with their predicates (`ddfCapRelieved`, the ride-it-out route carried into Wednesday's
   briefing) and the draft without the MENTOR perk.
+- **Monday we watch:** on Mon 26 the Change Desk's submit buttons say "Monday we watch" while the draft still works
+  (design §5.1, §6.4).
 - **Codex:** notebook pages for Mon and Tue, and a check that the resource groups entry has its own source.
 - **Mentor text:** RCA #1 is written against the truth engine's actual answer and accepted set, not assumed.
 
