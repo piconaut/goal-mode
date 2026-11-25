@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { previewChange } from '../../src/game/catalog';
-import { advance, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
+import { advance, deactivateCod, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { slowInternalOf } from '../../src/game/staff';
 import type { HourAcc, RunState, SmfHour } from '../../src/game/types';
@@ -86,6 +86,19 @@ describe('slow internal work (PT-50)', () => {
     const second = closeHour({ ...again, sim: { ...again.sim, tick: 7 * TICKS_PER_HOUR }, hour: closingHour(1.2) }, MIDWEST, content);
     expect(slowInternalOf(second, content.internalGoal)).toMatchObject({ key: '0:11', missedHours: 2 });
     expect(second.inbox.filter((m) => m.subject === 'TSO response is slow')).toHaveLength(2);
+  });
+
+  it('charges 1.5x for an On/Off CoD deactivation during an episode', () => {
+    let r = requestChange(fresh(), content, { label: 'CoD', hardwareId: 'COD_CP' }).run;
+    r = startDay(r, content);
+    const cod = r.changes.find((c) => c.opexPerDay > 0 && c.status === 'APPLIED')!;
+    const slow = { ...r, smfHours: [tsoHour(0, 6, 1.2), tsoHour(0, 7, 1.2)] };
+    const out = deactivateCod(slow, cod.id);
+    expect(out.ok, out.message).toBe(true);
+    expect(out.message).toContain('0.75h');
+    expect(out.run.hoursLeft).toBeCloseTo(slow.hoursLeft - 0.75);
+    // No episode: the base 0.5 h.
+    expect(deactivateCod(r, cod.id).run.hoursLeft).toBeCloseTo(r.hoursLeft - 0.5);
   });
 
   it('raises the price after a real DEVT cap and restores it when the cap is released', () => {
