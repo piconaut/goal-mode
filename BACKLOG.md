@@ -95,7 +95,7 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
   findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
-  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1: RT-22 (problem records) landed 2026-11-24; RT-24 waits for Q8b.
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1: RT-22 (problem records) landed 2026-11-25; RT-24 waits for Q8b.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
@@ -155,7 +155,7 @@ IO/HARDWARE_FAULT.
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
 
-After RT-13, RT-14 and RT-22 (landed 2026-11-24; PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
+After RT-13, RT-14 and RT-22 (landed 2026-11-25; PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
 Q8a decides problem records (RT-22), Q8b the gating itself, including whether arming a forewarned fix needs proof. Per-card unlock claims and recipes (§5.2) in content;
 `visibleFixIds`/`armableEvents` require a filed diagnosis with a complete recipe; costs and limits of §5.4; hint
 ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a
