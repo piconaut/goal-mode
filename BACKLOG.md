@@ -272,7 +272,7 @@ only the new doc and links to it, and the review header strings are unchanged.
 
 Source: [docs/prologue-design.md](docs/prologue-design.md) (merged in #490; user decisions in its §14). The prologue
 is the optional scenario `midwest-prologue`, on the Midwest plant as is. Hard rule for every entry: no change to
-goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare --base origin/dev` and the Midwest and
+goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare -- --base origin/dev` and the Midwest and
 Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
 design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
 
@@ -289,7 +289,7 @@ design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` che
   with `npm run compare` (exit 0) and the bench hashes.
 
 Done when:
-- `npm run compare --base origin/dev` reports no difference, and the Midwest and Harbourline bench hashes match the
+- `npm run compare -- --base origin/dev` reports no difference, and the Midwest and Harbourline bench hashes match the
   base;
 - a unit test shows that with 26, day 0 is Monday the 26th, day 3 has the month-end multiplier, day 4's night closes
   the month and writes a bill, and the tick after midnight is Saturday the 1st with the payday multiplier.
