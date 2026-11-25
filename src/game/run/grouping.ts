@@ -11,7 +11,7 @@
 
 import { TICKS_PER_HOUR } from '../../sim/core/units';
 import { fallbackCause } from '../rcaTruth';
-import type { Incident } from '../types';
+import type { CauseEpisode, Incident } from '../types';
 
 /** How long after a fallback-caused incident ends a later one of the same cause still joins its group. */
 export const GROUP_FOLLOW_HOURS = 2;
@@ -19,17 +19,25 @@ export const GROUP_FOLLOW_HOURS = 2;
 /** What grouping and the group's lead need from an incident: a new one has no `rcaGroup` yet. */
 export type CausedIncident = Pick<Incident, 'day' | 'startTick' | 'endTick' | 'truth'>;
 
-/** Whether two incidents share one root cause and therefore one RCA (§4.5). */
-export function sameCause(a: CausedIncident, b: CausedIncident): boolean {
-  const ca = a.truth.cause;
-  const cb = b.truth.cause;
+/** Whether two cause episodes share one root cause and therefore one payment (§4.5): a card is one episode for a
+ *  played day, a fallback cause only while its hours overlap or follow within `GROUP_FOLLOW_HOURS`, and no episode
+ *  crosses the 06:00 roll. */
+export function sameEpisode(a: CauseEpisode, b: CauseEpisode): boolean {
   // One RCA per played day, so a group never crosses the 06:00 roll: an incident left open there is closed and the
   // new day's continuation is written up on its own.
-  if (ca !== cb || a.day !== b.day) return false;
-  if (!fallbackCause(ca)) return true;
+  if (a.cause !== b.cause || a.day !== b.day) return false;
+  if (!fallbackCause(a.cause)) return true;
   // Overlap, or follow within GROUP_FOLLOW_HOURS: an incident still open overlaps any later one.
   const [first, later] = a.startTick <= b.startTick ? [a, b] : [b, a];
   return first.endTick === null || later.startTick <= first.endTick + GROUP_FOLLOW_HOURS * TICKS_PER_HOUR;
+}
+
+/** Whether two incidents share one root cause and therefore one RCA (§4.5). */
+export function sameCause(a: CausedIncident, b: CausedIncident): boolean {
+  return sameEpisode(
+    { cause: a.truth.cause, day: a.day, startTick: a.startTick, endTick: a.endTick },
+    { cause: b.truth.cause, day: b.day, startTick: b.startTick, endTick: b.endTick },
+  );
 }
 
 /**

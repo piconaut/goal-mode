@@ -1,4 +1,5 @@
-// One incident's root-cause form: mechanism, trigger and the pinned evidence to submit. Split from `Overlays.tsx` (CL-38).
+// The diagnosis form shared by an incident's RCA and a problem record (RT-22): mechanism, trigger and the pinned
+// evidence to submit. Split from `Overlays.tsx` (CL-38); the problem-record card lives in `Problems.tsx`.
 
 import { useState } from 'react';
 import { EVIDENCE } from '../../content/evidence';
@@ -9,7 +10,15 @@ import type { Mechanism, Trigger } from '../../game/types';
 import type { ViewModel } from '../../game/view';
 import type { GameHandle } from '../useGame';
 
-export function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; label: string; hypotheses: Hypothesis[]; v: ViewModel; game: GameHandle }) {
+export function DiagnosisForm({ label, hypotheses = [], v, submit, submitLabel = 'Submit', note, disabled = false }: {
+  label: string;
+  hypotheses?: Hypothesis[];
+  v: ViewModel;
+  submit: (mechanism: Mechanism, trigger: Trigger, evidenceIds: number[]) => void;
+  submitLabel?: string;
+  note?: string;
+  disabled?: boolean;
+}) {
   const [m, setM] = useState<Mechanism>('CPU_PRIORITY');
   const [t, setT] = useState<Trigger>('POLICY');
   const [ev, setEv] = useState<number[]>([]);
@@ -28,8 +37,16 @@ export function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: nu
             <option key={x}>{x}</option>
           ))}
         </select>
-        <button onClick={() => game.send({ type: 'RCA', incidentId, mechanism: m, trigger: t, evidenceIds: ev })}>Submit{ev.length ? ` with ${ev.length} evidence` : ''}</button>
+        <button disabled={disabled} onClick={() => submit(m, t, ev)}>
+          {submitLabel}
+          {ev.length ? ` with ${ev.length} evidence` : ''}
+        </button>
       </div>
+      {note && (
+        <div className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+          {note}
+        </div>
+      )}
       <div className="muted" style={{ fontSize: 11, paddingLeft: 12 }}>
         <div>
           <b>{m}</b>: {MECHANISM_HELP[m]}
@@ -71,5 +88,17 @@ export function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: nu
         </div>
       )}
     </div>
+  );
+}
+
+/** One incident's root-cause form: the shared diagnosis form, wired to the RCA command. */
+export function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; label: string; hypotheses: Hypothesis[]; v: ViewModel; game: GameHandle }) {
+  return (
+    <DiagnosisForm
+      label={label}
+      hypotheses={hypotheses}
+      v={v}
+      submit={(mechanism, trigger, evidenceIds) => game.send({ type: 'RCA', incidentId, mechanism, trigger, evidenceIds })}
+    />
   );
 }

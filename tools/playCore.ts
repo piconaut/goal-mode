@@ -9,7 +9,7 @@ import { scenarioFor } from '../src/game/difficulty';
 import { newRun, type ChangeRequest } from '../src/game/run';
 import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
-import type { Mechanism, RunState, Trigger } from '../src/game/types';
+import type { Mechanism, ProblemSubject, RunState, Trigger } from '../src/game/types';
 import { hasFeature, needsText, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, db2Blockers, db2Statistics, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
@@ -33,6 +33,7 @@ import type { InquiryKind } from '../src/content/inquiries';
 import type { WlmEdit } from '../src/game/wlmEdit';
 import { plannedPolicy } from '../src/game/policies';
 import { buildView } from '../src/game/view';
+import { problemsView } from '../src/game/problems';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import { rcaGroupOf } from '../src/game/run/rca';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
@@ -55,6 +56,8 @@ export type PlayCommand =
   | { cmd: 'cod-deactivate'; changeId: number }
   | { cmd: 'draft'; optionId: string | null }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { cmd: 'problem-open'; subject: ProblemSubject; fromTick: number; toTick: number }
+  | { cmd: 'problem-file'; recordId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
   | { cmd: 'project'; id: string; hours: number }
   | { cmd: 'restart'; name: string }
@@ -194,6 +197,14 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'rca': {
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'RCA', incidentId: c.incidentId, mechanism: c.mechanism, trigger: c.trigger, evidenceIds: c.evidenceIds }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
+    case 'problem-open': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'OPEN_PROBLEM', subject: c.subject, fromTick: c.fromTick, toTick: c.toTick }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
+    case 'problem-file': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'FILE_PROBLEM', recordId: c.recordId, mechanism: c.mechanism, trigger: c.trigger, evidenceIds: c.evidenceIds }, content, sc(run));
       return done(o.run, o.message, o.ok, o.pending);
     }
     case 'ask': {
@@ -431,6 +442,8 @@ export function statusText(file: PlayFile): string {
     return ws.length ? ` (same cause, one RCA covers: ${ws.join(', ')})` : '';
   };
   if (open.length) out.push('incidents without RCA: ' + open.map((i) => `${idText('incident', i.id)} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));
+  const problems = v.problems.records;
+  if (problems.length) out.push(`problem records: ${problems.map((p) => `REC${p.id} ${p.subjectLabel} ${p.windowLabel} (${p.filings.length} filing${p.filings.length === 1 ? '' : 's'})`).join('; ')}`);
   if (run.pins.length) out.push('pinned evidence (rca ... --evidence ids):\n' + run.pins.map((p) => `  ${idText('pin', p.id)}: ${p.text}`).join('\n'));
   const asks = inquiriesView(run, sc(run)).pending;
   if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));
@@ -662,6 +675,38 @@ export function policyText(file: PlayFile, pending: boolean): string {
 }
 
 /** What can be ordered or fixed: the Change Desk catalog, the tool tree and the RCA vocabulary. */
+/** `problem` (list) or `problem show REC1`: the records, their filings and the subjects/hours a new record can use. */
+export function problemsText(file: PlayFile, recordId?: number): string {
+  const run = file.run;
+  const v = problemsView(run, sc(run));
+  const records = recordId === undefined ? v.records : v.records.filter((r) => r.id === recordId);
+  if (recordId !== undefined && records.length === 0) return `No problem record ${idText('record', recordId)}; open one with: problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"`;
+  const out: string[] = [];
+  out.push(`problem records · filing costs ${v.costHours} engineer-hours · ${v.filingsPerDay}/day · one an hour · a window may cover ${v.maxWindowHours} clock hours`);
+  if (recordId === undefined) {
+    out.push(`closed hours: ${v.hours.length}${v.hours.length ? ` (${v.hours[0]!.label} … ${v.hours.at(-1)!.label})` : ''}`);
+    out.push('subjects: ' + ['WORKLOAD', 'CLASS', 'IMAGE', 'JOB'].map((k) => `${k.toLowerCase()} ${v.subjects.filter((s) => s.kind === k).length}`).join(', '));
+  }
+  if (records.length === 0) {
+    out.push('no records yet: problem open workload RBANK --from "D2 10:00" --to "D2 12:00"');
+    return out.join('\n');
+  }
+  for (const r of records) {
+    out.push(`REC${r.id} ${r.subjectLabel} · ${r.windowLabel} · ${r.attemptsToday}/${v.filingsPerDay} filed today${r.nextAt ? ` · next after ${r.nextAt}` : ''}`);
+    if (r.filings.length === 0) out.push('  (no filing yet; the window\'s truth stays hidden until one)');
+    for (const f of r.filings) {
+      out.push(`  ${f.mechanism} / ${f.trigger} · ${f.points} points${f.trust ? ` · trust ${f.trust > 0 ? '+' : ''}${f.trust}` : ''}`);
+      for (const line of f.reply.slice(1)) out.push(`    ${line}`);
+    }
+  }
+  if (recordId === undefined) {
+    out.push('open: problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"');
+    out.push('file: problem file REC1 <MECHANISM> <TRIGGER> [--evidence PIN1,PIN2]');
+    out.push(`subjects: ${v.subjects.slice(0, 12).map((s) => s.id).join(' ')}${v.subjects.length > 12 ? ' …' : ''}`);
+  }
+  return out.join('\n');
+}
+
 export function catalogText(file: PlayFile): string {
   const v = buildView(file.run, sc(file.run));
   const out = ['hardware (change {"label":..,"hardwareId":ID}):'];

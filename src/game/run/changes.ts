@@ -244,7 +244,7 @@ export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
   };
 }
 
-function spendHours(run: RunState, hours: number): RunState {
+export function spendHours(run: RunState, hours: number): RunState {
   const left = run.hoursLeft - hours;
   const overtime = Math.max(0, -left) - Math.max(0, -run.hoursLeft);
   return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };

@@ -26,6 +26,7 @@ import { decideTfp } from './tfp';
 import { askAround } from './inquiries';
 import { workOnProject } from './projects';
 import { addPin, removePin, type PinRequest } from './evidence';
+import { fileProblemDiagnosis, openProblemRecord } from './problems';
 import { applyWlmEdit, pendingBase, playerWlmEditError, serviceClassGoalIssues, type WlmEdit } from './wlmEdit';
 import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
@@ -39,7 +40,7 @@ import { idText } from './ids';
 import type { Mon3PinLookup } from './mon3PinHistory';
 import type { GameContent } from './run/shared';
 import type { Scenario } from '../sim/core/scenario';
-import type { Mechanism, RunState, Trigger } from './types';
+import type { Mechanism, ProblemSubject, RunState, Trigger } from './types';
 import type { InquiryKind } from '../content/inquiries';
 import type { ServiceDefinition } from '../sim/wlm/types';
 
@@ -53,6 +54,8 @@ export type GameCommand =
   | { kind: 'COD_DEACTIVATE'; changeId: number }
   | { kind: 'DRAFT'; optionId: string | null }
   | { kind: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { kind: 'OPEN_PROBLEM'; subject: ProblemSubject; fromTick: number; toTick: number }
+  | { kind: 'FILE_PROBLEM'; recordId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { kind: 'PIN'; req: PinRequest }
   | { kind: 'UNPIN'; id: number }
   | { kind: 'WLM_EDIT'; edit: WlmEdit }
@@ -145,7 +148,9 @@ export function applyGameCommand(
       const rca = r.incidents.find((i) => i.id === cmd.incidentId)?.rca;
       const accepted = groupAcceptedOf(group);
       const pts = rca?.points ?? 0;
-      const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
+      const trustNote = rca?.duplicateOf !== undefined
+        ? `no second credit for this cause${rca.duplicateOf ? ` (#${rca.duplicateOf})` : ''}`
+        : pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
       // An accepted alternate is a right answer, so the reply must say so and give its reason (RT-07).
       // Answers are shown with the trigger's display name; the ids stay what a command types (RT-09).
       const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
@@ -163,6 +168,17 @@ export function applyGameCommand(
         r,
         `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. ${answer}${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}${pinsLine}${hourNote}`,
       );
+    }
+    case 'OPEN_PROBLEM': {
+      const o = openProblemRecord(run, content, sc, cmd.subject, cmd.fromTick, cmd.toTick);
+      return { run: o.run, pending, ok: o.ok, message: o.message };
+    }
+    case 'FILE_PROBLEM': {
+      if (!MECHANISMS.includes(cmd.mechanism) || !TRIGGERS.includes(cmd.trigger)) return no(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
+      const missing = (cmd.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
+      if (missing.length) return no(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${(run.pins ?? []).map((p) => idText('pin', p.id)).join(' ')}`);
+      const o = fileProblemDiagnosis(run, content, sc, cmd.recordId, cmd.mechanism, cmd.trigger, cmd.evidenceIds ?? []);
+      return { run: o.run, pending, ok: o.ok, message: o.message };
     }
     case 'PIN':
       return result(addPin(run, sc, cmd.req, opts.mon3History));

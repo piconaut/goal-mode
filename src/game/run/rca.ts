@@ -6,12 +6,16 @@ import { judgeProof, hourBaseNote } from '../proof';
 import { mechanismExplanation } from '../rcaExplain';
 import { scoreAccepted } from '../sla';
 import {
+  type CauseEpisode,
   type Incident,
   type Mechanism,
   type RunState,
   type Trigger
 } from '../types';
 import { mapTrust } from './shared';
+import { GROUP_FOLLOW_HOURS, sameEpisode } from './grouping';
+import { fallbackCause } from '../rcaTruth';
+import { TICKS_PER_HOUR } from '../../sim/core/units';
 
 /** The incident whose RCA covers this one (itself unless linked to an earlier same-cause incident that day). */
 export function rcaLeadId(inc: Incident): number {
@@ -115,6 +119,49 @@ export function rcaAnswerText(
   return `Mechanism ${mechanism} ${accepted.mechanisms.includes(mechanism) ? 'accepted' : 'not accepted'}, trigger ${triggerLabel(trigger)} ${accepted.triggers.includes(trigger) ? 'accepted' : 'not accepted'}${primary}`;
 }
 
+/** Expand a cause episode through the run's quiet hours and incidents of the same cause, chaining back-to-back
+ *  hours into one episode (RT-22): a standing fault's 09:00–14:00 quiet hours are one episode even though the first
+ *  and last hours are more than `GROUP_FOLLOW_HOURS` apart. A card cause is one episode for a played day. */
+export function episodeOf(run: RunState, seed: CauseEpisode): CauseEpisode {
+  if (!fallbackCause(seed.cause)) return seed;
+  const intervals: { start: number; end: number }[] = [{ start: seed.startTick, end: seed.endTick ?? run.sim.tick }];
+  for (const f of run.quietHours ?? []) {
+    if (f.day === seed.day && f.truth.cause === seed.cause) intervals.push({ start: f.startTick, end: f.endTick });
+  }
+  for (const i of run.incidents) {
+    if (i.day === seed.day && i.truth.cause === seed.cause) intervals.push({ start: i.startTick, end: i.endTick ?? run.sim.tick });
+  }
+  let start = seed.startTick;
+  let end = seed.endTick ?? run.sim.tick;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const x of intervals) {
+      const follow = GROUP_FOLLOW_HOURS * TICKS_PER_HOUR;
+      if (x.start > end + follow || x.end < start - follow) continue;
+      if (x.start < start || x.end > end) {
+        start = Math.min(start, x.start);
+        end = Math.max(end, x.end);
+        changed = true;
+      }
+    }
+  }
+  return { cause: seed.cause, day: seed.day, startTick: start, endTick: end };
+}
+
+/** The incident or problem record that already earned this cause episode, or null. One episode pays once: an RCA and a
+ * record filing of the same §4.5 episode earn between them, while a later episode of the same cause is new.
+ * `incidents: false` looks at record filings only: incident RCAs are already one per §4.5 group, and a group the
+ * grouping lists as new (A13: a fallback incident after its group's RCA was filed) pays as it does without records. */
+export function creditedEpisode(run: RunState, episode: CauseEpisode, incidents = true): number | null {
+  const target = episodeOf(run, episode);
+  const inc = incidents ? run.incidents.find((i) => (i.rca?.points ?? 0) > 0
+    && sameEpisode(episodeOf(run, { cause: i.truth.cause, day: i.day, startTick: i.startTick, endTick: i.endTick }), target)) : undefined;
+  if (inc) return inc.id;
+  const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.points > 0 && sameEpisode(episodeOf(run, f.episode), target)));
+  return rec?.id ?? null;
+}
+
 /** Root-cause analysis for an incident and every incident linked to it; scored once against the ground truth. */
 export function submitRca(run: RunState, incidentId: number, mechanism: Mechanism, trigger: Trigger, scenario?: Scenario, evidenceIds: readonly number[] = []): RunState {
   const inc = run.incidents.find((i) => i.id === incidentId);
@@ -148,9 +195,19 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const evidencePoints = mechanismProven ? PROOF.recipePoints : mechanismShown ? PROOF.partialPoints : 0;
   const strong = mechanismProven && triggerAccepted && !!proof?.trigger.complete;
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
+  const cause = group[0]?.truth.cause ?? '';
+  // RT-22: one episode pays once (§4.5: a card is one episode for a played day; a fallback cause only while its hours
+  // overlap or follow within GROUP_FOLLOW_HOURS). A later episode of the same cause is new and pays. Only a record
+  // filing can make an RCA a duplicate: between incidents the §4.5 grouping already decides, so RCA scoring without
+  // records is unchanged.
+  const episode: CauseEpisode = { cause, day: inc.day, startTick: inc.startTick, endTick: inc.endTick };
+  const duplicateOf = points > 0 ? creditedEpisode(run, episode, false) : null;
+  // Only a correct answer can be a duplicate: a wrong answer still costs its trust, even on an already-earned cause.
+  const duplicate = duplicateOf !== null && points > 0;
+  const awarded = !duplicate;
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
-  const trust = mapTrust(run, (t) => t + facetTrust / 2);
-  const total = points + evidencePoints;
+  const trust = awarded ? mapTrust(run, (t) => t + facetTrust / 2) : run.trust;
+  const total = awarded ? points + evidencePoints : 0;
   // The line describes the hour that backs the filed mechanism: in a group the victims' hours differ, and the lead's
   // would otherwise rule out an answer another victim proves (N1). A single incident keeps the unlabelled wording.
   const explainInc = group.find((m) => m.truth.mechanism === mechanism) ?? group[0]!;
@@ -158,11 +215,11 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   // The hour-base note is recorded now, from the filed pins, so a later unpin or a rolled-off pin cannot change the
   // reply (RT-30). A group's victims have their own hours, so the note is only for a single incident.
   const hourNote = judged && group.length === 1 ? hourBaseNote(judged, pins, group[0]!.basis) : null;
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}), ...(hourNote ? { hourNote } : {}) };
+  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints: awarded ? evidencePoints : 0, ...(awarded && strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}), ...(hourNote ? { hourNote } : {}), ...(duplicate ? { duplicateOf } : {}) };
   return {
     ...run,
     trust,
-    insight: run.insight + total + (strong ? EVIDENCE.strongInsight : 0),
+    insight: run.insight + total + (awarded && strong ? EVIDENCE.strongInsight : 0),
     score: run.score + total,
     incidents: run.incidents.map((i) => (rcaLeadId(i) === leadId ? { ...i, rca } : i)),
   };

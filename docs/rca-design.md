@@ -857,6 +857,31 @@ good analyst catches early.
 (Q8b). Until D1 lands, a correct record earns what a correct RCA earns; its window truth, reward and limits are in
 RT-22.
 
+**As built (RT-22, 2026-11-25).** The player opens a record on a workload, a service-class period, an image or a job
+over whole closed clock hours (`problemHours`, at most `PROBLEM.maxWindowHours`); opening is free and freezes the
+truth. An incident is a record the game opened. A **quiet hour** is a closed hour that met its SLA but still shows a
+problem: `closeHour` stores one per workload when a card's footprint reached it, a delay group grew past the
+response-time floor, or a CF/LCU is at least `PEER_SLOW_RATIO` × its peers and carries a third of the response time
+(RT-35). A record's candidates are the quiet hours and overlapping incidents for its workloads; a card's mechanism,
+trigger and accepted alternates come from the same `judgeWorkloadHour` the incident path uses, with the hour's
+clock-hour baseline. With no candidate the truth is **no problem**. A class maps to the work classified into it (or a
+region class's served transactions), an image to the work routed there, and a job to its batch night or the work on its
+image (APPROX; a batch ABEND with no incident becomes `JOB_FAILURE`). The window truth is the union of its candidates'
+accepted sets, led by the newest hour.
+A filing costs `PROBLEM.hours` (0.25), a wholly wrong filing (no accepted answer) loses `PROBLEM.wrongTrust` on the
+subject's facet once per record per day, and a record allows `PROBLEM.filingsPerDay` filings a day, one an hour (`PROBLEM.refileHours`). Pins
+are judged against the record's window and the candidate hours' recorded subjects, with the same recipes and the same
+points. The correct-answer trust lands on the subject's facet at the RCA's per-facet rate (+1 for a mechanism answer, +0.25 for a trigger-only one; −0.5 for a wholly wrong answer),
+and `creditedEpisode` makes one §4.5 episode pay once: a record filing and an RCA of the same episode earn between
+them, while a later episode of the same cause (a later played day, or a fallback cause more than `GROUP_FOLLOW_HOURS`
+on) is new. A record chains back-to-back quiet hours of one cause into one episode, so a standing fault cannot be
+farmed. A record unlocks no fix: `visibleFixIds` and
+`armableEvents` are unchanged until Q8b. The Reports tab's Problems card and `play problem` share the reply lines.
+Old saves have no quiet hours; records on their old windows see overlapping incidents and a job's own ABEND only, and
+otherwise no problem. Bots file no records, so the balance bands do not move. The §5.4 limits are counted per record:
+the same work reached as a class, image or job can be opened as another record, so a per-work or shared-problem key is
+a design call for the follow-up.
+
 What the player was *told* counts as half a proof. A forewarning ("REBINDs ran overnight") or a perk tip satisfies
 the "what changed" predicate; the player still pins the measurement. Announced cards (CF_LINK, CF_FAILURE,
 POWER_CAP, JOB_ABEND) have no targeted fix and are not gated. Today a forewarned card's fix can be armed before the
@@ -916,7 +941,7 @@ retry that commits at Db2 is another unit of work, and per-client identity is SM
 Proof-gating already removes label brute force. What is left to price is pin-and-label fishing:
 
 - Filing a diagnosis costs **0.25 engineer-hours**, right or wrong (writing it up).
-- A filed diagnosis with a wrong mechanism costs trust as a wrong RCA does today (−0.5 on the hurt facet), once per
+- A filed diagnosis with no accepted answer costs trust as a wrong RCA does today (−0.5 on the hurt facet), once per
   problem per day. Re-filing on the same problem is allowed after one simulated hour.
 - At most **three** diagnoses per problem per day. The third wrong one closes the form for that problem until the
   next day (the fix is then reachable only through generic levers that day).
@@ -997,7 +1022,7 @@ judged against accepted sets and recipes, not against the primary label.
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
 | Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
 | Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21); build detail and Q7a … Q7e (accepted as recommended, 2026-11-21) in [rt-16-design.md](rt-16-design.md) | RT-16, RT-32, RT-33 |
-| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately. Q8a: **yes**, independent of Q8b; a record earns what a correct RCA earns until D1 gives it a fix to unlock (2026-11-23). Q8b: open | RT-22, RT-24 |
+| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately. Q8a: **yes**, independent of Q8b; a record earns what a correct RCA earns until D1 gives it a fix to unlock (2026-11-23); RT-22 built 2026-11-25. Q8b: open | RT-22, RT-24 |
 | Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Yes; research settled 2026-11-21: SMF 101 rollback share (`QWACABRT`), commit-only retries out of scope; RT-23 landed 2026-11-23 | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |
 | Q11 | RT-29: accept any mechanism whose complete recipe holds on the incident's rows? Judge CF/DASD "slow" against peers, not only the resource's own history? | No to the first: fix the recipe, since THREAD_LIMIT's *or* ruling-out half passed with QR wait high; yes to the second, as an accepted source, primary unchanged | As recommended (2026-11-23) | RT-34 (landed), RT-35 |

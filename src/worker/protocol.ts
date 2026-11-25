@@ -19,7 +19,7 @@ import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Db2BlockerView, Db2StatRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
 import type { GoalIssue, WlmEdit } from '../game/wlmEdit';
-import type { Mechanism, Trigger } from '../game/types';
+import type { Mechanism, ProblemSubject, Trigger } from '../game/types';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
@@ -62,6 +62,8 @@ export type ToWorker =
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'DRAFT'; optionId: string | null }
   | { type: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { type: 'OPEN_PROBLEM'; subject: ProblemSubject; fromTick: number; toTick: number }
+  | { type: 'FILE_PROBLEM'; recordId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { type: 'PIN'; req: PinRequest }
   | { type: 'UNPIN'; id: number }
   | { type: 'GET_REPORT'; index: number; kind: ReportKind; scKey?: string; system?: string }
