@@ -673,23 +673,32 @@ To be scoped into BACKLOG.md entries once the user approves the direction:
 
 Each content PR runs the §11.5 tests; none touches the sim.
 
-## 14. Open questions for the user
+## 14. Decisions (user, 2026-11-25)
 
-1. **Audience reading.** I read "intermediate engineer with zero maintenance experience" as zero *mainframe*
-   experience. Is that right, or did you mean someone with mainframe experience but none in performance and capacity?
-2. **Which flaws to teach.** The draft teaches only F1 (as today's tutorial does), shows F8–F11 without naming them,
-   and keeps the handover's to-do list vague on Normal and Hard. Teach more (e.g. F3 via Friday's runaway, F7 via
-   PROCU) or fewer?
-3. **Rewards.** No XP, nothing balance-affecting, only the notebook and a career line. Or a small XP award, or a
-   cosmetic?
-4. **The day-1 corner tutorial.** Keep it for players who skipped the prologue, or remove it once the prologue ships?
-5. **A scripted change failure.** Should one change in the week fail on purpose (e.g. Wednesday's HMC change), to
-   teach change risk and the Requests results? It's honest about the game; it may feel unfair in a tutorial.
-6. **Refile.** The prologue allows one refile per RCA so the player sees a correct reply. A normal run never allows
-   it. Acceptable as a prologue-only rule?
-7. **Length.** Five days, about 70 minutes. A three-day version (merging Mon into Tue and Thu into Fri) would take
-   about 45 minutes and lose the "watch a normal day first" lesson and some of the subsystem tour.
-8. ~~The replay plex.~~ Settled 2026-11-25: the Midwest plant as is, a separate optional scenario id, no impact on
-   goldens or sweeps. The replay stays as story only.
-9. **Month-end bill.** Should the month that closes on Shadow Friday produce a visible (shadow) bill in the handover,
-   computed from the five replayed days plus the rest of the month at its average?
+The answers to the first draft's nine questions. Sections above that they change are revised once the framing in
+§15 is settled; until then, these answers win over the text above.
+
+1. **Audience:** zero *mainframe* experience, with experience of other software or platforms (§2's second player).
+2. **Flaws:** teach one flaw. With §15, that flaw is a prologue-only one, not F1 (pending confirmation).
+3. **Rewards:** a small XP award for finishing. Cosmetics are still being discussed and are not in this design yet.
+4. **Day-1 corner tutorial:** kept as it is.
+5. **A scripted change failure:** yes, one change fails on purpose.
+6. **Refile:** yes, one refile per prologue RCA.
+7. **Length:** five days, about 70 minutes, as proposed.
+8. **Plant and isolation:** settled. Separate optional scenario id on the Midwest plant as is; no golden or sweep
+   impact.
+9. **Month-end bill:** yes, present a bill.
+
+## 15. Framing revision (user idea, 2026-11-25; under discussion)
+
+The user's direction, replacing the "replay" story of §3.2:
+
+- **A real production handover** in the **last week of the prior month** (Monday 26th to Friday 30th under the sim's
+  30-day months; Day 1 is Monday the 3rd, as today). Friday is month-end, and the month closes that night.
+- **No justification for the scripted events:** a player on one tutorial run doesn't perceive the lack of randomness.
+- **One extra flaw that the player fixes**, which isn't in the main Midwest state. Day 1 then stays consistent: the
+  flaw was fixed in the prologue, and production on Monday no longer has it.
+- **A month-end bill** from plausible starting values for the 1st to the 25th, plus the prologue week as played.
+- **No story for the trust reset;** the player won't notice or care.
+
+Open points for that revision are in the PR discussion; the design text is updated once they are settled.
