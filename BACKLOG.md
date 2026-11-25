@@ -382,8 +382,9 @@ Design doc §5.3, §5.4, §8.4.
 - **Undo beats:** W5 and H3, each either an emergency change now or a normal change in the next briefing, carried
   into H1 or F1.
 - **Ruth's cost-centre tools:** `TOOL_TRIAL` with an expiry when the player is short of Insight.
-- **The seeded month-to-date cost state** (`cost.ts`, `// FICTIONAL:`): the 1st–25th with a peak a little below the
-  campaign afternoon's, under the opex budget.
+- **The seeded month-to-date cost state** (`cost.ts`, `// FICTIONAL:`): the 1st–25th with a peak a little below what
+  Tuesday's campaign afternoon produces when the cap is removed early and a little above a quiet week (design §8.4),
+  under the opex budget.
 
 Done when the do-nothing, reference and alternative playthroughs hold for these days:
 - incidents open in their windows, with truth equal to `expect`;
@@ -409,7 +410,7 @@ Design doc §5.5, §8.2, §8.3, §3.2.
 
 Done when:
 - the full five-day reference playthrough ends with an empty back-out list and a bill;
-- the do-nothing run's bill moves the peak as design §8.4 says;
+- the reference run's bill moves or holds the month's peak as design §8.4 says (§11.5);
 - the §9 coverage test passes for every tab and section;
 - the XP is awarded once;
 - a normal run started afterwards is identical to one started without the prologue (state hash at day 0).
