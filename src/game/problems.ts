@@ -437,7 +437,9 @@ export function fileProblemDiagnosis(
   const points = scoreAccepted(accepted, { mechanism, trigger });
   const noProblem = record.truth.mechanism === null;
   // The cause a correct mechanism names: a window can hold several hours' causes; credit the one the answer matches.
-  const matching = record.candidates.find((c) => c.truth.accepted.mechanisms.includes(mechanism)) ?? (record.candidates[0] as ProblemCandidate | undefined);
+  const matching = record.candidates.find((c) => c.truth.accepted.mechanisms.includes(mechanism))
+    ?? record.candidates.find((c) => c.truth.accepted.triggers.includes(trigger))
+    ?? (record.candidates[0] as ProblemCandidate | undefined);
   const cause = matching?.truth.cause ?? record.truth.cause;
   const episode = {
     cause,
