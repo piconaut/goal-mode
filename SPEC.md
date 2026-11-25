@@ -1612,7 +1612,7 @@ its peers (RT-35); when neither finds anything the truth is **no problem**, and 
 overlapping the window are candidates too, so one record can cover hours that paged and hours that did not. A class
 covers the work classified into it (or a CICS region class's served transactions), an image the work routed to it, a
 job its batch night or the work on its image (APPROX).
-Filing costs 0.25 engineer-hours; a wrong mechanism loses 0.5 trust on the subject's facet once per record per day;
+Filing costs 0.25 engineer-hours; a wholly wrong filing loses 0.5 trust on the subject's facet once per record per day;
 at most three filings a day, one an hour. A correct answer earns what a correct RCA earns, on that facet, with the same
 recipes. One cause pays once: an incident RCA, a problem record, or a later RCA of the same cause earns nothing when
 the cause is already credited. A record unlocks no fix until D1 (RT-24). The Reports tab's **Problems** card and the

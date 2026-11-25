@@ -55,7 +55,7 @@ export const triggerLabel = (t: Trigger): string => TRIGGER_LABEL[t] ?? t;
 export const PROBLEM = {
   /** Engineer-hours to write up one diagnosis, right or wrong. */
   hours: 0.25,
-  /** Trust lost on the subject's facet when the mechanism is wrong, once per record per day. */
+  /** Trust lost on the subject's facet when the filing has no accepted answer, once per record per day. */
   wrongTrust: 0.5,
   /** Filings one record allows in a played day. */
   filingsPerDay: 3,

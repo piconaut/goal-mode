@@ -230,7 +230,7 @@ if (typeof c === 'string') {
     finance: () => financeText(file!),
     capacity: () => capacityText(file!),
     batch: () => batchStreamsText(file!),
-    problem: () => problemsText(file!, rest[0] === 'show' ? parseIdText('record', rest[1] ?? '') : undefined),
+    problem: () => rest[0] === 'show' && rest[1] === undefined ? 'usage: problem show REC1' : problemsText(file!, rest[0] === 'show' ? parseIdText('record', rest[1]!) : undefined),
   };
   console.log(c === 'mon3' ? mon3Text(file!, { system: rest[0], json, at }) : readOnly[c]());
 } else {

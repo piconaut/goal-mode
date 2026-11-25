@@ -20,7 +20,7 @@ const content = { ...MIDWEST_GAME, events: [] };
 const H = TICKS_PER_HOUR;
 const fact = (): QuietHour => ({
   day: 0, hourOfDay: 6, startTick: 0, endTick: H, workloadId: 'RBANK', reason: 'CARD',
-  truth: truthOf('CPU_PRIORITY', 'CHANGE_REGRESSION', { cause: 'REGRESSION@0' }), subjects: EMPTY_SUBJECTS, attainmentPct: 100,
+  truth: truthOf('CPU_PRIORITY', 'CHANGE_REGRESSION', { cause: 'REGRESSION@0' }), subjects: EMPTY_SUBJECTS,
 });
 const base = (): RunState => {
   const r = newRun(MIDWEST, content, 7);

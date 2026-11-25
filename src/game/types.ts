@@ -301,8 +301,6 @@ export interface QuietHour {
   truth: IncidentTruth;
   subjects: IncidentSubjects;
   basis?: CapacityBasis;
-  /** The hour's SLA attainment, for ranking a record's candidate hours. */
-  attainmentPct: number;
 }
 
 /** What a problem record is opened on (RT-22): a workload, a service-class period, an image or a job. */

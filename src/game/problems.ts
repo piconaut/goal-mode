@@ -183,9 +183,17 @@ const candidateIncident = (record: Pick<ProblemRecord, 'id' | 'window'>, c: Prob
  *  policy that sent it where it could not run (RT-04's DSNE100I trigger). */
 function jobAbendCandidate(run: RunState, scenario: Scenario, subject: ProblemSubject, win: ProblemWindow): Found | null {
   if (subject.kind !== 'JOB') return null;
-  const j = run.sim.batch.jobs.find((x) => x.def.name === subject.id && x.abended === true && (x.failTick ?? x.endTick) !== null);
-  const at = j?.failTick ?? j?.endTick ?? null;
-  if (!j || at === null || !overlap(at, at + 1, win, run.sim.tick)) return null;
+  let j: (typeof run.sim.batch.jobs)[number] | undefined;
+  let at: number | null = null;
+  for (const x of run.sim.batch.jobs) {
+    if (x.def.name !== subject.id || x.abended !== true) continue;
+    const t = x.failTick ?? x.endTick;
+    if (t === null || !overlap(t, t + 1, win, run.sim.tick)) continue;
+    j = x;
+    at = t;
+    break;
+  }
+  if (!j || at === null) return null;
   const connect = j.failCode === 'DSNE100I';
   const trigger: Trigger = connect ? 'POLICY' : 'APPLICATION_ERROR';
   const truth: IncidentTruth = {
@@ -384,7 +392,7 @@ export function openProblemRecord(run: RunState, content: GameContent, scenario:
   return {
     run: r,
     ok: true,
-    message: `Problem ${idText('record', record.id)} opened on ${subjectLabel(subject, allWorkloads(scenario, run))} for ${problemWindowLabel(win)}. File a diagnosis from the Problems panel (${PROBLEM.hours} h).`,
+    message: `Problem ${idText('record', record.id)} opened on ${subjectLabel(subject, allWorkloads(scenario, run))} for ${problemWindowLabel(win)}. File a diagnosis on it (${PROBLEM.hours} h).`,
     record,
   };
 }
@@ -395,7 +403,7 @@ export function openProblemRecord(run: RunState, content: GameContent, scenario:
 export function causeCredited(run: RunState, cause: string): number | null {
   const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.cause === cause && f.points > 0));
   if (rec) return rec.id;
-  const inc = run.incidents.find((i) => i.truth.cause === cause && i.rca);
+  const inc = run.incidents.find((i) => i.truth.cause === cause && (i.rca?.points ?? 0) > 0);
   if (inc) return inc.id;
   if (run.creditedCauses?.includes(cause)) return 0;
   return null;
@@ -456,15 +464,14 @@ export function fileProblemDiagnosis(
   const evidencePoints = duplicateOf === null && mechanismProven ? 3 : duplicateOf === null && mechanismShown ? 0.5 : 0;
   const strong = duplicateOf === null && mechanismProven && triggerAccepted && !!proof?.trigger.complete;
   const facet = recordFacet(run, scenario, record.subject, subjectWorkloads(run, scenario, record.subject), matching?.workloadId);
-  const wrongMechanism = !mechanismAccepted;
   const wrongToday = record.filings.some((f) => f.day === run.day && f.trust < 0);
   const trustDelta = duplicateOf !== null
     ? 0
-    : wrongMechanism
-      ? wrongToday || !facet ? 0 : -PROBLEM.wrongTrust
-      : facet
-        ? points >= 3 ? 1 : points > 0 ? 0.25 : 0
-        : 0;
+    : points >= 3
+      ? facet ? 1 : 0
+      : points > 0
+        ? facet ? 0.25 : 0
+        : facet && !wrongToday ? -PROBLEM.wrongTrust : 0;
   const awarded = duplicateOf === null ? points + evidencePoints : 0;
   let r = spendHours(run, PROBLEM.hours);
   if (trustDelta !== 0 && facet && facet in r.trust) r = { ...r, trust: { ...r.trust, [facet]: clampTrust(r.trust[facet]! + trustDelta) } };
@@ -493,7 +500,7 @@ export function fileProblemDiagnosis(
     cause,
     reply: [],
   };
-  filing.reply = problemReply(record, filing, accepted, {
+  filing.reply = problemReply(record, filing, {
     mechanismAccepted,
     triggerAccepted,
     mechanismProven,
@@ -513,7 +520,6 @@ export function fileProblemDiagnosis(
 function problemReply(
   record: ProblemRecord,
   filing: ProblemFiling,
-  accepted: ProblemTruth['accepted'],
   facts: {
     mechanismAccepted: boolean;
     triggerAccepted: boolean;
@@ -543,7 +549,7 @@ function problemReply(
   if (filing.trust !== 0 && filing.trustFacet) lines.push(`Trust ${filing.trust > 0 ? '+' : ''}${filing.trust} on ${filing.trustFacet}.`);
   else if (!filing.trustFacet) lines.push('No trust change: this subject has no stakeholder facet.');
   else if (filing.trust === 0 && !filing.noProblem && facts.duplicateOf === null) lines.push('No trust change.');
-  if (facts.wrongToday && !facts.mechanismAccepted && facts.duplicateOf === null) lines.push('The wrong-mechanism trust loss was already taken on this record today.');
+  if (facts.wrongToday && filing.points === 0 && facts.duplicateOf === null) lines.push('The wrong-answer trust loss was already taken on this record today.');
   if (filing.strong) lines.push(`Strong evidence: +${EVIDENCE.strongInsight} Insight.`);
   if (filing.proof) {
     lines.push(...proofLines(filing.proof, (id) => idText('pin', id)));
@@ -551,7 +557,5 @@ function problemReply(
     if (pinLines.length > 0) lines.push(`Pins: ${pinLines.join('; ')}`);
   }
   lines.push(`Filing cost: ${PROBLEM.hours} engineer-hours. ${facts.remaining} filing${facts.remaining === 1 ? '' : 's'} left today; the next after ${formatClock(facts.nextAt).replace(/:00$/, '')}.`);
-  // `accepted` is kept for the signature's future use (the reply is built from the filed facts).
-  void accepted;
   return lines;
 }

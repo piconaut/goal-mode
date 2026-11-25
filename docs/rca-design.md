@@ -868,15 +868,17 @@ clock-hour baseline. With no candidate the truth is **no problem**. A class maps
 region class's served transactions), an image to the work routed there, and a job to its batch night or the work on its
 image (APPROX; a batch ABEND with no incident becomes `JOB_FAILURE`). The window truth is the union of its candidates'
 accepted sets, led by the newest hour.
-A filing costs `PROBLEM.hours` (0.25), a wrong mechanism loses `PROBLEM.wrongTrust` on the subject's facet once per
-record per day, and a record allows `PROBLEM.filingsPerDay` filings a day, one an hour (`PROBLEM.refileHours`). Pins
+A filing costs `PROBLEM.hours` (0.25), a wholly wrong filing (no accepted answer) loses `PROBLEM.wrongTrust` on the
+subject's facet once per record per day, and a record allows `PROBLEM.filingsPerDay` filings a day, one an hour (`PROBLEM.refileHours`). Pins
 are judged against the record's window and the candidate hours' recorded subjects, with the same recipes and the same
-points. The correct-answer trust lands on the subject's facet at the RCA's per-facet rate (+1 for a mechanism answer, +0.25 for a trigger-only one; −0.5 for a wrong mechanism),
+points. The correct-answer trust lands on the subject's facet at the RCA's per-facet rate (+1 for a mechanism answer, +0.25 for a trigger-only one; −0.5 for a wholly wrong answer),
 and `RunState.creditedCauses` makes one cause pay once: a record whose cause an incident RCA already earned, and an RCA
 whose cause a record already earned, are recorded but score nothing. A record unlocks no fix: `visibleFixIds` and
 `armableEvents` are unchanged until Q8b. The Reports tab's Problems card and `play problem` share the reply lines.
-Old saves have no quiet hours; records on their old windows see incidents only and otherwise no problem. Bots file no
-records, so the balance bands do not move.
+Old saves have no quiet hours; records on their old windows see overlapping incidents and a job's own ABEND only, and
+otherwise no problem. Bots file no records, so the balance bands do not move. The §5.4 limits are counted per record:
+the same work reached as a class, image or job can be opened as another record, so a per-work or shared-problem key is
+a design call for the follow-up.
 
 What the player was *told* counts as half a proof. A forewarning ("REBINDs ran overnight") or a perk tip satisfies
 the "what changed" predicate; the player still pins the measurement. Announced cards (CF_LINK, CF_FAILURE,
@@ -937,7 +939,7 @@ retry that commits at Db2 is another unit of work, and per-client identity is SM
 Proof-gating already removes label brute force. What is left to price is pin-and-label fishing:
 
 - Filing a diagnosis costs **0.25 engineer-hours**, right or wrong (writing it up).
-- A filed diagnosis with a wrong mechanism costs trust as a wrong RCA does today (−0.5 on the hurt facet), once per
+- A filed diagnosis with no accepted answer costs trust as a wrong RCA does today (−0.5 on the hurt facet), once per
   problem per day. Re-filing on the same problem is allowed after one simulated hour.
 - At most **three** diagnoses per problem per day. The third wrong one closes the form for that problem until the
   next day (the fix is then reachable only through generic levers that day).

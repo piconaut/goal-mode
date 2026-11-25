@@ -318,7 +318,6 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           truth: judge.truth,
           ...(judge.basis ? { basis: judge.basis } : {}),
           subjects: judge.subjects,
-          attainmentPct: 100,
         });
       }
       continue;
@@ -330,6 +329,9 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
       metHour.push(w.id);
+      // The baseline in force during the hour, before this hour is folded into the slot (RT-22): a met hour's
+      // delay group must be judged against what "normal" was when it ran, not after it has become part of normal.
+      const hourBase = baseOf(w.id);
       if (!disturbed(w.id)) {
         // The rolling EWMA stays the fallback; the clock-hour slot is what judges this hour of the day (RT-17).
         baselines[w.id] = updateBaseline(baselines[w.id], parts);
@@ -340,9 +342,9 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       }
       if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
       if (openIdx < 0) {
-        const reason = quietReason(w, wh, parts, baseOf(w.id));
+        const reason = quietReason(w, wh, parts, hourBase);
         if (reason) {
-          const judge = judgeWorkloadHour(r, scenario, content, w, wh, h, workloads, baseOf(w.id), hourEnd, false);
+          const judge = judgeWorkloadHour(r, scenario, content, w, wh, h, workloads, hourBase, hourEnd, false);
           quietHours.push({
             day: r.day,
             hourOfDay: hourSlot,
@@ -353,7 +355,6 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
             truth: judge.truth,
             ...(judge.basis ? { basis: judge.basis } : {}),
             subjects: judge.subjects,
-            attainmentPct: att.attainmentPct,
           });
         }
       }

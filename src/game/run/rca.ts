@@ -151,7 +151,7 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const cause = group[0]?.truth.cause ?? '';
   // RT-22: one cause pays once. A problem record (or an earlier incident, including one filed before this ledger
   // existed) that already earned this cause leaves this filing recorded but worth no trust, insight or score.
-  const priorIncident = run.incidents.find((i) => i.id !== leadId && i.truth.cause === cause && i.rca);
+  const priorIncident = run.incidents.find((i) => i.id !== leadId && i.truth.cause === cause && (i.rca?.points ?? 0) > 0);
   const duplicateOf = cause && ((run.creditedCauses ?? []).includes(cause) || priorIncident)
     ? (run.problemRecords?.find((rec) => rec.filings.some((f) => f.cause === cause && f.points > 0))?.id
       ?? priorIncident?.id

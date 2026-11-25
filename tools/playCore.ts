@@ -707,7 +707,8 @@ export function problemsText(file: PlayFile, recordId?: number): string {
   return out.join('\n');
 }
 
-export function catalogText(file: PlayFile): string {  const v = buildView(file.run, sc(file.run));
+export function catalogText(file: PlayFile): string {
+  const v = buildView(file.run, sc(file.run));
   const out = ['hardware (change {"label":..,"hardwareId":ID}):'];
   for (const h of HARDWARE) out.push(`  ${h.id}: ${h.name}. capex $${h.capex.toLocaleString()}, opex $${h.opexPerDay.toLocaleString()}/day, lead ${h.leadDays}d${h.durationDays ? `, lasts ${h.durationDays}d` : ''}. ${h.description}`);
   out.push('fixes (change {"label":..,"fixId":ID}):');

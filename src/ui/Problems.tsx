@@ -26,8 +26,7 @@ export function Problems({ v, game }: { v: ViewModel; game: GameHandle }) {
   const to = v.problems.hours.find((h) => h.key === toKey);
   const ordered = from && to ? from.startTick <= to.startTick : false;
   const subject = useMemo(() => choices.find((s) => s.id === subjectId) ?? choices[0], [choices, subjectId]);
-  // When the newest closed hour arrives (or a save loads with different hours), follow it unless the player has
-  // chosen a window that still exists.
+  // If a save loads with a different hour list (or the chosen hour has rolled off), fall back to the newest closed hour.
   const newest = v.problems.hours.at(-1)?.key ?? '';
   useEffect(() => {
     if (!v.problems.hours.some((h) => h.key === fromKey)) setFromKey(newest);
@@ -110,7 +109,7 @@ export function Problems({ v, game }: { v: ViewModel; game: GameHandle }) {
                     <b>{f.mechanism}</b> / {f.trigger} · {f.points} point{f.points === 1 ? '' : 's'}
                     {f.trust ? ` · trust ${f.trust > 0 ? '+' : ''}${f.trust}` : ''}
                   </span>
-                  <span className={`tag ${f.duplicateOf !== undefined || f.noProblem ? 'bad' : f.points >= 5 ? 'good' : ''}`}>
+                  <span className={`tag ${f.duplicateOf !== undefined || f.noProblem ? 'bad' : f.points >= 3 ? 'good' : ''}`}>
                     {f.duplicateOf !== undefined ? 'no second credit' : f.noProblem ? 'no problem' : `${f.points}`}
                   </span>
                 </div>
