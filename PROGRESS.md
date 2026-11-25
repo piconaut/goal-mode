@@ -136,7 +136,7 @@ night-briefing artefact, not a live gauge, so the player still has to go and fin
 sweeps should show fewer cost-driven losses. That is acceptable if expert results don't move.
 
 **P2. Guided prologue (the shadow week).** Superseded on 2026-11-25 by
-[docs/prologue-design.md](docs/prologue-design.md): five scripted days on a replayed QA clone with a retiring mentor,
+[docs/prologue-design.md](docs/prologue-design.md): five scripted days on the Midwest plant as is (separate optional scenario `midwest-prologue`, no golden or sweep impact) with a retiring mentor,
 an empty deck, pauses at fixed beats, four RCAs with less help each time, then Day 1 as today. Proposed BACKLOG list
 `prologue` (PRO-01 … PRO-06) once the user answers the doc's §14.
 

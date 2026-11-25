@@ -5,6 +5,11 @@ tutorial") and keeps P2's rules: steps are content data, nothing is fixed automa
 one valid fix, and the scripted events never leak into normal runs. Nothing here is a task until it is scoped into
 BACKLOG.md entries (§13 lists the proposed ones). Open questions for the user are in §14.
 
+**Hard requirements (user, 2026-11-25):** the prologue is **optional**, and it must not change goldens, bench hashes,
+bots or sweeps. It is its own scenario id, `midwest-prologue` (user permission 2026-11-25), on the **Midwest Mutual
+plant exactly as it is**: same CPC, LPARs, policy, workloads and day-1 starting state, with no new plant setup.
+What makes it a prologue is game content only: an empty deck, scheduled cards, the script and the mentor (§11.1).
+
 ## 1. Summary
 
 Before Day 1 of a normal Midwest Mutual run, the player spends a **shadow week**, five scripted days, with
@@ -65,27 +70,27 @@ she gives answers, and admits uncertainty ("I've seen this be the CF twice and t
 
 ### 3.2 Why the events are scripted: the replay plex
 
-The shadow week runs on **PLEXQ**, Midwest Mutual's QA sysplex: a clone of production with the same WLM policy,
-the same PR/SM configuration, the same hardware, and production's arrivals replayed from last month's SMF. Ruth uses
-it to train people: she replays incidents from the bank's past, on schedule.
+Mechanically the shadow week is the Midwest plant from its day-1 state, unchanged (the hard requirements at the top). In the story,
+Ruth runs it as a **replay**: production's configuration and last month's traffic, played back so she can train
+people on it, with incidents from the bank's past dropped in on schedule. The replay is narrative only; there is
+no second plant, and every name on screen (PLEXP1, PROD1, PROD2, DEVT, SYSP, CF01, CF02) is the main game's.
 
-> "This is the plex I train people on. Same policy as production, same box, last month's traffic played back. I'll
-> drop in a few of the bank's greatest hits. Nothing you do here touches PLEXP1, so go ahead and break things."
+> "This is how I train people. Production's setup, last month's traffic played back. I'll drop in a few of the
+> bank's greatest hits. Nothing you do this week sticks, so go ahead and break things."
 
 This framing solves three design problems at once:
 
 - **No randomness needs explaining.** The events are Ruth's replays, so they come at fixed times and she can pause
   them.
-- **Day 1 starts clean.** PLEXQ is a copy. Whatever the player changed on it, production on Monday morning is the
-  canonical day-1 state. Ruth says so in her handover: "Anything you fixed on the clone, you get to fix again on
-  production, through the change board, with your name on it." The main game's flaws are not spoiled, because she
+- **Day 1 starts clean.** The replay is thrown away. Whatever the player changed during it, Monday morning is the
+  canonical day-1 state. Ruth says so in her handover: "Anything you fixed in the replay, you get to fix again for
+  real, through the change board, with your name on it." The main game's flaws are not spoiled, because she
   only teaches the one the day-1 tutorial already teaches (F1); §14 Q2.
 - **Mistakes are cheap without being meaningless.** Trust, hours and stakeholder moods all move as in a real run,
   shown as **shadow scores** ("this is what it would have cost on production"). The run cannot be lost, and no
   score carries over.
 
-The UI names the systems as in the main game (PROD1, PROD2, DEVT, SYSP) so that nothing has to be relearned on Monday.
-Only the sysplex name and a "QA replay" badge in the top bar differ.
+Nothing has to be relearned on Monday: the only visible difference is a "Shadow week" badge in the top bar.
 
 ### 3.3 The calendar
 
@@ -244,7 +249,7 @@ If planned: "Tomorrow morning you check it worked. Always check."
    3 points for an accepted mechanism, 2 for an accepted trigger, evidence on top; a correct RCA earns trust and
    Insight; a wrong one costs a little trust; skipping costs nothing but the reward; one RCA covers every incident with
    the same cause.
-6. The **draft**: pick one of three opportunities. Ruth: "Every evening you get to choose one. On the clone they're
+6. The **draft**: pick one of three opportunities. Ruth: "Every evening you get to choose one. This week they're
    pretend. On Monday they're real." The pick applies for the rest of the shadow week only. The *A mentor* perk is
    left out of prologue drafts (Ruth is the mentor).
 
@@ -436,7 +441,7 @@ Ruth never makes a change, files an RCA or picks a draft for the player.
 
 ### 6.4 Off-script play
 
-The prologue is a sandbox inside a script. The player may make any change at any time after Monday (the clone is
+The prologue is a sandbox inside a script. The player may make any change at any time after Monday (the replay is
 theirs to break). Rules:
 
 - A change that would defuse a later lesson (capping DEVT on Tuesday before Wednesday's cooling fault) is allowed;
@@ -565,19 +570,24 @@ checks this table against the step targets (§11.5), so coverage cannot silently
 ### 11.1 Content
 
 `src/content/prologue/`:
-- `game-prologue.ts`: a `GameContent` for the prologue (`defineGame`), Midwest's sim scenario, `events: []` (no
-  deck), `story` for the inbox beats, a `prologue` flag, and `maxDays: 5`.
+- `game-prologue.ts`: the `midwest-prologue` scenario: Midwest's sim scenario object reused as is (no copy, no
+  edits), plus a `GameContent` (`defineGame`) with `events: []` (no deck), `story` for the inbox beats, a
+  `prologue` flag, and `maxDays: 5`. It is registered in its own `PROLOGUE_SCENARIOS` map, not in `SCENARIOS`, so
+  every tool that iterates `SCENARIOS` (goldens, bench, bots, sweeps, the balance gate) never sees it.
 - `schedule.ts`: the **scheduled cards**: `{ card: 'CAMPAIGN', day: 1, at: '11:00', durationHours?, severity? }`.
   The cards are the existing Midwest `EventDef`s, so footprints, announcements, fixes, RCA truth and accepted sets
-  work unchanged. Overrides (an announcement for the silent `POWER_CAP`; a fixed duration) are fields on the
-  schedule entry, not edits to the card.
+  work unchanged. Overrides (a fixed duration, a severity) are fields on the schedule entry, not edits to the card.
 - `script.ts`: chapters → beats → steps (§6.2), with mentor text, targets, predicates by id, hint ladders and
   alternatives. All mentor text lives here.
-- `tuning.ts`: `// FICTIONAL:` prologue knobs: volume factor for the replay (≈0.9 of day-1 volumes), growth 0, noise
-  scale, shadow trust floor, loan list.
+- `tuning.ts`: `// FICTIONAL:` prologue knobs: the shadow trust floor and the loan list. The plant's workloads,
+  growth and noise stay Midwest's; the lessons are tuned only through the scheduled cards' times and severities. If
+  that turns out not to be enough to make an incident reliable, the fallback is a per-card severity, still not a
+  plant change.
 
-Content types gain `GameContent.scheduledCards?` and `GameContent.prologue?`. Absent on the three scenarios, so their
-saved states and hashes don't change.
+Content types gain `GameContent.scheduledCards?` and `GameContent.prologue?`. They are absent on the three scenarios,
+so their saved states and hashes don't change; every new `RunState` field (`tutor`) is absent on non-prologue runs
+for the same reason (the `defineGame` rule). Each PRO PR backs "no behaviour change" with `npm run compare --base
+origin/dev` and the Midwest and Harbourline bench hashes in its body.
 
 ### 11.2 Game layer
 
@@ -624,14 +634,15 @@ whether they're true. So:
 - **Anchor test**: every step target names an anchor that exists in the UI registry.
 - The prologue's reference run joins the cross-report invariants (`tests/sim/report-invariants.test.ts`) as an extra
   fixture.
-- The prologue is not in `SCENARIOS`, so bots, sweeps, goldens and the balance gate are unchanged.
+- The prologue is not in `SCENARIOS`, so bots, sweeps, goldens and the balance gate are unchanged; a test asserts
+  that `SCENARIOS` has no prologue entry and that a Midwest run's state has no `tutor` field.
 
 Tuning order: first set the replay volume and card severities until the do-nothing run produces the intended
 incidents with the intended truth; then write Ruth's RCA dialogue against that truth. Never the other way round.
 
 ### 11.6 Headless
 
-- `npm run play -- runs/p.json new --prologue` starts the prologue; `play tutor` prints the current step and its
+- `npm run play -- runs/p.json new --scenario midwest-prologue` starts the prologue; `play tutor` prints the current step and its
   target; `play tutor ack | note <kind> <ref> | hint` drive it. So the existing persona agents can playtest it, and
   a new persona brief ("intern: knows JCL and SDSF, never owned a WLM policy") can report confusion step by step.
 - The reference command log in `tests/fixtures/prologue/` is what produces the chapter start states.
@@ -643,8 +654,8 @@ of what she says restates mechanics already modelled and cited in SPEC (§5, §8
 those lines cite the same source in `script.ts` comments. A new claim (a phrasing that goes beyond the model, e.g.
 "many shops put Db2's address spaces in SYSSTC") is checked with the `zos-docs` skill before it ships, or marked
 unverified and softened. Each lesson's Codex links must point at entries with their own sources. The "replay plex"
-is a game fiction; a real QA sysplex doesn't replay production traffic this faithfully, and Ruth's text should not
-claim that it does.
+is a game fiction; real shops don't replay production traffic this faithfully, and Ruth's text should not claim
+that they do.
 
 ## 13. Delivery plan (proposed BACKLOG list `prologue`)
 
@@ -678,7 +689,7 @@ Each content PR runs the §11.5 tests; none touches the sim.
    it. Acceptable as a prologue-only rule?
 7. **Length.** Five days, about 70 minutes. A three-day version (merging Mon into Tue and Thu into Fri) would take
    about 45 minutes and lose the "watch a normal day first" lesson and some of the subsystem tour.
-8. **The replay plex.** The QA-clone framing explains the scripted events and the clean Day 1. The alternative is the
-   prologue on production itself, with Day 1 carrying the player's changes, which breaks "Day 1 as today".
+8. ~~The replay plex.~~ Settled 2026-11-25: the Midwest plant as is, a separate optional scenario id, no impact on
+   goldens or sweeps. The replay stays as story only.
 9. **Month-end bill.** Should the month that closes on Shadow Friday produce a visible (shadow) bill in the handover,
    computed from the five replayed days plus the rest of the month at its average?
