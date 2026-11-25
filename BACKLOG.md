@@ -405,6 +405,9 @@ Done when the do-nothing, reference and alternative playthroughs hold for these 
 Design doc §5.5, §8.2, §8.3, §3.2.
 - **Friday:** `RUNAWAY` at 09:30 (solo, hint ladder, AIOps hypothesis) and `JOB_ABEND` at ~01:40 with Ruth's alert
   and the automation rule.
+- **Ruth's licences (F1, design §8.2):** Capacity planner, What-if, Alerts, Automation and AIOps on for the day on
+  her cost centre; every tool bought or trialled that week goes at the handover, so Day 1 starts with 15 Insight and
+  nothing bought.
 - **The bill (F6):** read from the bill's own data. The peak is set by the week or held by the seed.
 - **The handover (F7):**
   - the handover note, with the back-out list and the "never got round to" list naming only F6 and F9 (design §3.2,
