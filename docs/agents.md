@@ -22,6 +22,10 @@ npm run -s play -- runs/a.json finance    # Finance tab: bill so far; under TFP,
 npm run -s play -- runs/a.json capacity   # CPC engines and MSU, LPAR logical CPs/weights/defined capacity, job class initiators, capacity changes by day
 npm run -s play -- runs/a.json batch      # last batch night by stream (needs SMF30_BATCH, like smf BATCH): LPARs, start/end, queueing, stretch
 npm run -s play -- runs/a.json rca INC3 CPU_PRIORITY POLICY [--evidence PIN1,PIN4]   (ids: INC incident, PIN pin, CHG planned change; bare numbers work too)
+npm run -s play -- runs/a.json problem [list]     # problem records (RT-22): subjects, closed hours, filings and replies
+npm run -s play -- runs/a.json problem show REC1  # one record; its window's truth stays hidden until a filing
+npm run -s play -- runs/a.json problem open workload RBANK --from "D1 10:00" --to "D1 12:00"   # class ONLHI#1, image PROD1 or job CICSXLOG too
+npm run -s play -- runs/a.json problem file REC1 CPU_PRIORITY CHANGE_REGRESSION [--evidence PIN1,PIN2]   # 0.25h; 3/day, one an hour
 npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also CPC, CF, DASD, MON3, DB2, CICS (see catalog)
 npm run -s play -- runs/a.json pin MON3 PRDA MKTORD DELAY_CPU --at D1 09:40   # MON3 and CPC pins from a past Monitor III range
 npm run -s play -- runs/a.json pin MON3 PROD1 ONLHI#1 VELOCITY CICSAOR1   # a SYSWKM server's velocity (current range only)

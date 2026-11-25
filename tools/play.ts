@@ -5,6 +5,8 @@
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
+//   npm run play -- runs/a.json problem [list] | problem show REC<n> | problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"
+//   npm run play -- runs/a.json problem file REC<n> <MECHANISM> <TRIGGER> [--evidence PIN<n>,PIN<n>]   (RT-22 records)
 //   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | cod-deactivate CHG<n> | restart <JOB>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
@@ -21,7 +23,7 @@ import { parseIdText } from '../src/game/ids';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
 import { SCENARIOS } from '../src/content/scenarios';
-import type { Mechanism, Trigger } from '../src/game/types';
+import type { Mechanism, ProblemSubject, Trigger } from '../src/game/types';
 import type { CfMetric, CpcMetric, DasdMetric, PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
 import type { InquiryKind } from '../src/content/inquiries';
@@ -30,7 +32,7 @@ import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
 import { SAVE_VERSION } from '../src/game/runFile';
-import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, problemsText, statusText, tickOfClock, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -112,7 +114,44 @@ function wlmLogOpts(a: string[]): { system?: string; grep?: string } {
   return { ...(system ? { system } : {}), ...(grep ? { grep } : {}) };
 }
 
-type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog' | 'finance' | 'capacity' | 'batch';
+type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog' | 'finance' | 'capacity' | 'batch' | 'problem';
+
+function flagValue(a: string[], name: string): string | undefined {
+  const i = a.indexOf(name);
+  return i >= 0 ? a[i + 1] : undefined;
+}
+
+function problemSubject(kind: string, id: string): ProblemSubject {
+  const k = kind.toUpperCase();
+  if (k !== 'WORKLOAD' && k !== 'CLASS' && k !== 'IMAGE' && k !== 'JOB') throw new Error('problem subject kind: workload | class | image | job');
+  if (!id) throw new Error(`problem ${kind} needs an id, e.g. workload RBANK, class ONLHI#1, image PROD1, job CICSXLOG`);
+  return { kind: k, id } as ProblemSubject;
+}
+
+function problemCommand(a: string[]): PlayCommand {
+  if (a[0] === 'open') {
+    const subject = problemSubject(a[1] ?? '', a[2] ?? '');
+    const from = flagValue(a, '--from');
+    const to = flagValue(a, '--to');
+    if (!from || !to) throw new Error('usage: problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"');
+    const fromTick = tickOfClock(from);
+    const toTick = tickOfClock(to);
+    if (fromTick === null || toTick === null) throw new Error('--from/--to take a clock like "D2 10:00"');
+    return { cmd: 'problem-open', subject, fromTick, toTick };
+  }
+  if (a[0] === 'file') {
+    const ev = a.indexOf('--evidence');
+    return {
+      cmd: 'problem-file',
+      recordId: parseIdText('record', a[1] ?? ''),
+      mechanism: (a[2] ?? '') as Mechanism,
+      trigger: (a[3] ?? '') as Trigger,
+      evidenceIds: ev >= 0 ? (a[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [],
+    };
+  }
+  throw new Error('usage: problem [list] | problem show REC1 | problem open <kind> <id> --from "D2 10:00" --to "D2 12:00" | problem file REC1 <MECHANISM> <TRIGGER> [--evidence PIN1,PIN2]');
+}
+
 function parse(): PlayCommand | ReadOnly {
   switch (verb) {
     case 'status': return 'status';
@@ -123,6 +162,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'finance': return 'finance';
     case 'capacity': return 'capacity';
     case 'batch': return 'batch';
+    case 'problem': return rest.length === 0 || rest[0] === 'list' || rest[0] === 'show' ? 'problem' : problemCommand(rest);
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': {
       const seed = Number(rest[0] ?? 42), difficulty = (rest[1] ?? 'normal').toUpperCase(), scenario = rest[2];
@@ -190,6 +230,7 @@ if (typeof c === 'string') {
     finance: () => financeText(file!),
     capacity: () => capacityText(file!),
     batch: () => batchStreamsText(file!),
+    problem: () => rest[0] === 'show' && rest[1] === undefined ? 'usage: problem show REC1' : problemsText(file!, rest[0] === 'show' ? parseIdText('record', rest[1]!) : undefined),
   };
   console.log(c === 'mon3' ? mon3Text(file!, { system: rest[0], json, at }) : readOnly[c]());
 } else {

@@ -1,34 +1,32 @@
 import { PLANNER } from '../../content/planner';
-import { SLOT_BASELINE_DECAY } from '../../content/sla';
+import { CO_DOMINANT_SHARE, DELAY_FLOOR_FRAC, SLOT_BASELINE_DECAY } from '../../content/sla';
 import { clockAt } from '../../sim/core/clock';
 import { msuPerCp } from '../../sim/hw/cpc';
 import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
+import type { WorkloadDef } from '../../sim/workload/types';
 import { addDb2Counters, emptyDb2Counters } from '../../sim/subsys/db2Contention';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
-import { classify } from '../../sim/wlm/classify';
 import { SERVER_KEY } from '../../sim/wlm/holders';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { accumulateCpuGrant, accumulateCpuGrants, accumulateCpuWaits } from '../hourAccounting';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { activeIn, addHour, capacityBasis, cappingVerdict, clockHourOf, coDominantGroups, cpuMechanismOf, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, slotBaseline, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { activeIn, addHour, clockHourOf, footprintRelation, groupExcess, hourAttainment, importanceRank, markMet, perTxnParts, rankedMechanismGroups, slotBaseline, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { judgeWorkloadHour } from '../hourTruth';
 import { hostImages } from '../footprint';
+import { peersOf, slowCf, slowLcu, type PeerRows } from '../peerSlow';
 import {
   type CapacityDay,
   type HourAcc,
   type Incident,
-  type IncidentTruth,
-  type Mechanism,
-  type RunState
+  type QuietHour,
+  type RunState,
+  type WorkloadHour
 } from '../types';
-import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
 import { slowInternalOf } from '../staff';
-import { peersOf } from '../peerSlow';
-import { allWorkloads, isNewWorkload } from '../workloads';
+import { allWorkloads } from '../workloads';
 import { incidentSubjects } from '../evidence';
-import { snapshotCpuConsumers } from '../displaceable';
 import { db2RollbacksByLpar } from '../smf';
-import { cpuAlternates } from '../sla';
 import type { GameContent } from './shared';
 import { addGroupedIncident } from './grouping';
 import { toolOn } from './shared';
@@ -274,12 +272,56 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   const window = { startTick: hourStart, endTick: hourEnd };
   const disturbed = (workloadId: string) =>
     r.events.some((e) => activeIn(e, window) && !(e.endTick === null && e.metWith?.includes(workloadId)) && footprintRelation(e, workloadId, scopeOf(workloadId)) !== null);
+  // RT-22: a met hour that still shows a problem. A card's footprint counts even when the response met the goal (a
+  // quiet regression), a delay group past the floor counts, and a CF/LCU far slower than its peers counts when it
+  // carries a third of the response time (RT-35). A clean met hour is no problem and is not stored.
+  const peersFor = (w: WorkloadDef): PeerRows | undefined => {
+    const rmf = [...r.sim.rmf.intervals].reverse().find((iv) => iv.endTick <= hourEnd && iv.endTick > hourStart);
+    return rmf ? peersOf(rmf, hostImages(r.sim.routing[w.id] ?? w.routing)) : undefined;
+  };
+  const quietReason = (w: WorkloadDef, wh: WorkloadHour, parts: Record<string, number>, base: Record<string, number>): QuietHour['reason'] | null => {
+    if (disturbed(w.id)) return 'CARD';
+    const slaRtSec = 'rtSec' in w.sla ? w.sla.rtSec : 0;
+    // A delay group needs a healthy baseline to be abnormal. A workload's first day has none, and reading every
+    // response component as "excess" would make every met hour a problem.
+    const hasBaseline = Object.values(base).some((x) => x > 0);
+    if (hasBaseline && slaRtSec > 0) {
+      const total = groupExcess(parts, base).reduce((a, [, x]) => a + Math.max(0, x), 0);
+      if (total >= DELAY_FLOOR_FRAC * slaRtSec) return 'DELAY';
+    }
+    const rt = wh.completions > 0 ? wh.rtSumSec / wh.completions : 0;
+    if (rt <= 0) return null;
+    const peers = peersFor(w);
+    if (!peers) return null;
+    if (parts.cf !== undefined && parts.cf >= CO_DOMINANT_SHARE * rt && slowCf(peers.cf, peers.connectedCf)) return 'PEER';
+    if (parts.io !== undefined && parts.io >= CO_DOMINANT_SHARE * rt && slowLcu(peers.lcus)) return 'PEER';
+    return null;
+  };
   const metHour: string[] = [];
+  const quietHours: QuietHour[] = [];
   for (const w of workloads) {
     const wh = h.workloads[w.id];
     if (!wh) continue;
     const att = hourAttainment(w, wh);
-    if (!att) continue;
+    if (!att) {
+      // A workload with no SLA (TSO, ad-hoc BI) has no attainment to miss, but a card touching it is still a problem a
+      // record can name. With no card there is no goal to judge, so nothing is stored.
+      if (disturbed(w.id) && wh.completions + wh.failed > 0) {
+        const judge = judgeWorkloadHour(r, scenario, content, w, wh, h, workloads, baseOf(w.id), hourEnd, false);
+        quietHours.push({
+          day: r.day,
+          hourOfDay: hourSlot,
+          startTick: hourStart,
+          endTick: hourEnd,
+          workloadId: w.id,
+          reason: 'CARD',
+          truth: judge.truth,
+          ...(judge.basis ? { basis: judge.basis } : {}),
+          subjects: judge.subjects,
+        });
+      }
+      continue;
+    }
     const parts = perTxnParts(wh);
     // Incidents are per played day (the day's SLA report and RCA count them): one still open at
     // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
@@ -287,6 +329,9 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
       metHour.push(w.id);
+      // The baseline in force during the hour, before this hour is folded into the slot (RT-22): a met hour's
+      // delay group must be judged against what "normal" was when it ran, not after it has become part of normal.
+      const hourBase = baseOf(w.id);
       if (!disturbed(w.id)) {
         // The rolling EWMA stays the fallback; the clock-hour slot is what judges this hour of the day (RT-17).
         baselines[w.id] = updateBaseline(baselines[w.id], parts);
@@ -296,6 +341,23 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
         };
       }
       if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
+      if (openIdx < 0) {
+        const reason = quietReason(w, wh, parts, hourBase);
+        if (reason) {
+          const judge = judgeWorkloadHour(r, scenario, content, w, wh, h, workloads, hourBase, hourEnd, false);
+          quietHours.push({
+            day: r.day,
+            hourOfDay: hourSlot,
+            startTick: hourStart,
+            endTick: hourEnd,
+            workloadId: w.id,
+            reason,
+            truth: judge.truth,
+            ...(judge.basis ? { basis: judge.basis } : {}),
+            subjects: judge.subjects,
+          });
+        }
+      }
       continue;
     }
     const facet = facetOf(w);
@@ -305,82 +367,13 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
     } else {
-      const hosts = hostImages(r.sim.routing[w.id] ?? w.routing)
-        .map((lparId) => {
-          const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
-          return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
-        });
-      const subjects = snapshotCpuConsumers(r, scenario, h, w, workloads, incidentSubjects(r, scenario, w.id, r.day));
-      // The policy's class and role definitions, for the CAPPING cause's identity (RT-33): a resource group's name
-      // comes from the class definition, and a server role's from the region class holding it on that image.
-      const def = r.sim.wlm.definition;
-      const classGroup = (classId: string) => def.classes.find((c) => c.id === classId)?.resourceGroup ?? null;
-      const roleGroup = (lparId: string, role: string) => {
-        const space = [...scenario.addressSpaces, ...r.sim.extraAddressSpaces]
-          .filter((a) => a.lparId === lparId && a.role === role)
-          .sort((a, b) => (a.jobname < b.jobname ? -1 : a.jobname > b.jobname ? 1 : 0))[0];
-        if (!space) return null;
-        const cls = classify(def, { subsystem: space.subsystem, TN: space.jobname, SY: lparId }).serviceClass;
-        return cls ? classGroup(cls) : null;
-      };
-      const serverRoles = [...new Set([...(w.servers ?? []).map((s) => s.role), ...(w.hostRole ? [w.hostRole] : [])])].sort();
-      const base = baseOf(w.id);
-      // A discretionary class has no response-time goal: no floor, as before RT-17.
-      const slaRtSec = 'rtSec' in w.sla ? w.sla.rtSec : 0;
-      const cpu = { workloadId: w.id, baseline: base, subjects, serverRoles, slaRtSec,
-        groupOf: classGroup, roleGroupOf: roleGroup,
-        // IIPHONORPRIORITY=NO means CPs never examine eligible work:
-        // SA23-1380-60 PDF p.430 (printed 394). A service class with Honor Priority=NO gets no CP help
-        // (SC34-2662-60 PDF p.121 (printed 101)). APPROX: the hurt class alone decides; a CICS region overflows
-        // unless all its transaction classes say NO (PDF p.122 (printed 102)), which this judge does not check.
-        overflowBlockedHosts: hosts.filter((host) => {
-          const cls = classify(r.sim.wlm.definition, { ...w.work, SY: host.lparId }).serviceClass;
-          return r.sim.config.systems.find((s) => s.lparId === host.lparId)?.iipHonorPriority === false ||
-            r.sim.wlm.definition.classes.find((c) => c.id === cls)?.honorPriority === false;
-        }).map((h) => h.lparId),
-      };
-      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, base, h, hosts, cpu);
-      const cpuSide = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'].includes(mechanism);
-      const basis = cpuSide ? capacityBasis(h, hosts, cpu) : null;
-      // The cap that decided a CAPPING hour is the incident's cause, whatever host the basis picked on a legacy hour.
-      if (basis && mechanism === 'CAPPING') {
-        const cap = cappingVerdict(h, hosts, cpu);
-        if (cap) {
-          basis.capBy = cap.by;
-          if (cap.group !== null) basis.capGroup = cap.group;
-        }
-      }
-      // A second delay group with a third of the excess is an accepted answer too (RT-17, §4.2(2)). The CPU group is
-      // mapped to the answer the CPU drill-down would give, as the primary does.
-      const coDominant = coDominantGroups(parts, base, slaRtSec, cpuSide ? 'CPU' : mechanism).map(({ group, sharePct }) => ({
-        mechanism: group === 'CPU' ? cpuMechanismOf(h, hosts, cpu) : (group as Mechanism),
-        why: `${sharePct.toFixed(1)} % of the delay excess grew beside the primary`,
-      }));
-      const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
-      // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
-      const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });
-      // The interval that closed this hour, for the peer-slow source (RT-35): a CF's sync/async reading against the
-      // best CF, an LCU's DISC/response against the all-LCU median. The peer readings are that interval's (the hour's
-      // last 30 minutes) while the share is the whole hour's; a constant fault makes the two agree (RT-35's shape).
-      const rmf = [...r.sim.rmf.intervals].reverse().find((iv) => iv.endTick <= hourEnd && iv.endTick > hourStart);
-      const peers = rmf ? peersOf(rmf, hosts.map((host) => host.lparId)) : undefined;
-      const ctx: TruthContext = {
-        workloadId: w.id, mechanism, trigger, hour: h, events: r.events, basis, hosts,
-        servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew,
-        ...(peers ? { peers } : {}),
-        ...(cpuSide ? { cpu: cpuAlternates(h, hosts, cpu) } : {}),
-        ...(coDominant.length ? { coDominant } : {}),
-      };
-      const { accepted, notes, nearMiss } = acceptedAnswers(ctx);
-      const truth: IncidentTruth = {
-        mechanism, trigger, accepted,
-        ...(Object.keys(notes).length > 0 ? { notes } : {}),
-        ...(nearMiss ? { nearMiss } : {}),
-        cause: truthCause(ctx),
-      };
+      // The hour's truth comes from the shared judge, so a quiet-hour fact (RT-22) and an incident cannot disagree
+      // about the same hour. An incident keeps the observed CPU grants; a quiet met hour reads the cheaper split.
+      const judge = judgeWorkloadHour(r, scenario, content, w, wh, h, workloads, baseOf(w.id), hourEnd, true);
+      const { truth, basis, subjects } = judge;
       let aiops: Hypothesis[] | undefined;
       if (toolOn(r, 'AIOPS')) {
-        aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, base), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
+        aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, baseOf(w.id)), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
       }
       const inc: Incident = {
         id: r.nextId,
@@ -421,7 +414,20 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
     ...(Object.keys(db2Rollbacks).length > 0 ? { db2RollbacksByLpar: db2Rollbacks } : {}),
   }].slice(-SMF_HOURS_KEPT);
-  r = { ...r, trust, incidents, baselines, hourBaselines, smfHours, hour: newHour(r.sim.tick) };
+  const nextQuiet = [...(r.quietHours ?? []), ...quietHours].filter((q) => q.day * 24 + ((q.hourOfDay - 6 + 24) % 24) > (r.day * 24 + ((hourOfDay - 6 + 24) % 24)) - SMF_HOURS_KEPT);
+  // Keep the field out of runs that have no quiet hours, so an old save and the passive golden run are unchanged;
+  // it appears with the first notable met hour and leaves when the facts roll off.
+  const { quietHours: _previousQuiet, ...withoutQuiet } = r;
+  r = {
+    ...withoutQuiet,
+    trust,
+    incidents,
+    baselines,
+    hourBaselines,
+    smfHours,
+    ...(nextQuiet.length > 0 ? { quietHours: nextQuiet } : {}),
+    hour: newHour(r.sim.tick),
+  };
   // A slow internal workload (PT-50): one inbox complaint per episode. The surcharge itself is derived from the
   // hours just recorded; this marker only stops a repeat complaint, and a met hour clears it so a later episode
   // complains again. It is not proof that the episode still runs.

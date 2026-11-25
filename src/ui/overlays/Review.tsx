@@ -48,8 +48,8 @@ export function Review({ v, game, investigate }: { v: ViewModel; game: GameHandl
                 #{i.id} {i.workloadId}
                 {linked(i.id)}: {rcaAnswerText(rcaGroupOf(v.incidents, i.id), i.rca!.mechanism, i.rca!.trigger, groupAcceptedOf(rcaGroupOf(v.incidents, i.id)))}
               </span>
-              <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
-                +{i.rca!.points} (was {primaryTextOf(rcaGroupOf(v.incidents, i.id))})
+              <span className={`tag ${i.rca!.duplicateOf !== undefined ? 'bad' : i.rca!.points >= 3 ? 'good' : 'bad'}`}>
+                {i.rca!.duplicateOf !== undefined ? 'no second credit' : `+${i.rca!.points}`} (was {primaryTextOf(rcaGroupOf(v.incidents, i.id))})
               </span>
             </div>
             {i.rca!.explain && (

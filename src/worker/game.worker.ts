@@ -640,6 +640,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = out.run;
       break;
     }
+    case 'OPEN_PROBLEM':
+      settleGame(command({ kind: 'OPEN_PROBLEM', subject: m.subject, fromTick: m.fromTick, toTick: m.toTick }));
+      break;
+    case 'FILE_PROBLEM':
+      settleGame(command({ kind: 'FILE_PROBLEM', recordId: m.recordId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] }));
+      break;
     case 'PIN': {
       // The Monitor III history a past-range pin resolves against; the CLI passes its side file the same way.
       const out = applyGameCommand(run, pendingPolicy, { kind: 'PIN', req: m.req }, pack().game, sc(), { mon3History: (t) => mon3At(mon3Hist, t) });
