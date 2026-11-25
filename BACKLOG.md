@@ -410,6 +410,8 @@ Design doc §5.5, §8.2, §8.3, §3.2.
 
 Done when:
 - the full five-day reference playthrough ends with an empty back-out list and a bill;
+- the reference run joins the cross-report invariants (`tests/sim/report-invariants.test.ts`) as an extra fixture
+  (design §11.5);
 - the reference run's bill moves or holds the month's peak as design §8.4 says (§11.5);
 - the §9 coverage test passes for every tab and section;
 - the XP is awarded once;
