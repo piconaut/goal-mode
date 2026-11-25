@@ -333,9 +333,21 @@ export interface ProblemTruth {
   cause: string;
 }
 
+/** One root-cause episode for the one-payment rule (RT-22): the same cause in one §4.5 group. A card is one episode
+ *  for a played day; a fallback cause is one while its hours overlap or follow within `GROUP_FOLLOW_HOURS`. */
+export interface CauseEpisode {
+  cause: string;
+  day: number;
+  startTick: number;
+  endTick: number | null;
+}
+
 /** One hour's frozen truth inside a record's window, with the subjects pins are judged against. */
 export interface ProblemCandidate {
   workloadId: string;
+  day: number;
+  startTick: number;
+  endTick: number;
   truth: IncidentTruth;
   subjects: IncidentSubjects;
   basis?: CapacityBasis;
@@ -352,14 +364,15 @@ export interface ProblemFiling {
   evidencePoints?: number;
   strong?: boolean;
   proof?: ProofResult;
-  /** Trust change applied to `trustFacet`; 0 when the subject has no facet or the cause already earned. */
+  /** Trust change applied to `trustFacet`; 0 when the subject has no facet or the episode already earned. */
   trust: number;
   trustFacet: Facet | null;
-  /** The cause this filing was judged against, for the no-double-credit ledger. */
+  /** The cause and §4.5 episode this filing was judged against, for the one-episode-pays-once rule. */
   cause: string;
+  episode: CauseEpisode;
   /** The window shows no problem, so every mechanism is wrong. */
   noProblem?: true;
-  /** The cause already earned elsewhere: the filing is recorded but earns no trust, insight or score. */
+  /** The episode already earned elsewhere: the filing is recorded but earns no trust, insight or score. */
   duplicateOf?: number;
   /** The reply, one line per part, shared by the card and the CLI. */
   reply: string[];
@@ -494,9 +507,6 @@ export interface RunState {
   quietHours?: QuietHour[];
   /** Player-opened problem records (RT-22), oldest first. */
   problemRecords?: ProblemRecord[];
-  /** Causes that already earned a correct diagnosis (an RCA or a problem record), so one cause never pays twice
-   *  (RT-22's grouping rule). Derived from incidents with an RCA for old saves. */
-  creditedCauses?: string[];
   reports: DayReport[];
   inbox: Message[];
   draft: DraftOption[] | null;

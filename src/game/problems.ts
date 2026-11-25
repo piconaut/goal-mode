@@ -11,8 +11,9 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import { judgeGroupEvidence, smfHourEndTick } from './evidence';
 import { clampTrust, facetOf, logLine } from './run/shared';
 import { spendHours } from './run/changes';
+import { creditedEpisode } from './run/rca';
 import { allWorkloads } from './workloads';
-import { EVIDENCE } from '../content/evidence';
+import { EVIDENCE, PROOF } from '../content/evidence';
 import { MECHANISMS, TRIGGERS, scoreAccepted } from './sla';
 import { judgeProof, pinVerdictLines, proofLines } from './proof';
 import { BATCH_INCIDENT } from './sla';
@@ -205,9 +206,11 @@ function jobAbendCandidate(run: RunState, scenario: Scenario, subject: ProblemSu
   };
   return {
     workloadId: BATCH_INCIDENT,
+    day: j.day,
+    startTick: at,
+    endTick: at,
     truth,
     subjects: incidentSubjects(run, scenario, BATCH_INCIDENT, j.day),
-    endTick: at,
     incident: false,
   };
 }
@@ -218,7 +221,7 @@ export function problemTruthOf(run: RunState, scenario: Scenario, subject: Probl
   const found: Found[] = [];
   for (const f of run.quietHours ?? []) {
     if (!workloads.includes(f.workloadId) || !inWindow(f.day, f.hourOfDay, win)) continue;
-    found.push({ workloadId: f.workloadId, truth: f.truth, subjects: f.subjects, ...(f.basis ? { basis: f.basis } : {}), endTick: f.endTick, incident: false });
+    found.push({ workloadId: f.workloadId, day: f.day, startTick: f.startTick, endTick: f.endTick, truth: f.truth, subjects: f.subjects, ...(f.basis ? { basis: f.basis } : {}), incident: false });
   }
   for (const inc of run.incidents) {
     if (!workloads.includes(inc.workloadId) || !overlap(inc.startTick, inc.endTick, win, run.sim.tick)) continue;
@@ -228,7 +231,7 @@ export function problemTruthOf(run: RunState, scenario: Scenario, subject: Probl
       const night = run.sim.batch.nights.find((n) => n.day === inc.day) ?? run.reports.find((r) => r.day === inc.day)?.batch;
       if (!night?.criticalAbended?.includes(subject.id)) continue;
     }
-    found.push({ workloadId: inc.workloadId, truth: inc.truth, subjects: inc.subjects, ...(inc.basis ? { basis: inc.basis } : {}), endTick: inc.endTick ?? win.toTick, incident: true });
+    found.push({ workloadId: inc.workloadId, day: inc.day, startTick: inc.startTick, endTick: inc.endTick ?? win.toTick, truth: inc.truth, subjects: inc.subjects, ...(inc.basis ? { basis: inc.basis } : {}), incident: true });
   }
   const abend = jobAbendCandidate(run, scenario, subject, win);
   if (abend) found.push(abend);
@@ -258,7 +261,7 @@ export function problemTruthOf(run: RunState, scenario: Scenario, subject: Probl
   }
   const primary = found[0]!;
   const withFrom = Object.fromEntries(Object.entries(notes).map(([answer, why]) => [answer, multiple ? `${noteFrom[answer]}: ${why}` : why]));
-  const candidates: ProblemCandidate[] = found.map(({ endTick: _e, incident: _i, ...c }) => c);
+  const candidates: ProblemCandidate[] = found.map(({ incident: _i, ...c }) => c);
   return {
     truth: {
       mechanism: primary.truth.mechanism,
@@ -397,18 +400,6 @@ export function openProblemRecord(run: RunState, content: GameContent, scenario:
   };
 }
 
-/** Whether a cause already earned a correct diagnosis: a filed incident RCA or a problem record's awarded filing.
- *  Returns the id of the record or incident that earned it, or 0 when the ledger says it did but the source rolled
- *  away (an old save). Null when nothing earned it. */
-export function causeCredited(run: RunState, cause: string): number | null {
-  const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.cause === cause && f.points > 0));
-  if (rec) return rec.id;
-  const inc = run.incidents.find((i) => i.truth.cause === cause && (i.rca?.points ?? 0) > 0);
-  if (inc) return inc.id;
-  if (run.creditedCauses?.includes(cause)) return 0;
-  return null;
-}
-
 export interface FileProblemResult {
   run: RunState;
   ok: boolean;
@@ -448,7 +439,13 @@ export function fileProblemDiagnosis(
   // The cause a correct mechanism names: a window can hold several hours' causes; credit the one the answer matches.
   const matching = record.candidates.find((c) => c.truth.accepted.mechanisms.includes(mechanism)) ?? (record.candidates[0] as ProblemCandidate | undefined);
   const cause = matching?.truth.cause ?? record.truth.cause;
-  const duplicateOf = points > 0 ? causeCredited(run, cause) : null;
+  const episode = {
+    cause,
+    day: matching?.day ?? record.window.day,
+    startTick: matching?.startTick ?? record.window.fromTick,
+    endTick: matching?.endTick ?? record.window.toTick,
+  };
+  const duplicateOf = points > 0 ? creditedEpisode(run, episode) : null;
   const group = matching ? [candidateIncident(record, matching)] : [];
   const verdicts = group.length > 0 && pins.length > 0 ? judgeGroupEvidence(run, scenario, group, pins) : [];
   const judged = group.length > 0 && pins.length > 0 ? judgeProof(run, scenario, group, mechanism, trigger, pins) : null;
@@ -461,7 +458,7 @@ export function fileProblemDiagnosis(
     : undefined;
   const mechanismProven = mechanismAccepted && !!proof?.mechanism.complete;
   const mechanismShown = mechanismAccepted && !!proof?.mechanism.predicates.some((x) => x.met);
-  const evidencePoints = duplicateOf === null && mechanismProven ? 3 : duplicateOf === null && mechanismShown ? 0.5 : 0;
+  const evidencePoints = duplicateOf === null && mechanismProven ? PROOF.recipePoints : duplicateOf === null && mechanismShown ? PROOF.partialPoints : 0;
   const strong = duplicateOf === null && mechanismProven && triggerAccepted && !!proof?.trigger.complete;
   const facet = recordFacet(run, scenario, record.subject, subjectWorkloads(run, scenario, record.subject), matching?.workloadId);
   const wrongToday = record.filings.some((f) => f.day === run.day && f.trust < 0);
@@ -480,7 +477,6 @@ export function fileProblemDiagnosis(
       ...r,
       insight: r.insight + awarded + (strong ? EVIDENCE.strongInsight : 0),
       score: r.score + awarded,
-      creditedCauses: [...(r.creditedCauses ?? []), cause],
     };
   }
   const filing: ProblemFiling = {
@@ -498,6 +494,7 @@ export function fileProblemDiagnosis(
     ...(noProblem ? { noProblem: true as const } : {}),
     ...(duplicateOf !== null ? { duplicateOf: duplicateOf ?? 0 } : {}),
     cause,
+    episode,
     reply: [],
   };
   filing.reply = problemReply(record, filing, {
@@ -540,12 +537,12 @@ function problemReply(
           ? ` (primary ${record.truth.mechanism}/${triggerLabel(record.truth.trigger!)})`
           : ''),
     facts.duplicateOf !== null
-      ? `Correct answer: 0 points, this cause already earned.`
+      ? `Correct answer: 0 points, this episode already earned.`
       : filing.points > 0
         ? `Correct answer: ${filing.points} point${filing.points === 1 ? '' : 's'}${filing.evidencePoints ? ` (${filing.evidencePoints} from evidence)` : ''}.`
         : 'No points: the filed answer is not an accepted answer.',
   ];
-  if (facts.duplicateOf !== null) lines.push(facts.duplicateOf > 0 ? `Same cause as #${facts.duplicateOf}: no second credit for this cause.` : 'This cause already earned a diagnosis: no second credit.');
+  if (facts.duplicateOf !== null) lines.push(facts.duplicateOf > 0 ? `Same episode as #${facts.duplicateOf}: no second credit.` : 'This episode already earned a diagnosis: no second credit.');
   if (filing.trust !== 0 && filing.trustFacet) lines.push(`Trust ${filing.trust > 0 ? '+' : ''}${filing.trust} on ${filing.trustFacet}.`);
   else if (!filing.trustFacet) lines.push('No trust change: this subject has no stakeholder facet.');
   else if (filing.trust === 0 && !filing.noProblem && facts.duplicateOf === null) lines.push('No trust change.');

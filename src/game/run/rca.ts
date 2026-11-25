@@ -6,12 +6,14 @@ import { judgeProof, hourBaseNote } from '../proof';
 import { mechanismExplanation } from '../rcaExplain';
 import { scoreAccepted } from '../sla';
 import {
+  type CauseEpisode,
   type Incident,
   type Mechanism,
   type RunState,
   type Trigger
 } from '../types';
 import { mapTrust } from './shared';
+import { sameEpisode } from './grouping';
 
 /** The incident whose RCA covers this one (itself unless linked to an earlier same-cause incident that day). */
 export function rcaLeadId(inc: Incident): number {
@@ -115,6 +117,15 @@ export function rcaAnswerText(
   return `Mechanism ${mechanism} ${accepted.mechanisms.includes(mechanism) ? 'accepted' : 'not accepted'}, trigger ${triggerLabel(trigger)} ${accepted.triggers.includes(trigger) ? 'accepted' : 'not accepted'}${primary}`;
 }
 
+/** The incident or problem record that already earned this cause episode, or null. One episode pays once: an RCA and a
+ * record filing of the same §4.5 episode earn between them, while a later episode of the same cause is new. */
+export function creditedEpisode(run: RunState, episode: CauseEpisode): number | null {
+  const inc = run.incidents.find((i) => (i.rca?.points ?? 0) > 0 && sameEpisode({ cause: i.truth.cause, day: i.day, startTick: i.startTick, endTick: i.endTick }, episode));
+  if (inc) return inc.id;
+  const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.points > 0 && sameEpisode(f.episode, episode)));
+  return rec?.id ?? null;
+}
+
 /** Root-cause analysis for an incident and every incident linked to it; scored once against the ground truth. */
 export function submitRca(run: RunState, incidentId: number, mechanism: Mechanism, trigger: Trigger, scenario?: Scenario, evidenceIds: readonly number[] = []): RunState {
   const inc = run.incidents.find((i) => i.id === incidentId);
@@ -149,14 +160,10 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const strong = mechanismProven && triggerAccepted && !!proof?.trigger.complete;
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const cause = group[0]?.truth.cause ?? '';
-  // RT-22: one cause pays once. A problem record (or an earlier incident, including one filed before this ledger
-  // existed) that already earned this cause leaves this filing recorded but worth no trust, insight or score.
-  const priorIncident = run.incidents.find((i) => i.id !== leadId && i.truth.cause === cause && (i.rca?.points ?? 0) > 0);
-  const duplicateOf = cause && ((run.creditedCauses ?? []).includes(cause) || priorIncident)
-    ? (run.problemRecords?.find((rec) => rec.filings.some((f) => f.cause === cause && f.points > 0))?.id
-      ?? priorIncident?.id
-      ?? 0)
-    : null;
+  // RT-22: one episode pays once (§4.5: a card is one episode for a played day; a fallback cause only while its hours
+  // overlap or follow within GROUP_FOLLOW_HOURS). A later episode of the same cause is new and pays.
+  const episode: CauseEpisode = { cause, day: inc.day, startTick: inc.startTick, endTick: inc.endTick };
+  const duplicateOf = points > 0 ? creditedEpisode(run, episode) : null;
   // Only a correct answer can be a duplicate: a wrong answer still costs its trust, even on an already-earned cause.
   const duplicate = duplicateOf !== null && points > 0;
   const awarded = !duplicate;
@@ -176,7 +183,6 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
     trust,
     insight: run.insight + total + (awarded && strong ? EVIDENCE.strongInsight : 0),
     score: run.score + total,
-    ...(total > 0 ? { creditedCauses: [...(run.creditedCauses ?? []), cause] } : {}),
     incidents: run.incidents.map((i) => (rcaLeadId(i) === leadId ? { ...i, rca } : i)),
   };
 }

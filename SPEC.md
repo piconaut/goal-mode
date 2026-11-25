@@ -1614,8 +1614,9 @@ covers the work classified into it (or a CICS region class's served transactions
 job its batch night or the work on its image (APPROX).
 Filing costs 0.25 engineer-hours; a wholly wrong filing loses 0.5 trust on the subject's facet once per record per day;
 at most three filings a day, one an hour. A correct answer earns what a correct RCA earns, on that facet, with the same
-recipes. One cause pays once: an incident RCA, a problem record, or a later RCA of the same cause earns nothing when
-the cause is already credited. A record unlocks no fix until D1 (RT-24). The Reports tab's **Problems** card and the
+recipes. One **episode** pays once: an incident RCA and a problem record of the same §4.5 episode earn once between
+them. A later episode of the same cause (a later played day, or a fallback cause more than two hours on) is new and
+pays; a record chains back-to-back quiet hours of one cause into one episode. A record unlocks no fix until D1 (RT-24). The Reports tab's **Problems** card and the
 play CLI (`problem ...`) open, file and review records; the window's truth stays hidden until a filing's reply.
 
 **One RCA per root cause:** an incident is linked (`rcaGroup`) to the earlier incident with the same cause

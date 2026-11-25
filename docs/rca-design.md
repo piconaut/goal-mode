@@ -872,8 +872,10 @@ A filing costs `PROBLEM.hours` (0.25), a wholly wrong filing (no accepted answer
 subject's facet once per record per day, and a record allows `PROBLEM.filingsPerDay` filings a day, one an hour (`PROBLEM.refileHours`). Pins
 are judged against the record's window and the candidate hours' recorded subjects, with the same recipes and the same
 points. The correct-answer trust lands on the subject's facet at the RCA's per-facet rate (+1 for a mechanism answer, +0.25 for a trigger-only one; −0.5 for a wholly wrong answer),
-and `RunState.creditedCauses` makes one cause pay once: a record whose cause an incident RCA already earned, and an RCA
-whose cause a record already earned, are recorded but score nothing. A record unlocks no fix: `visibleFixIds` and
+and `creditedEpisode` makes one §4.5 episode pay once: a record filing and an RCA of the same episode earn between
+them, while a later episode of the same cause (a later played day, or a fallback cause more than `GROUP_FOLLOW_HOURS`
+on) is new. A record chains back-to-back quiet hours of one cause into one episode, so a standing fault cannot be
+farmed. A record unlocks no fix: `visibleFixIds` and
 `armableEvents` are unchanged until Q8b. The Reports tab's Problems card and `play problem` share the reply lines.
 Old saves have no quiet hours; records on their old windows see overlapping incidents and a job's own ABEND only, and
 otherwise no problem. Bots file no records, so the balance bands do not move. The §5.4 limits are counted per record:

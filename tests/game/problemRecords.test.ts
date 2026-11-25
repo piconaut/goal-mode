@@ -7,12 +7,13 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { cardMechanisms } from '../../src/content/footprint';
 import { PROBLEM } from '../../src/content/rca';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
+import { creditedEpisode } from '../../src/game/run/rca';
+import { sameEpisode } from '../../src/game/run/grouping';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { applyCommands } from '../../src/sim/core/commands';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import type { RmfInterval } from '../../src/sim/measure/rmf';
 import {
-  causeCredited,
   fileProblemDiagnosis,
   openProblemRecord,
   problemHours,
@@ -85,7 +86,9 @@ describe('problem records (RT-22)', () => {
     expect(filed.filing!.trustFacet).toBe('Retail');
     expect(filed.run.insight - out.run.insight).toBe(5);
     expect(filed.run.score - out.run.score).toBe(5);
-    expect(filed.run.creditedCauses).toContain('REGRESSION@0');
+    expect(creditedEpisode(filed.run, { cause: 'REGRESSION@0', day: 0, startTick: 0, endTick: H })).toBe(out.record!.id);
+    // The next day is a new episode of the same cause and is still open for payment.
+    expect(creditedEpisode(filed.run, { cause: 'REGRESSION@0', day: 1, startTick: TICKS_PER_DAY, endTick: TICKS_PER_DAY + H })).toBeNull();
     expect(filed.filing!.reply.join('\n')).toContain('Mechanism CPU_PRIORITY accepted');
     // A second record on the same subject and window would reset the anti-fishing limits; it is refused.
     const again = open(out.run, { kind: 'WORKLOAD', id: 'RBANK' });
@@ -327,11 +330,37 @@ describe('problem records (RT-22)', () => {
     expect(filed.filing!.trustFacet).toBe('Retail');
   });
 
+  it('pays a same-cause RCA on a later episode, but not within one fallback episode', () => {
+    const truth = truthOf('CPU_CAPACITY', 'GROWTH', { cause: 'none:CPU:PROD1' });
+    const first = incident(1, 'RBANK', truth, { day: 0, startTick: 0, endTick: H });
+    const later = incident(2, 'RBANK', truth, { day: 6, startTick: 6 * TICKS_PER_DAY, endTick: 6 * TICKS_PER_DAY + H });
+    const run = quiet({ incidents: [first, later] });
+    const scored = submitRca(run, 1, 'CPU_CAPACITY', 'GROWTH');
+    expect(scored.incidents.find((i) => i.id === 1)!.rca!.points).toBe(5);
+    const after = submitRca(scored, 2, 'CPU_CAPACITY', 'GROWTH');
+    expect(after.incidents.find((i) => i.id === 2)!.rca!.points).toBe(5);
+    expect(after.incidents.find((i) => i.id === 2)!.rca!.duplicateOf).toBeUndefined();
+    // The same fallback cause two hours later is still one episode and pays once.
+    const close = incident(3, 'RBANK', truth, { day: 0, startTick: 2 * H, endTick: 3 * H });
+    const within = submitRca(quiet({ incidents: [first, close] }), 1, 'CPU_CAPACITY', 'GROWTH');
+    const second = submitRca(within, 3, 'CPU_CAPACITY', 'GROWTH');
+    expect(second.incidents.find((i) => i.id === 3)!.rca!.points).toBe(0);
+    expect(second.incidents.find((i) => i.id === 3)!.rca!.duplicateOf).toBe(1);
+  });
+
+  it('chains back-to-back quiet hours of a fallback cause, and starts a new episode after a longer gap', () => {
+    const ep = (cause: string, day: number, startHour: number, endHour: number) => ({ cause, day, startTick: startHour * H, endTick: endHour * H });
+    expect(sameEpisode(ep('none:CPU:PROD1', 0, 9, 10), ep('none:CPU:PROD1', 0, 10, 11))).toBe(true);
+    expect(sameEpisode(ep('none:CPU:PROD1', 0, 9, 10), ep('none:CPU:PROD1', 0, 12, 13))).toBe(true);
+    expect(sameEpisode(ep('none:CPU:PROD1', 0, 9, 10), ep('none:CPU:PROD1', 0, 13, 14))).toBe(false);
+    expect(sameEpisode(ep('REGRESSION@0', 0, 9, 10), ep('REGRESSION@0', 1, 6, 7))).toBe(false);
+  });
+
   it('does not count a wrong prior RCA as the cause', () => {
     const truth = truthOf('CPU_PRIORITY', 'CHANGE_REGRESSION', { cause: 'REGRESSION@0' });
     const wrong = incident(1, 'RBANK', truth, { rca: { mechanism: 'IO', trigger: 'POLICY', points: 0 } });
     const run = quiet({ quietHours: [fact('RBANK', truth)], incidents: [wrong] });
-    expect(causeCredited(run, 'REGRESSION@0')).toBeNull();
+    expect(creditedEpisode(run, { cause: 'REGRESSION@0', day: 0, startTick: 0, endTick: H })).toBeNull();
     const out = open(run, { kind: 'WORKLOAD', id: 'RBANK' });
     const filed = file(out.run, out.record!.id, 'CPU_PRIORITY', 'CHANGE_REGRESSION');
     expect(filed.filing!.points).toBe(5);
@@ -347,7 +376,7 @@ describe('problem records (RT-22)', () => {
     const truth = truthOf('CPU_PRIORITY', 'CHANGE_REGRESSION', { cause: 'REGRESSION@0' });
     const inc = incident(1, 'RBANK', truth, { rca: { mechanism: 'CPU_PRIORITY', trigger: 'CHANGE_REGRESSION', points: 5 } });
     const run = quiet({ quietHours: [fact('RBANK', truth)], incidents: [inc] });
-    expect(causeCredited(run, 'REGRESSION@0')).toBe(1);
+    expect(creditedEpisode(run, { cause: 'REGRESSION@0', day: 0, startTick: 0, endTick: H })).toBe(1);
     const out = open(run, { kind: 'WORKLOAD', id: 'RBANK' });
     const filed = file(out.run, out.record!.id, 'CPU_PRIORITY', 'CHANGE_REGRESSION');
     expect(filed.filing!.points).toBe(0);
