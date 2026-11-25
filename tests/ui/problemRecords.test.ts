@@ -73,7 +73,7 @@ describe('problem records in the UI (RT-22)', () => {
     expect(text).toContain('REC1');
     expect(text).toContain('Retail banking (RBANK)');
     expect(text).toContain('Mechanism CPU_PRIORITY accepted');
-    expect(text).toContain('Trust +2 on Retail');
+    expect(text).toContain('Trust +1 on Retail');
     expect(text).not.toContain('REGRESSION@0');
     act(() => root.unmount());
   });

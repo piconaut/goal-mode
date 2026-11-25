@@ -79,12 +79,16 @@ describe('problem records (RT-22)', () => {
     const filed = file(out.run, out.record!.id, 'CPU_PRIORITY', 'CHANGE_REGRESSION');
     expect(filed.ok, filed.message).toBe(true);
     expect(filed.filing!.points).toBe(5);
-    expect(filed.filing!.trust).toBe(2);
+    expect(filed.filing!.trust).toBe(1);
     expect(filed.filing!.trustFacet).toBe('Retail');
     expect(filed.run.insight - out.run.insight).toBe(5);
     expect(filed.run.score - out.run.score).toBe(5);
     expect(filed.run.creditedCauses).toContain('REGRESSION@0');
     expect(filed.filing!.reply.join('\n')).toContain('Mechanism CPU_PRIORITY accepted');
+    // A second record on the same subject and window would reset the anti-fishing limits; it is refused.
+    const again = open(out.run, { kind: 'WORKLOAD', id: 'RBANK' });
+    expect(again.ok).toBe(false);
+    expect(again.message).toContain('already covers');
   });
 
   it('records a real card that met its SLA as a quiet hour, and a record can name it', () => {
@@ -109,6 +113,28 @@ describe('problem records (RT-22)', () => {
     expect(out.record!.truth.cause).toBe('REGRESSION@0');
     expect(out.record!.truth.accepted.mechanisms).toContain('CPU_PRIORITY');
     const filed = file(out.run, out.record!.id, 'CPU_PRIORITY', 'CHANGE_REGRESSION');
+    expect(filed.ok, filed.message).toBe(true);
+    expect(filed.filing!.points).toBe(5);
+  }, 120_000);
+
+  it('opens on an ABENDed batch job that opened no incident', () => {
+    let run = startDay(newRun(MIDWEST, content, 7), content);
+    run = advance(run, MIDWEST, content, 20 * 360);
+    const j = run.sim.batch.jobs[0];
+    expect(j).toBeDefined();
+    const failed = {
+      ...j!,
+      status: 'ABENDED' as const,
+      abended: true,
+      failCode: 'S0C7',
+      startTick: 18 * 360,
+      endTick: 19 * 360,
+    };
+    run = { ...run, sim: { ...run.sim, batch: { ...run.sim.batch, jobs: [failed] } } };
+    const out = open(run, { kind: 'JOB', id: failed.def.name }, 18 * H, 20 * H);
+    expect(out.ok, out.message).toBe(true);
+    expect(out.record!.truth).toMatchObject({ mechanism: 'JOB_FAILURE', trigger: 'APPLICATION_ERROR' });
+    const filed = file(out.run, out.record!.id, 'JOB_FAILURE', 'APPLICATION_ERROR');
     expect(filed.ok, filed.message).toBe(true);
     expect(filed.filing!.points).toBe(5);
   }, 120_000);

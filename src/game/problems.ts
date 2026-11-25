@@ -183,8 +183,9 @@ const candidateIncident = (record: Pick<ProblemRecord, 'id' | 'window'>, c: Prob
  *  policy that sent it where it could not run (RT-04's DSNE100I trigger). */
 function jobAbendCandidate(run: RunState, scenario: Scenario, subject: ProblemSubject, win: ProblemWindow): Found | null {
   if (subject.kind !== 'JOB') return null;
-  const j = run.sim.batch.jobs.find((x) => x.def.name === subject.id && x.status === 'ABENDED' && x.endTick !== null && overlap(x.startTick ?? x.endTick, x.endTick, win, run.sim.tick));
-  if (!j || j.endTick === null) return null;
+  const j = run.sim.batch.jobs.find((x) => x.def.name === subject.id && x.abended === true && (x.failTick ?? x.endTick) !== null);
+  const at = j?.failTick ?? j?.endTick ?? null;
+  if (!j || at === null || !overlap(at, at + 1, win, run.sim.tick)) return null;
   const connect = j.failCode === 'DSNE100I';
   const trigger: Trigger = connect ? 'POLICY' : 'APPLICATION_ERROR';
   const truth: IncidentTruth = {
@@ -198,7 +199,7 @@ function jobAbendCandidate(run: RunState, scenario: Scenario, subject: ProblemSu
     workloadId: BATCH_INCIDENT,
     truth,
     subjects: incidentSubjects(run, scenario, BATCH_INCIDENT, j.day),
-    endTick: j.endTick,
+    endTick: at,
     incident: false,
   };
 }
@@ -213,6 +214,12 @@ export function problemTruthOf(run: RunState, scenario: Scenario, subject: Probl
   }
   for (const inc of run.incidents) {
     if (!workloads.includes(inc.workloadId) || !overlap(inc.startTick, inc.endTick, win, run.sim.tick)) continue;
+    // A job subject sees the night's BATCH incident only when that incident is about this critical job; a non-critical
+    // job's own failure comes from `jobAbendCandidate`.
+    if (subject.kind === 'JOB' && inc.workloadId === BATCH_INCIDENT) {
+      const night = run.sim.batch.nights.find((n) => n.day === inc.day) ?? run.reports.find((r) => r.day === inc.day)?.batch;
+      if (!night?.criticalAbended?.includes(subject.id)) continue;
+    }
     found.push({ workloadId: inc.workloadId, truth: inc.truth, subjects: inc.subjects, ...(inc.basis ? { basis: inc.basis } : {}), endTick: inc.endTick ?? win.toTick, incident: true });
   }
   const abend = jobAbendCandidate(run, scenario, subject, win);
@@ -265,7 +272,8 @@ function recordFacet(run: RunState, scenario: Scenario, subject: ProblemSubject,
   const all = allWorkloads(scenario, run);
   const id = primary ?? workloads[0];
   const w = all.find((x) => x.id === id) ?? (subject.kind === 'WORKLOAD' ? all.find((x) => x.id === subject.id) : undefined);
-  return w ? facetOf(w) : null;
+  const facet = w ? facetOf(w) : null;
+  return facet && facet in run.trust ? facet : null;
 }
 
 /** One record as the card and the CLI see it: the subject, the window and every filed diagnosis. The window's truth
@@ -348,6 +356,8 @@ export function openProblemRecord(run: RunState, content: GameContent, scenario:
   const win = problemWindowOf(run, fromTick, toTick);
   if (typeof win === 'string') return { run, ok: false, message: win };
   if (!subjectExists(run, scenario, subject)) return { run, ok: false, message: `No such ${subject.kind.toLowerCase()} ${subject.id} in this run.` };
+  const same = run.problemRecords?.find((r) => r.subject.kind === subject.kind && r.subject.id === subject.id && r.window.fromTick === fromTick && r.window.toTick === toTick);
+  if (same) return { run, ok: false, message: `Problem ${idText('record', same.id)} already covers ${subjectLabel(subject, allWorkloads(scenario, run))} for ${problemWindowLabel(same.window)}; file on it instead of opening another.` };
   const workloads = subjectWorkloads(run, scenario, subject);
   if (workloads.length === 0) return { run, ok: false, message: `No work is visible for ${subjectLabel(subject, allWorkloads(scenario, run))} in this run.` };
   const { truth, candidates } = problemTruthOf(run, scenario, subject, workloads, win);
@@ -369,12 +379,12 @@ export function openProblemRecord(run: RunState, content: GameContent, scenario:
   }
   const r = logLine(
     { ...run, problemRecords: records, nextId: run.nextId + 1 },
-    `PROBLEM #${record.id} opened: ${subjectLabel(subject, allWorkloads(scenario, run))} ${problemWindowLabel(win)}`,
+    `PROBLEM ${idText('record', record.id)} opened: ${subjectLabel(subject, allWorkloads(scenario, run))} ${problemWindowLabel(win)}`,
   );
   return {
     run: r,
     ok: true,
-    message: `Problem #${record.id} opened on ${subjectLabel(subject, allWorkloads(scenario, run))} for ${problemWindowLabel(win)}. File a diagnosis from the Problems panel (${PROBLEM.hours} h).`,
+    message: `Problem ${idText('record', record.id)} opened on ${subjectLabel(subject, allWorkloads(scenario, run))} for ${problemWindowLabel(win)}. File a diagnosis from the Problems panel (${PROBLEM.hours} h).`,
     record,
   };
 }
@@ -412,11 +422,11 @@ export function fileProblemDiagnosis(
   if (!record) return { run, ok: false, message: `No problem record ${idText('record', recordId)}` };
   if (!MECHANISMS.includes(mechanism) || !TRIGGERS.includes(trigger)) return { run, ok: false, message: `Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}` };
   const today = record.filings.filter((f) => f.day === run.day);
-  if (today.length >= PROBLEM.filingsPerDay) return { run, ok: false, message: `Problem #${record.id} has had ${PROBLEM.filingsPerDay} filings today; try again tomorrow.` };
+  if (today.length >= PROBLEM.filingsPerDay) return { run, ok: false, message: `Problem ${idText('record', record.id)} has had ${PROBLEM.filingsPerDay} filings today; try again tomorrow.` };
   const last = record.filings.at(-1);
   if (last && run.sim.tick - last.tick < PROBLEM.refileHours * TICKS_PER_HOUR) {
     const at = last.tick + PROBLEM.refileHours * TICKS_PER_HOUR;
-    return { run, ok: false, message: `Problem #${record.id} may be filed again after ${formatClock(at).replace(/:00$/, '')}.` };
+    return { run, ok: false, message: `Problem ${idText('record', record.id)} may be filed again after ${formatClock(at).replace(/:00$/, '')}.` };
   }
   if (run.hoursLeft < PROBLEM.hours) return { run, ok: false, message: `A filing costs ${PROBLEM.hours} engineer-hours; ${run.hoursLeft.toFixed(2)} left.` };
   const pins = (run.pins ?? []).filter((p) => evidenceIds.includes(p.id)).slice(0, EVIDENCE.perRca);
@@ -453,11 +463,11 @@ export function fileProblemDiagnosis(
     : wrongMechanism
       ? wrongToday || !facet ? 0 : -PROBLEM.wrongTrust
       : facet
-        ? points >= 3 ? 2 : points > 0 ? 0.5 : 0
+        ? points >= 3 ? 1 : points > 0 ? 0.25 : 0
         : 0;
   const awarded = duplicateOf === null ? points + evidencePoints : 0;
   let r = spendHours(run, PROBLEM.hours);
-  if (trustDelta !== 0 && facet) r = { ...r, trust: { ...r.trust, [facet]: clampTrust(r.trust[facet]! + trustDelta) } };
+  if (trustDelta !== 0 && facet && facet in r.trust) r = { ...r, trust: { ...r.trust, [facet]: clampTrust(r.trust[facet]! + trustDelta) } };
   if (awarded > 0) {
     r = {
       ...r,
@@ -495,7 +505,7 @@ export function fileProblemDiagnosis(
   });
   const updated: ProblemRecord = { ...record, filings: [...record.filings, filing] };
   r = { ...r, problemRecords: (r.problemRecords ?? []).map((x) => (x.id === record.id ? updated : x)) };
-  r = logLine(r, `PROBLEM #${record.id} filed: ${mechanism}/${triggerLabel(trigger)} → ${awarded > 0 ? `+${awarded}` : duplicateOf !== null ? 'no second credit' : 'no points'}`);
+  r = logLine(r, `PROBLEM ${idText('record', record.id)} filed: ${mechanism}/${triggerLabel(trigger)} → ${awarded > 0 ? `+${awarded}` : duplicateOf !== null ? 'no second credit' : 'no points'}`);
   return { run: r, ok: true, message: filing.reply.join('\n'), filing };
 }
 
@@ -516,7 +526,7 @@ function problemReply(
   },
 ): string[] {
   const lines = [
-    `Problem #${record.id} · ${subjectLabel(record.subject)} · ${problemWindowLabel(record.window)}`,
+    `Problem ${idText('record', record.id)} · ${subjectLabel(record.subject)} · ${problemWindowLabel(record.window)}`,
     filing.noProblem
       ? 'The window shows no problem: any mechanism or trigger is wrong.'
       : `Mechanism ${filing.mechanism} ${facts.mechanismAccepted ? 'accepted' : 'not accepted'}, trigger ${triggerLabel(filing.trigger)} ${facts.triggerAccepted ? 'accepted' : 'not accepted'}` +
@@ -534,6 +544,7 @@ function problemReply(
   else if (!filing.trustFacet) lines.push('No trust change: this subject has no stakeholder facet.');
   else if (filing.trust === 0 && !filing.noProblem && facts.duplicateOf === null) lines.push('No trust change.');
   if (facts.wrongToday && !facts.mechanismAccepted && facts.duplicateOf === null) lines.push('The wrong-mechanism trust loss was already taken on this record today.');
+  if (filing.strong) lines.push(`Strong evidence: +${EVIDENCE.strongInsight} Insight.`);
   if (filing.proof) {
     lines.push(...proofLines(filing.proof, (id) => idText('pin', id)));
     const pinLines = pinVerdictLines(filing.proof, filing.evidence ?? [], (id) => idText('pin', id));

@@ -303,7 +303,26 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     const wh = h.workloads[w.id];
     if (!wh) continue;
     const att = hourAttainment(w, wh);
-    if (!att) continue;
+    if (!att) {
+      // A workload with no SLA (TSO, ad-hoc BI) has no attainment to miss, but a card touching it is still a problem a
+      // record can name. With no card there is no goal to judge, so nothing is stored.
+      if (disturbed(w.id) && wh.completions + wh.failed > 0) {
+        const judge = judgeWorkloadHour(r, scenario, content, w, wh, h, workloads, baseOf(w.id), hourEnd, false);
+        quietHours.push({
+          day: r.day,
+          hourOfDay: hourSlot,
+          startTick: hourStart,
+          endTick: hourEnd,
+          workloadId: w.id,
+          reason: 'CARD',
+          truth: judge.truth,
+          ...(judge.basis ? { basis: judge.basis } : {}),
+          subjects: judge.subjects,
+          attainmentPct: 100,
+        });
+      }
+      continue;
+    }
     const parts = perTxnParts(wh);
     // Incidents are per played day (the day's SLA report and RCA count them): one still open at
     // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
