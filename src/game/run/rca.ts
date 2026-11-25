@@ -150,11 +150,13 @@ export function episodeOf(run: RunState, seed: CauseEpisode): CauseEpisode {
 }
 
 /** The incident or problem record that already earned this cause episode, or null. One episode pays once: an RCA and a
- * record filing of the same §4.5 episode earn between them, while a later episode of the same cause is new. */
-export function creditedEpisode(run: RunState, episode: CauseEpisode): number | null {
+ * record filing of the same §4.5 episode earn between them, while a later episode of the same cause is new.
+ * `incidents: false` looks at record filings only: incident RCAs are already one per §4.5 group, and a group the
+ * grouping lists as new (A13: a fallback incident after its group's RCA was filed) pays as it does without records. */
+export function creditedEpisode(run: RunState, episode: CauseEpisode, incidents = true): number | null {
   const target = episodeOf(run, episode);
-  const inc = run.incidents.find((i) => (i.rca?.points ?? 0) > 0
-    && sameEpisode(episodeOf(run, { cause: i.truth.cause, day: i.day, startTick: i.startTick, endTick: i.endTick }), target));
+  const inc = incidents ? run.incidents.find((i) => (i.rca?.points ?? 0) > 0
+    && sameEpisode(episodeOf(run, { cause: i.truth.cause, day: i.day, startTick: i.startTick, endTick: i.endTick }), target)) : undefined;
   if (inc) return inc.id;
   const rec = run.problemRecords?.find((r) => r.filings.some((f) => f.points > 0 && sameEpisode(episodeOf(run, f.episode), target)));
   return rec?.id ?? null;
@@ -195,9 +197,11 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const cause = group[0]?.truth.cause ?? '';
   // RT-22: one episode pays once (§4.5: a card is one episode for a played day; a fallback cause only while its hours
-  // overlap or follow within GROUP_FOLLOW_HOURS). A later episode of the same cause is new and pays.
+  // overlap or follow within GROUP_FOLLOW_HOURS). A later episode of the same cause is new and pays. Only a record
+  // filing can make an RCA a duplicate: between incidents the §4.5 grouping already decides, so RCA scoring without
+  // records is unchanged.
   const episode: CauseEpisode = { cause, day: inc.day, startTick: inc.startTick, endTick: inc.endTick };
-  const duplicateOf = points > 0 ? creditedEpisode(run, episode) : null;
+  const duplicateOf = points > 0 ? creditedEpisode(run, episode, false) : null;
   // Only a correct answer can be a duplicate: a wrong answer still costs its trust, even on an already-earned cause.
   const duplicate = duplicateOf !== null && points > 0;
   const awarded = !duplicate;

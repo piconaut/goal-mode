@@ -8,7 +8,7 @@ import { cardMechanisms } from '../../src/content/footprint';
 import { PROBLEM } from '../../src/content/rca';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import { creditedEpisode, episodeOf } from '../../src/game/run/rca';
-import { sameEpisode } from '../../src/game/run/grouping';
+import { addGroupedIncident, sameEpisode } from '../../src/game/run/grouping';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { applyCommands } from '../../src/sim/core/commands';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
@@ -330,7 +330,7 @@ describe('problem records (RT-22)', () => {
     expect(filed.filing!.trustFacet).toBe('Retail');
   });
 
-  it('pays a same-cause RCA on a later episode, but not within one fallback episode', () => {
+  it('pays a same-cause RCA on a later episode, and on a fallback incident listed as new after a filed RCA', () => {
     const truth = truthOf('CPU_CAPACITY', 'GROWTH', { cause: 'none:CPU:PROD1' });
     const first = incident(1, 'RBANK', truth, { day: 0, startTick: 0, endTick: H });
     const later = incident(2, 'RBANK', truth, { day: 6, startTick: 6 * TICKS_PER_DAY, endTick: 6 * TICKS_PER_DAY + H });
@@ -340,12 +340,17 @@ describe('problem records (RT-22)', () => {
     const after = submitRca(scored, 2, 'CPU_CAPACITY', 'GROWTH');
     expect(after.incidents.find((i) => i.id === 2)!.rca!.points).toBe(5);
     expect(after.incidents.find((i) => i.id === 2)!.rca!.duplicateOf).toBeUndefined();
-    // The same fallback cause two hours later is still one episode and pays once.
-    const close = incident(3, 'RBANK', truth, { day: 0, startTick: 2 * H, endTick: 3 * H });
-    const within = submitRca(quiet({ incidents: [first, close] }), 1, 'CPU_CAPACITY', 'GROWTH');
-    const second = submitRca(within, 3, 'CPU_CAPACITY', 'GROWTH');
-    expect(second.incidents.find((i) => i.id === 3)!.rca!.points).toBe(0);
-    expect(second.incidents.find((i) => i.id === 3)!.rca!.duplicateOf).toBe(1);
+    // A fallback incident an hour after its cause's filed RCA is listed as new (§4.5, A13) and pays as it does
+    // without records, even with the cause's quiet hours chaining the two.
+    const filed = submitRca(quiet({ incidents: [first] }), 1, 'CPU_CAPACITY', 'GROWTH');
+    const between = fact('RBANK', truth, { reason: 'PEER', hourOfDay: 7, startTick: H, endTick: 2 * H });
+    const listed = { ...filed, quietHours: [between], incidents: addGroupedIncident(filed.incidents, incident(3, 'RBANK', truth, { startTick: 2 * H, endTick: 3 * H })) };
+    expect(listed.incidents.find((i) => i.id === 3)!.rca).toBeNull();
+    const second = submitRca(listed, 3, 'CPU_CAPACITY', 'GROWTH');
+    expect(second.incidents.find((i) => i.id === 3)!.rca!.points).toBe(5);
+    expect(second.incidents.find((i) => i.id === 3)!.rca!.duplicateOf).toBeUndefined();
+    // A record filing of that episode is still paid once: it chains to the filed RCA.
+    expect(creditedEpisode(listed, { cause: 'none:CPU:PROD1', day: 0, startTick: H, endTick: 2 * H })).toBe(1);
   });
 
   it('chains back-to-back quiet hours of a fallback cause, and starts a new episode after a longer gap', () => {
