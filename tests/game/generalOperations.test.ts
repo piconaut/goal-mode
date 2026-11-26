@@ -11,7 +11,8 @@ import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { applyCommand } from '../../src/sim/core/commands';
-import { operatorRoster, rolloverOperations, type Operation } from '../../src/sim/core/operations';
+import { OPERATION_TRUST, OPERATIONS } from '../../src/content/operations';
+import { gatewayChannels, operatorRoster, rolloverOperations, type Operation } from '../../src/sim/core/operations';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { releaseNetwork } from '../../src/sim/subsys/batch';
 
@@ -172,6 +173,38 @@ describe('general operator commands', () => {
     const base = cpu(run);
     expect(cpu(other)).toBeCloseTo(base, 9);
     expect(cpu(missed)).toBeGreaterThan(base * 1.01);
+  });
+
+  it('charges the Regulator for cancelling the CICS log archiver, and no one for other started tasks', () => {
+    const run = live();
+    const journal = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: OPERATION_TRUST.journalJobname, lparId: 'PROD1' });
+    expect(journal.ok, journal.message).toBe(true);
+    expect(journal.run.trust.Regulator).toBeCloseTo(run.trust.Regulator! - OPERATIONS.journalTrust);
+    const agent = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'MONAGENT', lparId: 'PROD1' });
+    expect(agent.ok, agent.message).toBe(true);
+    expect(agent.run.trust).toEqual(run.trust);
+  });
+
+  it('charges Finance for terminating a utility, whatever it was', () => {
+    const run = live();
+    for (const kind of ['REORG', 'COPY', 'RUNSTATS'] as const) {
+      const utility = { ...scenario.utilities!.find((u) => u.kind === kind)!, startHour: 6, durationMin: 60, nightFrac: 1 };
+      const out = requestOperation(run, { ...scenario, utilities: [utility] }, content, { kind: 'TERM_UTILITY', id: utility.id, member: utility.member, day: 0 });
+      expect(out.ok, `${kind}: ${out.message}`).toBe(true);
+      expect(out.run.trust.Finance).toBeCloseTo(run.trust.Finance! - OPERATIONS.utilityTrust);
+    }
+  });
+
+  it("charges a gateway channel's owner for a protection mode, and nothing for clearing it", () => {
+    const run = live();
+    const channel = gatewayChannels(run.sim, scenario)[0]!;
+    const owner = channel.stakeholder;
+    const on = issue(run, { kind: 'SET_GATEWAY', workloadId: channel.id, mode: 'LIMIT' });
+    expect(on.ok, on.message).toBe(true);
+    expect(on.run.trust[owner]).toBeCloseTo(run.trust[owner]! - OPERATIONS.gatewayTrust);
+    const off = issue(on.run, { kind: 'SET_GATEWAY', workloadId: channel.id, mode: null });
+    expect(off.ok, off.message).toBe(true);
+    expect(off.run.trust[owner]).toBeCloseTo(on.run.trust[owner]!);
   });
 
   it('charges owner trust once per full hour that recalls stay held', () => {
