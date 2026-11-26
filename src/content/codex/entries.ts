@@ -546,5 +546,54 @@ export const CODEX: CodexEntry[] = [
     sources: [{ label: 'GOAL MODE design: docs/rca-design.md §5.1 (problem records, RT-22)' }],
     discover: { start: true },
   },
+  {
+    id: 'cancel-command',
+    title: 'CANCEL: ending a job, started task or user',
+    category: 'Subsystems',
+    body: 'The operator command CANCEL ends a batch job, a started task or a TSO user (CANCEL jobname, CANCEL U=userid). A program the program properties table marks NOCANCEL cannot be cancelled this way; the next step is FORCE with ARM. In the game, cancelling a started task ends it at once and the site\'s automation restarts it after 10 minutes (a game rule for the site, not a z/OS function), so cancelling a task that misbehaves on every start only buys time; the core system address spaces refuse CANCEL, and server address spaces (Db2, CICS, MQ) are stopped through their own subsystem.',
+    sources: [
+      { label: 'z/OS 3.1 MVS System Commands (SA38-0666-60), PDF p.188 (printed 160): CANCEL', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=188' },
+      { label: 'z/OS 3.1 MVS System Commands (SA38-0666-60), PDF p.506 (printed 478): FORCE ARM', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=506' },
+      { label: 'z/OS 3.1 MVS Initialization and Tuning Reference (SA23-1380-60), PDF p.754 (printed 718): SCHEDxx CANCEL|NOCANCEL', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieae200_v3r1.pdf#page=754' },
+    ],
+    discover: { events: ['XLOG_LOOP', 'MONITOR_CREEP'] },
+  },
+  {
+    id: 'db2-threads-users',
+    title: 'Db2 threads and TSO users',
+    category: 'Subsystems',
+    body: '-DISPLAY THREAD lists the threads of a Db2 member, distributed ones included, with a thread token, the authorization ID and the correlation ID; -CANCEL THREAD takes that token and, by default, backs the thread\'s work out. A TSO user is an address space named by the userid, so CANCEL U=userid ends the session. The game keeps a daily roster of both: a dozen DDF threads per Db2 member and a few dozen developers on the test image, with a heavy-tailed CPU spread. One large consumer is therefore normal on a quiet day; look for one holding several times its usual share before you cancel it.',
+    sources: [
+      { label: 'Db2 13 for z/OS Command Reference, PDF p.415 (printed 399): -DISPLAY THREAD output shows ID, AUTHID and TOKEN', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=415' },
+      { label: 'Db2 13 for z/OS Command Reference, PDF pp.185–186 (printed 169–170): -CANCEL THREAD', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=185' },
+      { label: 'z/OS 3.1 MVS System Commands (SA38-0666-60), PDF p.188 (printed 160): CANCEL U=userid', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=188' },
+    ],
+    discover: { events: ['RUNAWAY', 'SHADOW_IT'] },
+  },
+  {
+    id: 'db2-utilities',
+    title: 'Db2 utilities: REORG, COPY, RUNSTATS',
+    category: 'Subsystems',
+    body: 'Db2 utilities run as jobs. REORG TABLESPACE reorganizes a table space to reclaim fragmented space and improve access performance; COPY creates image copies that can later be used for recovery; RUNSTATS gathers statistics that Db2 records in the catalog for access path selection. -DISPLAY UTILITY shows the status of utility jobs, and -TERM UTILITY stops one, after which it must be resubmitted as a new job. In the game the DBAs schedule all three overnight on most nights, and each adds sequential I/O to its LCU while it runs; one that overruns its window keeps loading those volumes.',
+    sources: [
+      { label: 'Db2 13 for z/OS Utility Guide and Reference, PDF p.565 (printed 543): REORG TABLESPACE', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_ugrefbook.pdf#page=565' },
+      { label: 'Db2 13 for z/OS Utility Guide and Reference, PDF p.157 (printed 135): COPY', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_ugrefbook.pdf#page=157' },
+      { label: 'Db2 13 for z/OS Utility Guide and Reference, PDF p.749 (printed 727): RUNSTATS', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_ugrefbook.pdf#page=749' },
+      { label: 'Db2 13 for z/OS Command Reference, PDF p.437 (printed 421): -DISPLAY UTILITY', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=437' },
+      { label: 'Db2 13 for z/OS Command Reference, PDF pp.713–714 (printed 697–698): -TERM UTILITY', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=713' },
+    ],
+    discover: { events: ['REORG_OVERRUN'] },
+  },
+  {
+    id: 'lock-escalation',
+    title: 'Db2 lock escalation',
+    category: 'Subsystems',
+    body: 'Lock escalation is Db2 releasing a large number of page, row, LOB or XML locks that one application holds on a table space and taking a table or table space lock of mode S or X instead. It happens when the process holds more locks than the table space\'s LOCKMAX, and Db2 issues message DSNI031I when it does. -DISPLAY DATABASE with the LOCKS option shows the applications on whose behalf locks are held or waited on. In the game, the Db2 blockers view names the batch job holding the escalated locks.',
+    sources: [
+      { label: 'Db2 13 for z/OS Managing Performance, PDF p.239 (printed 219): lock escalation, LOCKMAX, DSNI031I', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=239' },
+      { label: 'Db2 13 for z/OS Command Reference, PDF p.270 (printed 254): -DISPLAY DATABASE LOCKS', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=270' },
+    ],
+    discover: { events: ['LOCK_ESCALATION'] },
+  },
 ];
 
