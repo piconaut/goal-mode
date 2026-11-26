@@ -3,6 +3,7 @@
 
 import { DASD_REBALANCE, HARDWARE, type HardwareItem } from '../content/hardware-catalog';
 import { DRAFT_TUNING } from '../content/draft';
+import type { OtherTeamChangeDef } from '../content/otherTeamChanges';
 import type { Command } from '../sim/core/commands';
 import type { Facet } from './types';
 
@@ -124,10 +125,8 @@ export interface ChangePreview {
   reason: string | null;
 }
 
-export interface BackoutCost {
-  hours: number;
-  kind: 'REBIND' | 'DEPLOYMENT';
-}
+/** What a backout costs, taken from the change's content definition. */
+export type BackoutCost = Pick<OtherTeamChangeDef, 'hours' | 'kind'>;
 
 /** Hardware capex after perks (the zIIP promotion discounts specialty engines). */
 function capexFor(hardwareId: string, capex: number, perks: readonly string[]): number {

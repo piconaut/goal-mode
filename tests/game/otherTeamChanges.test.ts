@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PACKS } from '../../src/content/packs';
 import { BACKOUT_TRUST, ROUTINE_CHANGE_CPU_MULT } from '../../src/content/otherTeamChanges';
 import { cardMechanisms } from '../../src/content/footprint';
+import { poolUse } from '../../src/game/displaceable';
 import { advance, cancelChange, newRun, startDay } from '../../src/game/run';
 import { announceOtherTeamChange, otherTeamChangesView, requestBackout } from '../../src/game/run/otherTeamChanges';
 import { drawEvents } from '../../src/game/run/events';
@@ -17,7 +18,7 @@ describe('other teams’ changes', () => {
     const run = advance(announceOtherTeamChange(base, profile, 0, null), scenario, game, 1);
     const cpu = (r: typeof run) => r.sim.last.lpars.reduce((sum, lpar) => {
       const grant = lpar.cpByWorkload?.[profile.benefitTarget];
-      return sum + (grant ? grant.cp + grant.ziip + grant.iipcp : 0);
+      return sum + (grant ? poolUse(grant, 'CP') + poolUse(grant, 'ZIIP') : 0);
     }, 0);
     expect(cpu(control)).toBeGreaterThan(0);
     expect(cpu(run)).toBeLessThan(cpu(control));

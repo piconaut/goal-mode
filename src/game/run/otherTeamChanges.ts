@@ -1,11 +1,17 @@
 import { BACKOUT_TRUST, ROUTINE_CHANGE_CPU_MULT, type OtherTeamChangeDef } from '../../content/otherTeamChanges';
-import { hhmm } from '../../sim/core/clock';
+import { clockAt, hhmm } from '../../sim/core/clock';
 import { applyCommands, type Command } from '../../sim/core/commands';
-import { TICKS_PER_DAY } from '../../sim/core/units';
 import { previewChange } from '../catalog';
 import type { ActiveEvent, OtherTeamChange, RunState } from '../types';
 import { previewContext, requestChange, spendHours, type ChangeOutcome } from './changes';
-import { clampTrust, logLine, msg, type GameContent } from './shared';
+import { logLine, loseTrust, msg, type GameContent } from './shared';
+
+/** The content definition of a rollout, by the card it partners. */
+export const profileOf = (profiles: readonly OtherTeamChangeDef[] | undefined, eventId: string): OtherTeamChangeDef | undefined =>
+  profiles?.find((def) => def.eventId === eventId);
+
+/** A rollout that has not finished: the only ones the board offers a backout for. */
+export const isOpenStatus = (status: OtherTeamChange['status']): boolean => status === 'SCHEDULED' || status === 'APPLIED';
 
 export function announceOtherTeamChange(
   run: RunState, def: OtherTeamChangeDef, startTick: number, endTick: number | null, eventUid?: string,
@@ -15,7 +21,7 @@ export function announceOtherTeamChange(
     id: `OT${entries.length + 1}`, eventId: def.eventId, startTick, endTick, status: 'SCHEDULED',
     ...(eventUid ? { eventUid } : {}),
   };
-  const day = Math.floor(startTick / TICKS_PER_DAY);
+  const { day } = clockAt(startTick);
   return msg({ ...run, otherTeamChanges: [...entries, change] }, def.owner, `Change board · Day ${day + 1}`,
     `${labelOf(change, def)} is scheduled for ${hhmm(startTick)}.`, day);
 }
@@ -39,12 +45,12 @@ function rowsOf(run: RunState, content: GameContent) {
   const posted = new Set(entries.map((entry) => entry.eventUid));
   // Same-version saves already contain the announced cards, even when they predate the board.
   const legacy = run.events.flatMap((event, index): OtherTeamChange[] =>
-    posted.has(event.uid) || !profiles.some((def) => def.eventId === event.defId) ? [] : [{
+    posted.has(event.uid) || !profileOf(profiles, event.defId) ? [] : [{
       id: `OT-legacy-${index + 1}`, eventId: event.defId, eventUid: event.uid,
       startTick: event.startTick, endTick: event.endTick, status: 'SCHEDULED',
     }]);
   return [...entries, ...legacy].flatMap((change) => {
-    const def = profiles.find((profile) => profile.eventId === change.eventId);
+    const def = profileOf(profiles, change.eventId);
     if (!def) return [];
     const event = change.eventUid ? events.get(change.eventUid) : undefined;
     return [{ change, def, event, status: statusOf(change, event, run.sim.tick), label: labelOf(change, def) }];
@@ -81,7 +87,7 @@ export function landRoutineChanges(run: RunState, content: GameContent): RunStat
   const next = entries.map((entry): OtherTeamChange => {
     if (!due(entry)) return entry;
     const status = entry.endTick !== null && entry.endTick <= tick ? 'COMPLETE' : 'APPLIED';
-    const profile = profiles.find((def) => def.eventId === entry.eventId);
+    const profile = profileOf(profiles, entry.eventId);
     if (profile) targets.add(profile.benefitTarget);
     return { ...entry, status };
   });
@@ -92,17 +98,18 @@ export function landRoutineChanges(run: RunState, content: GameContent): RunStat
 /** Apply an approved backout. Before landing, cancel the rollout and suppress the card's begin commands. */
 export function applyBackout(run: RunState, content: GameContent, changeId: string, immediate = false): RunState {
   const row = rowsOf(run, content).find(({ change }) => change.id === changeId);
-  if (!row || (row.status !== 'SCHEDULED' && row.status !== 'APPLIED')) return run;
+  if (!row || !isOpenStatus(row.status)) return run;
   const { change, event, def, status } = row;
   const backedOut = { ...change, status: 'BACKED_OUT' } as const;
-  const entries = (run.otherTeamChanges ?? []).map((entry) => entry.id === changeId ? backedOut : entry);
-  if (!entries.includes(backedOut)) entries.push(backedOut);
+  const stored = run.otherTeamChanges ?? [];
+  const entries = stored.some((entry) => entry.id === changeId)
+    ? stored.map((entry) => (entry.id === changeId ? backedOut : entry))
+    : [...stored, backedOut];
   const commands = status === 'SCHEDULED' ? [] : event ? event.endCommands
     : rolloutCpuCommands(entries, content.otherTeamChanges ?? [], new Set([def.benefitTarget]));
-  const trust = { ...run.trust };
-  if (def.trustFacet in trust) trust[def.trustFacet] = clampTrust(trust[def.trustFacet]! - BACKOUT_TRUST);
+  const charged = loseTrust(run, [def.trustFacet], BACKOUT_TRUST);
   return {
-    ...run, trust, otherTeamChanges: entries,
+    ...charged, otherTeamChanges: entries,
     ...(event ? { events: run.events.map((e) => e === event ? { ...e, ended: true, endTick: run.sim.tick } : e) } : {}),
     ...(immediate || !event ? { sim: applyCommands(run.sim, commands) } : { pendingCommands: [...run.pendingCommands, ...commands] }),
   };
@@ -110,7 +117,7 @@ export function applyBackout(run: RunState, content: GameContent, changeId: stri
 
 export function requestBackout(run: RunState, content: GameContent, changeId: string): ChangeOutcome {
   const row = rowsOf(run, content).find(({ change }) => change.id === changeId);
-  if (!row || (row.status !== 'SCHEDULED' && row.status !== 'APPLIED')) {
+  if (!row || !isOpenStatus(row.status)) {
     return { run, ok: false, message: 'This change is no longer available for backout.' };
   }
   if (run.changes.some((c) => c.backoutChangeId === changeId && c.status === 'PLANNED')) {

@@ -9,6 +9,7 @@ import { CodexHints } from '../CodexHint';
 import { Empty } from '../Empty';
 import { WhatIf } from '../WhatIf';
 import { codDeactivatable } from '../../game/run';
+import { isOpenStatus } from '../../game/run/otherTeamChanges';
 import type { GameHandle } from '../useGame';
 import type { Desk } from './shared';
 import { ACTIVATE_PREVIEW, costText, preview } from './shared';
@@ -110,15 +111,15 @@ export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
 
 function OtherTeamChanges({ v, game }: { v: ViewModel; game: GameHandle }) {
   const statusText = { SCHEDULED: 'Scheduled', APPLIED: 'Live', BACKED_OUT: 'Backed out', COMPLETE: 'Complete' };
-  const available = v.otherTeamChanges.filter((c) => c.status === 'SCHEDULED' || c.status === 'APPLIED');
-  const past = v.otherTeamChanges.filter((c) => c.status === 'BACKED_OUT' || c.status === 'COMPLETE');
+  const available = v.otherTeamChanges.filter((c) => isOpenStatus(c.status));
+  const past = v.otherTeamChanges.filter((c) => !isOpenStatus(c.status));
   const table = (rows: ViewModel['otherTeamChanges']) => (
     <table>
       <thead><tr><th>Change</th><th>Owner</th><th>Rollout time</th><th>Status</th><th>Backout</th></tr></thead>
       <tbody>{rows.map((c) => (
         <tr key={c.id}>
           <td>{c.label}</td><td>{c.owner}</td><td>Day {clockAt(c.startTick).day + 1} · {hhmm(c.startTick)}</td><td>{statusText[c.status]}</td>
-          <td>{c.planned ? 'Backout planned' : (c.status === 'SCHEDULED' || c.status === 'APPLIED') && (
+          <td>{c.planned ? 'Backout planned' : isOpenStatus(c.status) && (
             <button disabled={!c.preview.ok} title={c.preview.reason ?? `${c.trustFacet} trust −${c.ownerTrust}`}
               aria-label={`Back out ${c.label}`} onClick={() => game.send({ type: 'BACKOUT_CHANGE', changeId: c.id })}>
               {c.kind === 'DEPLOYMENT' && v.phase === 'BRIEFING' ? 'Plan backout' : 'Back out'} · {costText(c.preview)} · {c.trustFacet} trust −{c.ownerTrust}

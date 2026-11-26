@@ -34,7 +34,7 @@ import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
 import { suPerCpuSecOf } from '../sim/hw/cpc';
-import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run';
+import { allWorkloads, boardFixIdsOf, overallTrust, previewContext, visibleFixIds } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 import { idText } from './ids';
@@ -225,6 +225,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const sim = run.sim;
   const pack = packOf(run.scenarioId);
   const previewCtx = previewContext(run, pack.game);
+  // The Change board owns its cards' fixes, so the Operations list must not offer them as the player's own.
+  const boardFixes = boardFixIdsOf(run, pack.game);
   const c = clockAt(sim.tick);
   const tickOfDay = sim.tick - run.day * TICKS_PER_DAY;
   const def = sim.wlm.definition;
@@ -313,7 +315,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     scenario: { id: pack.id, name: pack.name },
-    fixIds: visibleFixIds(run, pack.game, false),
+    fixIds: visibleFixIds(run, pack.game).filter((id) => !boardFixes.has(id)),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,

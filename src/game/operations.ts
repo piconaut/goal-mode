@@ -12,7 +12,7 @@ import { poolUse } from './displaceable';
 import { difficultyOf, scaleExcess } from './difficulty';
 import { hostImages } from './footprint';
 import { allWorkloads } from './workloads';
-import { clampTrust, facetOf, logLine, type GameContent } from './run/shared';
+import { facetOf, logLine, loseTrust, type GameContent } from './run/shared';
 import type { RunState } from './types';
 
 export function operationHours(op: Operation, staffMult = 1): number {
@@ -48,12 +48,6 @@ const firstFacet = (run: RunState, facets: readonly string[]): string[] => {
   const facet = facets.find((f) => run.trust[f] !== undefined);
   return facet === undefined ? [] : [facet];
 };
-
-function loseTrust(run: RunState, facets: Iterable<string>, amount: number): RunState {
-  const trust = { ...run.trust };
-  for (const facet of facets) if (trust[facet] !== undefined) trust[facet] = clampTrust(trust[facet]! - amount);
-  return { ...run, trust };
-}
 
 export function chargeHeldRecalls(run: RunState, tick: number): RunState {
   const since = run.sim.hsmRecalls?.heldSinceTick;

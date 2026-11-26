@@ -24,6 +24,13 @@ export const mapTrust = (run: RunState, f: (t: number) => number): Record<Facet,
 
 export const clampTrust = (x: number) => Math.max(0, Math.min(100, x));
 
+/** Charges `amount` trust to each of `facets` the run tracks, clamped like every other trust change. */
+export const loseTrust = (run: RunState, facets: Iterable<string>, amount: number): RunState => {
+  const trust = { ...run.trust };
+  for (const facet of facets) if (trust[facet] !== undefined) trust[facet] = clampTrust(trust[facet]! - amount);
+  return { ...run, trust };
+};
+
 /** `day` dates the message for a later morning's briefing (default: today). */
 export function msg(run: RunState, from: string, subject: string, body: string, day = run.day): RunState {
   return { ...run, inbox: [...run.inbox, { day, from, subject, body }] };

@@ -632,7 +632,7 @@ export type { ChangeRequest } from './run/changes';
 
 export type { ChangeOutcome } from './run/changes';
 
-export { fixIdsOf, visibleFixIds } from './run/events';
+export { boardFixIdsOf, fixIdsOf, visibleFixIds } from './run/events';
 
 export { previewContext } from './run/changes';
 

@@ -233,11 +233,12 @@ export function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): 
   if (!hasCpu && !hasAs && !hasProj && Object.keys(measure).length === 0 && Object.keys(rollout).length === 0) return slices;
   return slices.map((s) => {
     const change = rollout[s.workloadId ?? s.jobname ?? ''] ?? 1;
-    const m = s.workloadId
-      ? (mods.cpu[s.workloadId] ?? 1) * (measure[s.workloadId] ?? 1) * (eff[s.workloadId] ?? 1) * change
+    const base = s.workloadId
+      ? (mods.cpu[s.workloadId] ?? 1) * (measure[s.workloadId] ?? 1) * (eff[s.workloadId] ?? 1)
       : s.jobname
-        ? (mods.asCpu[s.jobname] ?? 1) * (measure[s.jobname] ?? 1) * change
+        ? (mods.asCpu[s.jobname] ?? 1) * (measure[s.jobname] ?? 1)
         : 1;
+    const m = base * change;
     const ioM = s.workloadId ? (io[s.workloadId] ?? 1) : 1;
     const z = s.workloadId ? (shift[s.workloadId] ?? 0) : 0;
     const e = s.workloadId ? (elig[s.workloadId] ?? 1) : 1;
