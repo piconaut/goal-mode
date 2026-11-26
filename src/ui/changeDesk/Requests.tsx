@@ -4,6 +4,8 @@ import { basketLabel, commandTarget, describeCommand, orderBasket } from '../../
 import type { PlannedChange } from '../../game/types';
 import type { ViewModel } from '../../game/view';
 import type { Command } from '../../sim/core/commands';
+import { clockAt, hhmm } from '../../sim/core/clock';
+import { CodexHints } from '../CodexHint';
 import { Empty } from '../Empty';
 import { WhatIf } from '../WhatIf';
 import { codDeactivatable } from '../../game/run';
@@ -60,6 +62,7 @@ export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
             : 'Changes can be made during the briefing or the live day.'}{' '}
         {v.constraints.includes('FREEZE') && <span className="tag bad">CHANGE FREEZE</span>} Hours left: {v.hoursLeft.toFixed(1)} · fatigue {v.fatigue.toFixed(0)}
       </div>
+      <h4>Your changes</h4>
       {days.length === 0 && <Empty>Nothing planned.</Empty>}
       {days.map((d) => (
         <div key={d} style={{ marginTop: 8 }}>
@@ -100,7 +103,37 @@ export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
           </table>
         </details>
       )}
+      <OtherTeamChanges v={v} game={game} />
     </div>
+  );
+}
+
+function OtherTeamChanges({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const statusText = { SCHEDULED: 'Scheduled', APPLIED: 'Live', BACKED_OUT: 'Backed out', COMPLETE: 'Complete' };
+  const available = v.otherTeamChanges.filter((c) => c.status === 'SCHEDULED' || c.status === 'APPLIED');
+  const past = v.otherTeamChanges.filter((c) => c.status === 'BACKED_OUT' || c.status === 'COMPLETE');
+  const table = (rows: ViewModel['otherTeamChanges']) => (
+    <table>
+      <thead><tr><th>Change</th><th>Owner</th><th>Rollout time</th><th>Status</th><th>Backout</th></tr></thead>
+      <tbody>{rows.map((c) => (
+        <tr key={c.id}>
+          <td>{c.label}</td><td>{c.owner}</td><td>Day {clockAt(c.startTick).day + 1} · {hhmm(c.startTick)}</td><td>{statusText[c.status]}</td>
+          <td>{c.planned ? 'Backout planned' : (c.status === 'SCHEDULED' || c.status === 'APPLIED') && (
+            <button disabled={!c.preview.ok} title={c.preview.reason ?? `${c.trustFacet} trust −${c.ownerTrust}`}
+              aria-label={`Back out ${c.label}`} onClick={() => game.send({ type: 'BACKOUT_CHANGE', changeId: c.id })}>
+              {c.kind === 'DEPLOYMENT' && v.phase === 'BRIEFING' ? 'Plan backout' : 'Back out'} · {costText(c.preview)} · {c.trustFacet} trust −{c.ownerTrust}
+            </button>
+          )}</td>
+        </tr>
+      ))}</tbody>
+    </table>
+  );
+  return (
+    <section id="other-team-changes">
+      <h4>Other teams’ changes <CodexHints ids={['rebind-backout']} /></h4>
+      {available.length ? table(available) : <Empty>No scheduled or live rollouts.</Empty>}
+      {past.length > 0 && <details><summary>Other teams’ history ({past.length})</summary>{table(past)}</details>}
+    </section>
   );
 }
 

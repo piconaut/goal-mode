@@ -197,7 +197,7 @@ function OperatorCommands({ v, game }: { v: ViewModel; game: GameHandle }) {
         label: `${id} · ${member} · ${kind}`, op: { kind: 'TERM_UTILITY', id, member, day },
       }))} />
       <RecycleRegions v={v} game={game} />
-      <div className="row"><span>Back out a change</span><span className="muted">No other-team changes on the Change board.</span></div>
+      <div className="row"><span>Back out a change</span><a href="#other-team-changes">Other teams’ changes on the Change board</a></div>
       <details>
         <summary>Gateway status</summary>
         {gateway.map((g) => <div className="row" key={g.id}><span>{g.name}</span><span>{g.mode ? GATEWAY_MODE_LABEL[g.mode] : 'Off'}</span></div>)}
