@@ -215,6 +215,17 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-26 · Report lines for held recalls and gateway modes
+`list: pr-followups · status: ready · priority: low · size: S · area: game`
+
+Source: PR #497 review (PT-56). PT-56 asked for report lines for held DFSMShsm recalls and gateway protection
+modes; the PR shows both only in Change Desk › Operations (`operationsView`), so a player reading the reports after
+the fact can't see why a channel shed work or why batch jobs failed with `HSM RECALL HELD`. Add a line for each to
+the day's reports (the gateway mode per channel while enabled, the recall hold and its queued backlog), join a
+report identity in `tests/helpers/reportIdentities.ts`, and point the `hsm-recall-hold` and `gateway-protection`
+Codex entries at them. Done when: both lines render from sim state, an identity ties each to it, and
+`npm run compare` against `dev` shows no sim difference.
+
 ## realism-fixes
 
 ### RF-10 · Utility drains on the settlement partition ignore online writers
