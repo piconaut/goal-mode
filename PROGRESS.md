@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-26: PT-20 design note written ([docs/pt-20-design.md](docs/pt-20-design.md)): seven general operations, 18 of 22 fix cards end through one, 4 business cards through inbox replies; seven calls for the user (§8).
 - 2026-11-26: Design call (user): D1's proof gate (RT-24) dropped, Q8b no; PT-20 becomes a design note for general operations, followed by PT-52 … PT-55; PT-19 folds into PT-53.
 - 2026-11-25: Shadow week prologue designed ([docs/prologue-design.md](docs/prologue-design.md), #490) and scoped into BACKLOG list `prologue` (PRO-01 … PRO-07).
 - 2026-11-25: RT-22 problem records: the player can open a record on a workload, service-class period, image or job over whole closed clock hours and file the same mechanism/trigger/pins as an RCA. `closeHour` stores quiet-hour facts for met hours that a card touched, that grew a delay group past the floor, or whose CF/LCU is far slower than its peers; the record freezes the window's truth (card, quiet hour, standing fault or no problem) and prices a filing at 0.25 engineer-hours, three a day one an hour, with −0.5 trust for a wholly wrong filing once a day. A correct answer earns an RCA's reward on the subject's facet, and one §4.5 episode pays once (an incident RCA and a record of the same episode; a later day or a fallback cause more than two hours on is new, and a record chains back-to-back quiet hours). No fix unlocks yet (Q8b). Browser Problems card, `play problem`, Codex and SPEC §10. Compare: no differences with `--drop quietHours`; without the drop Harbourline gains two quiet-hour facts (record-only state) while sim, log, RMF and Monitor III stay the same; goldens unchanged (the field is absent until a quiet hour exists); three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45552813412, 45552819909, 45552828780): Midwest 16.5 / 28 / 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
@@ -293,7 +294,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: the PT-20 design note's calls, once it is written.
+- Waiting on the user: docs/pt-20-design.md §8 Q1 … Q7 (PT-20).
 
 ## Known approximations and risks
 

@@ -48,13 +48,13 @@ Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
 ### PT-20 · General operations: design note
-`list: playtest-fixes · status: ready · priority: low · size: S · area: game`
+`list: playtest-fixes · status: blocked: user (decisions in docs/pt-20-design.md §8) · priority: low · size: S · area: game`
 
-Source: playtest round 2 ("a button that fixes this exact problem feels inauthentic") and the user's decision of
+The note is written ([docs/pt-20-design.md](docs/pt-20-design.md)); it waits for the user's calls Q1 … Q7. Source: playtest round 2 ("a button that fixes this exact problem feels inauthentic") and the user's decision of
 2026-11-26: D1's proof gate (RT-24) is dropped in favour of general operations that aren't tied to one event; cards
 that no general operation fits keep no targeted fix and are solved with the levers everyone has. Write
 `docs/pt-20-design.md` for the user's decision, covering:
-- the five general operations and their targets: **cancel work** (a job, STC, DDF thread, utility or TSO user;
+- the general operations and their targets (the note splits cancel work into job, thread and utility: seven): **cancel work** (a job, STC, DDF thread, utility or TSO user;
   finishes SPEC §10's "Cancel job/query, quiesce address space" verb, which exists today only as two card end effects,
   `CANCEL_DB2_READERS` and `REMOVE_ADDRESS_SPACE`),
   **recycle CICS regions** (which regions), **back out a change** (an entry on the Change board of PT-53), **throttle a
@@ -95,7 +95,7 @@ for RT-13: recipe scoring raises RCA scores, which feed the grade.
 ### PT-52 · General operations as real levers
 `list: playtest-fixes · status: blocked: after PT-20 · priority: low · size: M · area: sim`
 
-Source: PT-20. Add the five general operations to Change Desk › Operations, each with its own sim effect whatever is
+Source: PT-20 (docs/pt-20-design.md §3). Add the general operations to Change Desk › Operations, each with its own sim effect whatever is
 running: cancel work (reusing `REMOVE_ADDRESS_SPACE` and `CANCEL_DB2_READERS`), a new `RECYCLE_CICS` (in-flight work
 lost, the region briefly down, its leak reset), a gateway arrival cap, and an HSM recall hold. Cards, their fix ids
 and the old fix buttons are unchanged. Codex entries for each operation. Done when: each operation's effect has a unit
