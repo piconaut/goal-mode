@@ -140,7 +140,6 @@ export interface ViewModel {
   daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   scenario: { id: string; name: string };
-  /** Event fixes the Ops list may show: this scenario's cards that have started or been forewarned in this run. */
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
@@ -225,7 +224,6 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const sim = run.sim;
   const pack = packOf(run.scenarioId);
   const previewCtx = previewContext(run, pack.game);
-  // The Change board owns its cards' fixes, so the Operations list must not offer them as the player's own.
   const c = clockAt(sim.tick);
   const tickOfDay = sim.tick - run.day * TICKS_PER_DAY;
   const def = sim.wlm.definition;
