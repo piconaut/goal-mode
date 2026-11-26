@@ -10,7 +10,9 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-26: PT-57 filed (backlog only): operator commands in the play CLI so player agents can use PT-56's operations.
+- 2026-11-26: PT-57 filed (backlog only; ready now that PT-56 merged): operator commands in the play CLI so player agents can use PT-56's operations.
+- 2026-11-26: PT-56 adds targeted operator commands, live Db2 thread and utility views, and gateway and DFSMShsm status in Change Desk → Operations. PT-53 is unblocked for change backout on the board; PT-54 will connect these operations to card endings. Db2 lock release on rollback is verified for PT-54. The three-scenario comparison against `dev` with the PT-52 refactor is identical.
+- 2026-11-26: PT-56 review decision (user): RMFGAT is the Monitor III gatherer and its cancel gaps that system only; MONAGENT runs the alert rules and its cancel pauses alerting. SMF-side gap queued as RF-12.
 - 2026-11-26: PR #496 cleanup (simplify): one shared played-hour helper, CPU-slice scaling, fraction-modifier predicate, command-log line/cap and lock-holder rule; culprits resolve on the effective workloads' routing. No behaviour change (goldens unchanged).
 - 2026-11-26: PT-52 the world's entities: daily DDF-thread and TSO-userid rosters (RUNAWAY and SHADOW_IT load their culprits), a permanent CICSXLOG STC with CANCEL and automation restart, a nightly Db2 utility schedule (REORG_OVERRUN overruns its REORG), the settlement lock holder in Db2 blockers, SICK_AOR abends per region; cards still end by fix id (RF-11 queued).
 - 2026-11-26: PT-20 decided ([docs/pt-20-design.md](docs/pt-20-design.md); user: Q1–Q7 yes; revised after an adversarial review): seven general operations with real wrong-target costs on entities in always-present rosters, 21 cards end or are relieved through one, 4 business cards through inbox replies; five entries: PT-52 (entities, ready), PT-56 (operations), PT-53, PT-54, PT-55.

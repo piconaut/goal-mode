@@ -154,7 +154,7 @@ const AREAS: { id: Area; label: string; hint: string }[] = [
   { id: 'wlm', label: 'WLM', hint: 'Service classes, goals, resource groups, classification rules, report classes and the daily policy schedule.' },
   { id: 'lpars', label: 'LPARs & hardware', hint: 'PR/SM weights, logical CPs, capping and memory per LPAR; capacity and hardware orders.' },
   { id: 'systems', label: 'Systems, CF & I/O', hint: 'z/OS options, coupling facilities and structures, DASD aliases, Db2, MQ and CICS settings.' },
-  { id: 'ops', label: 'Batch & operations', hint: 'Restart abended jobs and apply event fixes; workload routing and batch initiators.' },
+  { id: 'ops', label: 'Batch & operations', hint: 'Run operator commands, restart abended jobs, and manage workload routing and batch initiators.' },
   { id: 'projects', label: 'Projects', hint: 'Multi-day improvements booked during the briefing.' },
 ];
 

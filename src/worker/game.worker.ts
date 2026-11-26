@@ -628,6 +628,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       returnFailed(before);
       break;
     }
+    case 'OPERATION': {
+      const out = command({ kind: 'OPERATION', op: m.op });
+      if (out.ok) trace({ cmd: 'operation', op: m.op });
+      settleGame(out);
+      break;
+    }
     case 'DRAFT': {
       const o = command({ kind: 'DRAFT', optionId: m.optionId });
       run = o.run;

@@ -5,6 +5,7 @@ import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
 import { AUDIT } from '../content/events/midwest-events';
 import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
+import { chargeHeldRecalls, gatewaySources } from './operations';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { initState } from '../sim/core/init';
 import { Rng, streamRng } from '../sim/core/rng';
@@ -14,7 +15,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import { classify } from '../sim/wlm/classify';
-import { emptyAlerts, evaluateAlerts } from './alerts';
+import { emptyAlerts, evaluateAlerts, suspendAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { opexBudgetFor } from './catalog';
 import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
@@ -35,7 +36,7 @@ import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
 import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
 import { nightStartTick } from './night';
 import { tfpAtDayEnd } from './tfp';
-import { expireToolTrials, measurementCommands, trialTool } from './tools';
+import { alertingAgentDown, expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
   FACETS,
   facetsOf,
@@ -266,7 +267,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         if (line) r = logLine(r, line);
       }
     }
-    const sim = step(r.sim, cmds, scenario);
+    const sim = step(r.sim, cmds, scenario, r.sim.gatewayModes ? gatewaySources(r, content, armedEnded) : undefined);
     r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
     // The workloads whose effective routing (pending commands and dynamic routing already applied for this tick)
@@ -315,10 +316,11 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
+    if (sim.hsmRecalls?.heldSinceTick != null) r = chargeHeldRecalls(r, tick);
     r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];
-      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
+      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = alertingAgentDown(r) ? suspendAlerts(r) : evaluateAlerts(r, scenario);
       if (toolOn(r, 'AUTOMATION') && r.phase === 'LIVE') {
         const fired = (r.alerts?.firing ?? []).filter((id) => !before.includes(id));
         r = runAutomation(r, content, fired, requestChange);

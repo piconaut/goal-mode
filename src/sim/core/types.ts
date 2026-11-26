@@ -9,6 +9,7 @@ import type { UtilityKind } from '../../content/entities';
 import type { CostState } from '../cost/mlc';
 import type { R4haState } from '../cost/r4ha';
 import type { JobEndRecord, RmfAcc, RmfInterval } from '../measure/rmf';
+import type { CancelledSession, CicsRecycle, GatewayMode, HsmRecalls, TerminatedUtility } from './operations';
 import type { RngState } from './rng';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { BurstState } from '../workload/arrivals';
@@ -358,6 +359,11 @@ export interface SimState {
   extraAddressSpaces: AddressSpaceDef[];
   /** Address spaces (base or extra) currently ended by CANCEL; absent when none. */
   cancelledAddressSpaces?: CancelledAddressSpace[];
+  cancelledSessions?: CancelledSession[];
+  terminatedUtilities?: TerminatedUtility[];
+  cicsRecycles?: CicsRecycle[];
+  gatewayModes?: Record<string, GatewayMode>;
+  hsmRecalls?: HsmRecalls;
   /** Extra demand on roster entities (runaway threads, unapproved TSO work); absent when none. */
   entityLoads?: EntityLoad[];
   /** Scheduled utilities overrunning their window; absent when none. */

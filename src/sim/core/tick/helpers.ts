@@ -191,7 +191,7 @@ export function aorFailFrac(table: Readonly<Record<string, number>>, workloadId:
 }
 
 /** A slice's CPU-side fields scaled by `m` (1 returns the same object). */
-function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
+export function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
   return m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
 }
 
