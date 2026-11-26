@@ -9,12 +9,10 @@ import { TICKS_PER_DAY } from '../sim/core/units';
 import { dailyRoster, type RosterEntry } from '../sim/workload/rosters';
 import type { WorkloadDef } from '../sim/workload/types';
 
-/** The workload's live routing: the player's static weights, or the content's. */
-export const liveRouting = (sim: SimState, w: WorkloadDef): Record<string, number> => sim.routing[w.id] ?? w.routing;
-
-/** The day's roster for `w` of `kind`, on the images it is routed to now. */
+/** The day's roster for `w` of `kind` on the images its routing sends it to (callers pass the effective workloads, so
+ *  the player's routing overrides are already applied). */
 export function rosterOf(sim: SimState, w: WorkloadDef, kind: RosterEntry['kind']): RosterEntry[] {
-  return dailyRoster(sim.seed, Math.floor(sim.tick / TICKS_PER_DAY), w, liveRouting(sim, w), kind);
+  return dailyRoster(sim.seed, Math.floor(sim.tick / TICKS_PER_DAY), w, w.routing, kind);
 }
 
 /**
@@ -27,9 +25,9 @@ export function rosterOf(sim: SimState, w: WorkloadDef, kind: RosterEntry['kind'
 export function resolveCulprits(sim: SimState, workloads: readonly WorkloadDef[], spec: CulpritSpec, uid: string, severity = 1): { ids: string[]; commands: Command[] } {
   const w = workloads.find((x) => x.id === spec.workloadId);
   if (!w) return { ids: [], commands: [] };
-  const routing = liveRouting(sim, w);
+  const routing = w.routing;
   const total = Object.values(routing).reduce((a, b) => a + Math.max(0, b), 0);
-  const pool = rosterOf(sim, w, spec.entity).filter((e) => (routing[e.lparId] ?? 0) > 0 && (!spec.lparIds || spec.lparIds.includes(e.lparId)));
+  const pool = rosterOf(sim, w, spec.entity).filter((e) => !spec.lparIds || spec.lparIds.includes(e.lparId));
   if (pool.length === 0 || total <= 0) return { ids: [], commands: [] };
   const rng = streamRng(sim.seed, 'culprits', uid);
   const [lo, hi] = typeof spec.count === 'number' ? [spec.count, spec.count] : spec.count;

@@ -1,8 +1,10 @@
+import type { UtilityKind } from '../../content/entities';
 import { CICS_RECYCLE, HSM_RECALL } from '../../content/operations';
 import { activeUtilities } from '../subsys/utilities';
 import { dailyRoster, type RosterEntry, type RosterKind } from '../workload/rosters';
 import { applyCommand, type CommandResult } from './commands';
 import type { Scenario } from './scenario';
+import { effectiveWorkloads } from './tick/helpers';
 import type { SimState } from './types';
 import { TICK_SEC, TICKS_PER_DAY } from './units';
 
@@ -18,7 +20,7 @@ export interface CancelledSession extends RosterTarget {
 export interface TerminatedUtility {
   id: string;
   day: number;
-  kind: 'REORG' | 'COPY' | 'RUNSTATS';
+  kind: UtilityKind;
   member: string;
   object: string;
 }
@@ -58,9 +60,9 @@ function sameSession(a: RosterTarget, b: RosterTarget): boolean {
 export function operatorRoster(s: SimState, scenario: Scenario, kind: RosterKind, workloadId?: string): (RosterEntry & { day: number })[] {
   const day = dayAt(s.tick);
   const subsystem = kind === 'DDF_THREAD' ? 'DDF' : 'TSO';
-  return [...scenario.workloads, ...s.extraWorkloads]
+  return effectiveWorkloads(scenario, s)
     .filter((w) => w.subsystem === subsystem && (workloadId === undefined || workloadId === w.id))
-    .flatMap((w) => dailyRoster(s.seed, day, w, s.routing[w.id] ?? w.routing, kind).map((entry) => ({ ...entry, day })))
+    .flatMap((w) => dailyRoster(s.seed, day, w, w.routing, kind).map((entry) => ({ ...entry, day })))
     .filter((entry) => !s.cancelledSessions?.some((old) => sameSession(old, entry)));
 }
 

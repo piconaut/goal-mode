@@ -5,6 +5,7 @@ import type { Db2ContentionState, Db2ContentionCounters } from '../subsys/db2Con
 import type { CfConfig, CfStructureConfig, CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdConfig, DasdResult } from '../io/dasd';
 import type { BatchState } from '../subsys/batch';
+import type { UtilityKind } from '../../content/entities';
 import type { CostState } from '../cost/mlc';
 import type { R4haState } from '../cost/r4ha';
 import type { JobEndRecord, RmfAcc, RmfInterval } from '../measure/rmf';
@@ -314,7 +315,7 @@ export interface CancelledAddressSpace {
 
 /** A scheduled Db2 utility running past its window (REORG_OVERRUN): it stays active at this I/O rate until cleared. */
 export interface UtilityOverrun {
-  kind: 'REORG' | 'COPY' | 'RUNSTATS';
+  kind: UtilityKind;
   seqIops: number;
 }
 

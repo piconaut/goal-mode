@@ -15,7 +15,7 @@ import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { prepareDb2Reader } from './db2Contention';
 import { atOrFind } from './plan';
-import { applyCpuModifiers, applyEntityLoads, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
+import { applyCpuModifiers, applyEntityLoads, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
  * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
@@ -73,12 +73,10 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const aors = img.aors;
   if (db2 && prev.terminatedUtilities?.some((u) => u.kind === 'RUNSTATS' && u.member === db2.ssid)) {
     const mult = OPERATIONS.staleStatsCpuMult;
-    for (const slice of base) {
+    for (let i = 0; i < base.length; i++) {
+      const slice = base[i]!;
       if (!slice.workloadId || !usesDb2(workloadById[slice.workloadId]!)) continue;
-      slice.cpEngines *= mult;
-      slice.ziipEngines *= mult;
-      slice.cpuSecPerTxn *= mult;
-      slice.ziipSecPerTxn *= mult;
+      base[i] = scaleSliceCpu(slice, mult);
     }
   }
   // CICS QR TCB load per AOR (CICS work is spread evenly over the image's AORs).

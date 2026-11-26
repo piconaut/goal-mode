@@ -14,6 +14,8 @@ import type { RoutingPolicy } from '../workload/routing';
 import { STC_AUTOMATION } from '../../content/entities';
 import type { EntityLoad, PoolType, SimModifiers, SimState, UtilityOverrun, ZosSystemConfig } from './types';
 
+type ModifierKey = keyof Omit<SimModifiers, 'lockBoost' | 'lockHolder'>;
+
 export type Command =
   | { kind: 'ACTIVATE_POLICY'; definition: ServiceDefinition }
   | { kind: 'SET_WEIGHT'; lparId: string; pool: PoolType; weight: number }
@@ -42,7 +44,7 @@ export type Command =
   | { kind: 'SET_LCU'; lcuId: string; aliases?: number; hotSkew?: number; extraIops?: Partial<Record<'RANDOM' | 'SEQ', number>> }
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
   | { kind: 'SET_ROUTING_POLICY'; workloadId: string; policy: RoutingPolicy }
-  | { kind: 'SET_MODIFIER'; mod: keyof Omit<SimModifiers, 'lockBoost' | 'lockHolder'>; key: string; value: number }
+  | { kind: 'SET_MODIFIER'; mod: ModifierKey; key: string; value: number }
   /** `holder`: the batch stream holding the escalated locks (PT-52); omit it to keep a holder already set. */
   | { kind: 'SET_LOCK_BOOST'; value: number; holder?: { stream: string; object: string } | null }
   /** A card's extra demand on a roster entity (PT-52). */
@@ -67,6 +69,16 @@ export interface CommandResult {
   ok: boolean;
   message: string;
 }
+
+/** Modifiers whose value is an absolute share (neutral 0), not a multiplier (neutral 1); difficulty scales them from
+ *  zero rather than scaling their excess over 1. One list so both rules cannot drift (PT-52). */
+const FRACTION_MODS = ['regionFailFrac', 'aorFailFrac', 'rollbackFrac'] as const satisfies readonly ModifierKey[];
+export const isFractionMod = (mod: ModifierKey): boolean => (FRACTION_MODS as readonly string[]).includes(mod);
+
+/** One command-result line in the log. */
+export const commandLogLine = (ok: boolean, message: string): string => `${ok ? 'OK ' : 'ERR'} ${message}`;
+/** The command log keeps only the newest lines. */
+export const COMMAND_LOG_MAX = 50;
 
 const fail = (state: SimState, message: string): CommandResult => ({ state, ok: false, message });
 const ok = (state: SimState, message: string): CommandResult => ({ state, ok: true, message });
@@ -392,7 +404,7 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
     case 'SET_MODIFIER': {
       const table = { ...s.mods[cmd.mod] };
       // Fractions are neutral at 0, multipliers at 1.
-      if (cmd.value === (cmd.mod === 'regionFailFrac' || cmd.mod === 'rollbackFrac' || cmd.mod === 'aorFailFrac' ? 0 : 1)) delete table[cmd.key];
+      if (cmd.value === (isFractionMod(cmd.mod) ? 0 : 1)) delete table[cmd.key];
       else table[cmd.key] = cmd.value;
       return ok({ ...s, mods: { ...s.mods, [cmd.mod]: table } }, `${cmd.mod}[${cmd.key}] = ${cmd.value}`);
     }
@@ -514,7 +526,7 @@ export function applyCommands(s: SimState, cmds: readonly Command[], base?: read
   for (const c of cmds) {
     const r = applyCommand(st, c, base);
     st = r.state;
-    log.push(`${r.ok ? 'OK ' : 'ERR'} ${r.message}`);
+    log.push(commandLogLine(r.ok, r.message));
   }
-  return { ...st, commandLog: [...st.commandLog, ...log].slice(-50) };
+  return { ...st, commandLog: [...st.commandLog, ...log].slice(-COMMAND_LOG_MAX) };
 }

@@ -190,13 +190,17 @@ export function aorFailFrac(table: Readonly<Record<string, number>>, workloadId:
   return { imageFrac: aors.length ? sum / aors.length : 0, byRegion };
 }
 
+/** A slice's CPU-side fields scaled by `m` (1 returns the same object). */
+export function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
+  return m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
+}
+
 /** Multiply each transaction slice of a loaded workload by its entity loads on this image (PT-52). */
 export function applyEntityLoads(slices: SliceSpec[], loads: readonly EntityLoad[] | undefined, lparId: string): SliceSpec[] {
   if (!loads?.some((l) => l.lparId === lparId)) return slices;
   return slices.map((s) => {
     if (s.kind !== 'TXN' || !s.workloadId) return s;
-    const m = entityLoadMult(loads, s.workloadId, lparId);
-    return m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
+    return scaleSliceCpu(s, entityLoadMult(loads, s.workloadId, lparId));
   });
 }
 
@@ -236,7 +240,7 @@ export function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): 
     const z = s.workloadId ? (shift[s.workloadId] ?? 0) : 0;
     const e = s.workloadId ? (elig[s.workloadId] ?? 1) : 1;
     if (m === 1 && ioM === 1 && z === 0 && e === 1) return s;
-    let out = m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
+    let out = scaleSliceCpu(s, m);
     if (ioM !== 1) out = { ...out, ioPerTxn: out.ioPerTxn * ioM, ioRate: out.ioRate * ioM };
     if (z > 0) {
       // Newly zIIP-eligible: that share of general-CP time moves to the zIIP side (it can still overflow back).

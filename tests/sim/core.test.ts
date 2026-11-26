@@ -1,6 +1,6 @@
-import { clockAt, formatClock, hhmm, instanceClock, pad2 } from '../../src/sim/core/clock';
+import { clockAt, formatClock, hhmm, instanceClock, pad2, secAfterPlayedStart, tickOfPlayedHour } from '../../src/sim/core/clock';
 import { Rng, seedRng } from '../../src/sim/core/rng';
-import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import { TICK_SEC, TICKS_PER_DAY } from '../../src/sim/core/units';
 
 describe('rng', () => {
   it('is deterministic for a seed and serialisable mid-stream', () => {
@@ -63,6 +63,19 @@ describe('clock', () => {
     expect(instanceClock(18 * 3600 - 600)).toBe('23:50');
     expect(instanceClock(18 * 3600)).toBe('00:00+1');
     expect(instanceClock(19 * 3600)).toBe('01:00+1');
+  });
+
+  it('secAfterPlayedStart puts small hours and 24+ hours in the next morning of the same played day', () => {
+    expect(secAfterPlayedStart(6)).toBe(0);
+    expect(secAfterPlayedStart(20.25)).toBe(14.25 * 3600);
+    expect(secAfterPlayedStart(0)).toBe(18 * 3600);
+    expect(secAfterPlayedStart(5)).toBe(23 * 3600);
+    // Event windows reach past midnight as 24+ hours (startHour [21, 26]): 26 is 02:00 next morning.
+    expect(secAfterPlayedStart(26)).toBe(secAfterPlayedStart(2));
+    expect(secAfterPlayedStart(26)).toBe(20 * 3600);
+    expect(tickOfPlayedHour(6)).toBe(0);
+    expect(tickOfPlayedHour(2.5)).toBe((20.5 * 3600) / TICK_SEC);
+    expect(formatClock(tickOfPlayedHour(23.5))).toBe('D1 23:30:00');
   });
 });
 
