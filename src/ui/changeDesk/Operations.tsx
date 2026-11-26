@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { CANCEL_WARNINGS } from '../../content/operations';
 import { FIXES } from '../../game/catalog';
 import { operationHours } from '../../game/operations';
 import type { ViewModel } from '../../game/view';
@@ -97,7 +98,7 @@ export function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
   );
 }
 
-type OperationOption = { label: string; op: Operation };
+type OperationOption = { label: string; op: Operation; warning?: string };
 
 const GATEWAY_MODE_LABEL: Record<GatewayMode, string> = {
   LIMIT: 'Rate limit',
@@ -145,6 +146,7 @@ function OperationPicker({ title, action, empty, options, v, game }: {
         {keyed.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
       </select>
       <OperationButton op={choice?.op ?? null} action={action} v={v} game={game} />
+      {choice?.warning && <div className="help">{choice.warning}</div>}
     </div>
   );
 }
@@ -158,7 +160,7 @@ function OperatorCommands({ v, game }: { v: ViewModel; game: GameHandle }) {
       {v.phase !== 'LIVE' && <div className="help">Operator commands are available during the live day.</div>}
       <OperationPicker v={v} game={game} title="Job or started task" action="Cancel" empty="No active targets" options={[
         ...jobs.map((j) => ({ label: `${j.jobname} · ${j.lparId} · batch`, op: { kind: 'CANCEL_JOB' as const, ...j } })),
-        ...addressSpaces.map((a) => ({ label: `${a.jobname} · ${a.lparId}`, op: { kind: 'CANCEL_ADDRESS_SPACE' as const, ...a } })),
+        ...addressSpaces.map((a) => ({ label: `${a.jobname} · ${a.lparId}`, op: { kind: 'CANCEL_ADDRESS_SPACE' as const, ...a }, warning: CANCEL_WARNINGS[a.jobname] })),
       ]} />
       <OperationPicker v={v} game={game} title="TSO user" action="Log off" empty="No logged-on users" options={tso.map((e) => ({
         label: `${e.id} · ${e.lparId} · ${e.cpuSec.toFixed(2)} CPU s`, op: session(e),

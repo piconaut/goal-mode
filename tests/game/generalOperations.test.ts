@@ -11,7 +11,7 @@ import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { applyCommand } from '../../src/sim/core/commands';
-import { OPERATION_TRUST, OPERATIONS } from '../../src/content/operations';
+import { CANCEL_WARNINGS, OPERATION_TRUST, OPERATIONS } from '../../src/content/operations';
 import { gatewayChannels, operatorRoster, rolloverOperations, type Operation } from '../../src/sim/core/operations';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { releaseNetwork } from '../../src/sim/subsys/batch';
@@ -183,6 +183,11 @@ describe('general operator commands', () => {
     const agent = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'MONAGENT', lparId: 'PROD1' });
     expect(agent.ok, agent.message).toBe(true);
     expect(agent.run.trust).toEqual(run.trust);
+  });
+
+  it('warns only about started tasks the Operations picker can offer', () => {
+    const offered = new Set(Object.values(PACKS).flatMap((p) => operationsView({ ...startDay(newRun(p.scenario, { ...p.game, events: [] }, 42), { ...p.game, events: [] }), events: [] }, p.scenario).addressSpaces.map((a) => a.jobname)));
+    for (const jobname of Object.keys(CANCEL_WARNINGS)) expect(offered, jobname).toContain(jobname);
   });
 
   it('charges Finance for terminating a utility, whatever it was', () => {

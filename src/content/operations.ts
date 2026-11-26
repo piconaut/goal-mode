@@ -26,6 +26,15 @@ export const OPERATION_TRUST = {
   utilityFacets: ['Finance'],
 } as const;
 
+// What cancelling a started task stops, shown before the player issues it (N4 of the PT-56 review). RMFGAT is the
+// Monitor III data gatherer (z/OS 3.1 RMF User's Guide SC27-4936 PDF p.247 (printed 223)); MONAGENT running the alert
+// rules and the Regulator watching CICSXLOG are game rules.
+export const CANCEL_WARNINGS: Readonly<Record<string, string>> = {
+  RMFGAT: 'Monitor III data gatherer: no Monitor III samples from this system until automation restarts it.',
+  MONAGENT: 'Monitoring agent: every alert rule stops until automation restarts it.',
+  CICSXLOG: 'CICS log archiver: the Regulator notices it stopping (trust).',
+};
+
 // FICTIONAL: brief rolling CICS outage; normally work can move, but affinities still strand some requests.
 export const CICS_RECYCLE = { restartMin: 3, affinityFrac: 0.15 };
 
