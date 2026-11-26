@@ -270,6 +270,8 @@ export interface SimModifiers {
   asCpu: Record<string, number>;
   /** Measurement overhead (SMF 101/110 tracing, monitor gatherers) per workload id or jobname; stacks with cpu/asCpu. */
   measureCpu: Record<string, number>;
+  /** Rollout CPU multipliers by workload id or jobname. */
+  rolloutCpu?: Record<string, number>;
   /** Permanent per-workload improvements from projects (stack multiplicatively with the others). */
   efficiency?: Record<string, number>;
   /** I/O per transaction multiplier per workload (compression, archiving). */

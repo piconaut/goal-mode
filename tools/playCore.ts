@@ -6,7 +6,7 @@ import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { DayTrace } from '../src/game/dayTrace';
 import { scenarioFor } from '../src/game/difficulty';
-import { newRun, type ChangeRequest } from '../src/game/run';
+import { newRun, visibleFixIds, type ChangeRequest } from '../src/game/run';
 import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, ProblemSubject, RunState, Trigger } from '../src/game/types';
@@ -709,10 +709,11 @@ export function problemsText(file: PlayFile, recordId?: number): string {
 
 export function catalogText(file: PlayFile): string {
   const v = buildView(file.run, sc(file.run));
+  const fixes = visibleFixIds(file.run, packOf(file.run.scenarioId).game);
   const out = ['hardware (change {"label":..,"hardwareId":ID}):'];
   for (const h of HARDWARE) out.push(`  ${h.id}: ${h.name}. capex $${h.capex.toLocaleString()}, opex $${h.opexPerDay.toLocaleString()}/day, lead ${h.leadDays}d${h.durationDays ? `, lasts ${h.durationDays}d` : ''}. ${h.description}`);
   out.push('fixes (change {"label":..,"fixId":ID}):');
-  for (const f of FIXES.filter((x) => v.fixIds.includes(x.id))) out.push(`  ${f.id}: ${f.name}. ${f.hours}h${f.trustCost ? `, ${f.trustCost.facet} trust -${f.trustCost.amount}` : ''}${f.operational ? ', operator command (no change-board trust cost)' : ''}. ${f.description}`);
+  for (const f of FIXES.filter((x) => fixes.includes(x.id))) out.push(`  ${f.id}: ${f.name}. ${f.hours}h${f.trustCost ? `, ${f.trustCost.facet} trust -${f.trustCost.amount}` : ''}${f.operational ? ', operator command (no change-board trust cost)' : ''}. ${f.description}`);
   out.push(`batch restart (restart JOB; 0.5h; from the last checkpoint, only during its batch night): abended now: ${v.batch.abended.map((a) => `${a.name}${a.critical ? ' (critical path)' : ''}`).join(' ') || 'none'}`);
   out.push(`tools (buy ID; insight ${v.insight}):`);
   for (const t of v.tools) out.push(`  ${t.id}${t.trialLastDay !== null ? ` [free trial to end of day ${t.trialLastDay + 1}; buy to keep]` : t.owned ? ' [owned]' : ''}${t.comingSoon ? ' [coming soon]' : ''}: ${t.name}, tier ${t.tier}, ${t.insightCost} insight${t.prereqs.length ? `, needs ${t.prereqs.join('+')}` : ''}. ${t.reveals}`);

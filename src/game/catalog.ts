@@ -124,6 +124,11 @@ export interface ChangePreview {
   reason: string | null;
 }
 
+export interface BackoutCost {
+  hours: number;
+  kind: 'REBIND' | 'DEPLOYMENT';
+}
+
 /** Hardware capex after perks (the zIIP promotion discounts specialty engines). */
 function capexFor(hardwareId: string, capex: number, perks: readonly string[]): number {
   return perks.includes('ZIIP_PROMO') && hardwareId === 'ADD_ZIIP' ? Math.round(capex * DRAFT_TUNING.ziipPromoCapexMult) : capex;
@@ -143,17 +148,18 @@ export function failRiskFor(fatigue: number, perks: readonly string[]): number {
 }
 
 /** What a change would cost and whether it is allowed, without making it (UI and requestChange share this). */
-export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; cpcId?: string; fixId?: string }): ChangePreview {
+export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; cpcId?: string; fixId?: string }, backout?: BackoutCost): ChangePreview {
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const live = ctx.phase === 'LIVE';
   const staffMult = ctx.staffSurcharge?.mult ?? 1;
-  const hours = (fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks)) * staffMult;
+  const dbaCommand = backout?.kind === 'REBIND';
+  const hours = (backout?.hours ?? (fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks))) * staffMult;
   const capex = hw ? capexFor(hw.id, hw.capex, ctx.perks) : 0;
   const leadDays = leadDaysFor(hw?.leadDays ?? 0, ctx.perks);
   // A lead-time order placed during the live day arrives later, so it is a plan for a future day, not an emergency
   // change made now (PT-11). Only changes that take effect this day pay the trust and failure cost.
-  const emergency = live && leadDays === 0;
+  const emergency = live && leadDays === 0 && !dbaCommand;
   const base: ChangePreview = {
     hours,
     capex,
@@ -161,14 +167,14 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
     leadDays,
     emergency,
     trustCostEach: emergency && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
-    failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
+    failRisk: fix || dbaCommand ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
     staffMult,
     ok: true,
     reason: null,
   };
   const no = (reason: string): ChangePreview => ({ ...base, ok: false, reason });
   if (ctx.phase !== 'BRIEFING' && ctx.phase !== 'LIVE') return no('Changes are made during the briefing or the live day');
-  if (!emergency && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
+  if (!emergency && ctx.constraints.includes('FREEZE') && !req.fixId && !dbaCommand) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
   if (req.fixId && (!fix || (ctx.fixIds && !ctx.fixIds.includes(fix.id)))) return no(`Unknown fix ${req.fixId}`);
   // A fix or a hardware order is a self-contained action: picture the fix on a live day that also sneaks in
@@ -179,7 +185,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   const pointless = target && hw?.unavailable?.(target);
   if (pointless) return no(`${target.id}: ${pointless}`);
   if (hw && ctx.blockedHardware?.includes(hw.id)) return no(`${hw.name} is refused: the data centre power budget forbids it for now`);
-  if (!hw && !fix && (req.commands ?? []).length === 0) return no('Nothing to change');
+  if (!hw && !fix && !backout && (req.commands ?? []).length === 0) return no('Nothing to change');
   if (hours > ctx.hoursLeft + MAX_OVERTIME) return no(`Needs ${hours}h; only ${ctx.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)`);
   if (capex > ctx.capexRemaining) return no(`Capex $${capex.toLocaleString()} exceeds the $${ctx.capexRemaining.toLocaleString()} left`);
   return base;

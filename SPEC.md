@@ -1171,6 +1171,14 @@ one live day, so its fix could otherwise only be bought as an emergency change.
 
 **Freeze periods** (constraint cards): during freezes only emergency changes are allowed.
 
+**Other teams’ changes (PT-53).** The Change board shows each rollout’s owner, scheduled time and status. The
+inbox uses the same notice format for release regressions and routine rollouts. Each scenario pairs its card
+rollouts with routine changes from the same owner and rollout window. Routine rollouts are drawn independently
+using the same card weights, with a routine change already scheduled at handover. They reduce the target workload’s
+or started task’s CPU demand by a fictional 5% during the rollout window. A successful backout spends engineer-hours
+and owner trust. Before rollout it cancels the change, and afterward it reverses its effects. A REBIND backout is
+immediate. Deployments use the normal briefing plan or live emergency change, including the applicable failure risk.
+
 **Slow TSO (PT-50).** Each scenario's game content gives the team's own TSO work a response goal (the first period's
 average response time; not an SLA, so no incident, no trust loss and nothing in the SLA score). While the newest
 closed clock hours each miss it for `INTERNAL_SLOW_WINDOW_HOURS` in a row, hands-on changes, fixes, restarts, hardware
@@ -2209,6 +2217,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CICS QR TCB single-engine limit | **Real** | |
 | CICS dynamic storage and SOS | **Real concept**, FICTIONAL sizes | Per AOR: EDSA in use = base + leak + tasks × per-task storage (CICS Performance p.73); default EDSALIM 800 MB (p.73), settable while running (p.76). In-flight tasks (min of MXT and offered concurrency) above what EDSALIM holds put the region short on storage: it delivers cap × (cap ÷ in-flight)^0.5 task slots (APPROX thrash), so a higher MXT never helps and MXT at the cap avoids the thrash (p.78). A cushion keeps ≥ 10 tasks (APPROX). Storage manager statistics in the SMF 110 view: EDSA peak, EDSALIM, SOS time (`src/sim/subsys/cics.ts`, `src/content/subsys.ts` `CICS_STORAGE`) |
 | Db2 address space placement guidance | **Real (IBM)** | |
+| Db2 package backout and other teams’ rollouts | **Game rule with a real Db2 operation** | `REBIND PACKAGE SWITCH(PREVIOUS)` swaps in a valid previous package copy ([Db2 13 for z/OS Command Reference, PDF pp.178–179 (printed 162–163)](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=178)). Immediate effect, deployment scheduling, rollout CPU benefits and trust costs are game rules. |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts. An address space's states are bounded by its dispatchable units (batch: one TCB per job; started tasks: `DISPATCH_UNITS`, else one): processor delay is scaled down so using + delay never exceeds them (RMF Report Analysis p.52–53, p.540). APPROX: Monitor III's single-state count per address space is not separated from WLM's per-unit count, so multi-unit address spaces can show more than one active user. CICS transaction classes report estimated EXE state percentages; ordinary resource samples/APPL belong to AOR classes (equal split, APPROX). ACTIVE combines SUB/APPL and BCP waits; READY estimates QR dispatch waits; WAITING FOR splits LOCK (Db2 locks), PROD (Db2/MQ/server waits, CF) and MISC. BTE/TOR, IDLE, EXE coverage and optional TRANS-APPL% accounting are not modeled. Reporting is independent of WLM management |
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |

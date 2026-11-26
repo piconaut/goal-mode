@@ -599,6 +599,16 @@ export const CODEX: CodexEntry[] = [
     discover: { start: true },
   },
   {
+    id: 'rebind-backout',
+    title: 'Db2 package backout and deployment rollback',
+    category: 'Subsystems',
+    body: 'Db2 REBIND PACKAGE with SWITCH(PREVIOUS) swaps the current and previous package copies when a valid previous copy is available. That can recover an older access path after a regression. In the game, the DBA command applies immediately. A release or deployment backout goes through the Change Desk. Before the scheduled rollout, a successful backout cancels it. After rollout, it reverses the change. Routine rollouts can save CPU, and backing one out gives up that benefit and costs owner trust.',
+    sources: [
+      { label: 'Db2 13 for z/OS Command Reference, PDF pp.178–179 (printed 162–163): REBIND PACKAGE SWITCH(PREVIOUS)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=178' },
+    ],
+    discover: { start: true },
+  },
+  {
     id: 'hsm-recall-hold',
     title: 'DFSMShsm: HOLD RECALL and RELEASE RECALL',
     category: 'I/O & CF',

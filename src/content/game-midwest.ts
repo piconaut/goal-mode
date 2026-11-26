@@ -1,9 +1,11 @@
 import { defineGame } from './defineGame';
 import { MIDWEST_EVENTS, MIDWEST_STORY } from './events/midwest-events';
+import { MIDWEST_CHANGES } from './otherTeamChanges';
 
 /** FICTIONAL budgets for the Midwest Mutual run. */
 export const MIDWEST_GAME = defineGame({
   events: MIDWEST_EVENTS,
+  otherTeamChanges: MIDWEST_CHANGES,
   story: MIDWEST_STORY,
   opexBudgetMonthly: 780_000,
   capexQuarter: 1_500_000,

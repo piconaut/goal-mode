@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-26: PT-53 adds other teams’ scheduled rollouts and history to the Change board. Paired routine rollouts save CPU while live. REBIND backouts are immediate and deployment backouts go through the Change Desk. PT-54 is ready.
 - 2026-11-26: PT-57 filed (backlog only; ready now that PT-56 merged): operator commands in the play CLI so player agents can use PT-56's operations.
 - 2026-11-26: PT-56 adds targeted operator commands, live Db2 thread and utility views, and gateway and DFSMShsm status in Change Desk → Operations. PT-53 is unblocked for change backout on the board; PT-54 will connect these operations to card endings. Db2 lock release on rollback is verified for PT-54. The three-scenario comparison against `dev` with the PT-52 refactor is identical.
 - 2026-11-26: PT-56 review decision (user): RMFGAT is the Monitor III gatherer and its cancel gaps that system only; MONAGENT runs the alert rules and its cancel pauses alerting. SMF-side gap queued as RF-12.

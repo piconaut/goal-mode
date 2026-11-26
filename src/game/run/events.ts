@@ -2,8 +2,8 @@ import { type EventDef } from '../../content/events/midwest-events';
 import { cardMechanisms } from '../../content/footprint';
 import { STORY_BEAT_HINTS } from '../../content/hints';
 import { EVENT_RUMOURS } from '../../content/inquiries';
-import { secAfterPlayedStart } from '../../sim/core/clock';
-import { Rng, streamRng } from '../../sim/core/rng';
+import { tickOfPlayedHour } from '../../sim/core/clock';
+import { type Rng, streamRng } from '../../sim/core/rng';
 import { TICK_SEC, TICKS_PER_DAY } from '../../sim/core/units';
 import { difficultyOf, storyBeatsFor } from '../difficulty';
 import {
@@ -12,35 +12,50 @@ import {
 } from '../types';
 import type { GameContent } from './shared';
 import { msg } from './shared';
+import { announceOtherTeamChange } from './otherTeamChanges';
+
+function pickEvents(run: RunState, content: GameContent, day: number, rng: Rng, routine = false) {
+  const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
+  const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
+  const dayStartTick = day * TICKS_PER_DAY;
+  const history = routine ? (run.otherTeamChanges ?? []).filter((change) => !change.eventUid)
+    : run.events.map(({ defId, startTick, endTick }) => ({ eventId: defId, startTick, endTick }));
+  const pool = content.events.filter(
+    (e) =>
+      day >= e.minDay &&
+      !(e.oncePerRun && history.some((x) => x.eventId === e.id)) &&
+      // No card two days running. Back-to-back repeats read as noise.
+      !history.some((x) => x.eventId === e.id && x.startTick >= dayStartTick - TICKS_PER_DAY) &&
+      // An hours card must not stack on itself while still running.
+      !(e.hoursDelta && history.some((x) => x.eventId === e.id && (x.endTick === null || x.endTick > dayStartTick))),
+  );
+  const out: { def: EventDef; hour: number }[] = [];
+  for (let i = 0; i < n && pool.length > 0; i++) {
+    const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
+    if (!def) break;
+    pool.splice(pool.indexOf(def), 1);
+    out.push({ def, hour: rng.range(def.startHour[0], def.startHour[1]) });
+  }
+  return out;
+}
+
+const changeTick = (day: number, hour: number) => day * TICKS_PER_DAY + tickOfPlayedHour(hour);
+const endTickOf = (def: EventDef, startTick: number): number | null =>
+  def.durationHours === null ? null : startTick + Math.max(1, Math.round((def.durationHours * 3600) / TICK_SEC));
 
 /** Pick tomorrow's (or today's) events; forewarn when the card says so. */
 export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
-  const picked = ((rng: Rng) => {
-    const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
-    const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
-    const dayStartTick = day * TICKS_PER_DAY;
-    const pool = content.events.filter(
-      (e) =>
-        day >= e.minDay &&
-        !(e.oncePerRun && run.events.some((x) => x.defId === e.id)) &&
-        // no card two days running: back-to-back repeats (e.g. two abends) read as noise, not a new problem
-        !run.events.some((x) => x.defId === e.id && x.startTick >= dayStartTick - TICKS_PER_DAY) &&
-        // an hours card must not stack on itself while still running
-        !(e.hoursDelta && run.events.some((x) => x.defId === e.id && (x.endTick === null || x.endTick > dayStartTick))),
-    );
-    const out: { def: EventDef; hour: number }[] = [];
-    for (let i = 0; i < n && pool.length > 0; i++) {
-      const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
-      if (!def) break;
-      pool.splice(pool.indexOf(def), 1);
-      out.push({ def, hour: rng.range(def.startHour[0], def.startHour[1]) });
-    }
-    return out;
-  })(streamRng(run.seed, 'events', day));
+  const picked = pickEvents(run, content, day, streamRng(run.seed, 'events', day));
+  const profiles = content.otherTeamChanges ?? [];
+  const notices: { eventId: string; startTick: number; endTick: number | null; uid?: string }[] = [];
   let r = run;
   for (const { def, hour } of picked) {
-    const startTick = day * TICKS_PER_DAY + Math.round(secAfterPlayedStart(hour) / TICK_SEC);
-    const endTick = def.durationHours === null ? null : startTick + Math.max(1, Math.round((def.durationHours * 3600) / TICK_SEC));
+    const rollout = profiles.some((p) => p.eventId === def.id);
+    const scheduledTick = changeTick(day, hour);
+    // Repeat rollouts share their card's effect. Let the previous rollout finish before the new one can change it.
+    const startTick = rollout ? r.events.reduce((tick, event) => event.defId === def.id ? Math.max(tick, event.endTick ?? tick) : tick, scheduledTick)
+      : scheduledTick;
+    const endTick = endTickOf(def, startTick);
     const ev: ActiveEvent = {
       uid: `${def.id}@${day}`,
       defId: def.id,
@@ -62,7 +77,25 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       const days = Math.max(1, Math.ceil((def.durationHours ?? 24) / 24));
       r = { ...r, bonusHours: [...r.bonusHours, { hours: def.hoursDelta, untilDay: day + days }], hoursLeft: Math.max(0, r.hoursLeft + def.hoursDelta) };
     }
-    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
+    if (rollout) notices.push({ eventId: def.id, startTick, endTick, uid: ev.uid });
+    else if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
+  }
+  if (profiles.length) {
+    // Sample the same deck and rollout windows with a separate seed stream. This avoids pairing a routine notice
+    // with a regression. The first briefing starts with a routine change already on the schedule.
+    const rng = streamRng(run.seed, 'routine-changes', day);
+    const available = content.events.filter((def) => profiles.some((p) => p.eventId === def.id));
+    const handover = day === 0 ? rng.pickWeighted(available, (def) => def.weight) : null;
+    const routine = handover ? [{ def: handover, hour: rng.range(...handover.startHour) }] : pickEvents(run, content, day, rng, true);
+    for (const { def, hour } of routine) {
+      if (!available.includes(def)) continue;
+      const startTick = changeTick(day, hour);
+      notices.push({ eventId: def.id, startTick, endTick: endTickOf(def, startTick) });
+    }
+    for (const notice of notices.sort((a, b) => a.startTick - b.startTick)) {
+      const def = profiles.find((p) => p.eventId === notice.eventId)!;
+      r = announceOtherTeamChange(r, def, notice.startTick, notice.endTick, notice.uid);
+    }
   }
   return r;
 }
@@ -120,12 +153,13 @@ export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.
  * event that has not happened yet. Validation keeps using `fixIdsOf`, so a fix id guessed for an unseen card is
  * still accepted and charged (the Change Desk cannot be probed for hidden events).
  */
-export function visibleFixIds(run: RunState, content: GameContent): string[] {
+export function visibleFixIds(run: RunState, content: GameContent, includeBoardFixes = true): string[] {
   const out = new Set<string>();
   for (const e of run.events) {
     const def = content.events.find((d) => d.id === e.defId);
     const rumoured = (run.inquiries?.revealed ?? []).includes(`ev:${e.uid}`);
-    if (def?.fix && (e.started || def.forewarning !== null || rumoured)) out.add(def.fix);
+    if (def?.fix && (includeBoardFixes || !content.otherTeamChanges?.some((change) => change.eventId === def.id))
+      && (e.started || def.forewarning !== null || rumoured)) out.add(def.fix);
   }
   return [...out].sort();
 }

@@ -1,9 +1,11 @@
 import { defineGame } from './defineGame';
 import { REVENUE_EVENTS, REVENUE_STORY } from './events/revenue-events';
+import { REVENUE_CHANGES } from './otherTeamChanges';
 
 /** FICTIONAL budgets for the State Revenue Agency run. */
 export const REVENUE_GAME = defineGame({
   events: REVENUE_EVENTS,
+  otherTeamChanges: REVENUE_CHANGES,
   story: REVENUE_STORY,
   opexBudgetMonthly: 760_000,
   capexQuarter: 1_200_000,
