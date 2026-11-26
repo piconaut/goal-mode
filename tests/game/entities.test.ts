@@ -103,6 +103,18 @@ describe('CICSXLOG is a permanent STC that XLOG_LOOP makes loop', () => {
     expect(effectiveAddressSpaces(MIDWEST, s).filter((a) => a.jobname === 'CICSXLOG')).toHaveLength(1);
     expect(s.commandLog.some((l) => /CICSXLOG restarted on PROD1 by automation/.test(l))).toBe(true);
   });
+
+  it.each(['STORY', 'HARD'] as const)('the loop stays at about 0.9 engines on %s: one TCB bounds it, difficulty does not scale it', (difficulty) => {
+    const def = card(MIDWEST_EVENTS, 'XLOG_LOOP');
+    const content = contentOf(def, MIDWEST_GAME);
+    const r0 = startDay(newRun(MIDWEST, content, 7, difficulty), content);
+    const r = { ...r0, events: [{
+      uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: r0.sim.tick + 1, endTick: null, trigger: def.trigger,
+      affects: def.affects, mechanisms: [], endCommands: def.end, started: false, ended: false,
+    }] };
+    const after = advance(r, MIDWEST, content, 3);
+    expect(CICSXLOG_ENGINES * after.sim.mods.asCpu.CICSXLOG!).toBeCloseTo(0.9, 6);
+  });
 });
 
 describe('REORG_OVERRUN overruns the night\'s scheduled REORG', () => {

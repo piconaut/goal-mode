@@ -50,6 +50,9 @@ export interface EventDef {
   end: Command[];
   /** Roster entities that carry the card's extra demand, picked when it begins; its end clears them. */
   culprits?: CulpritSpec;
+  /** The begin commands are not scaled by difficulty: the card's size is a bound of its mechanism (a loop on one TCB
+   *  burns at most one engine), not a severity. */
+  fixedSeverity?: true;
   /** Game fix id that ends this event early (see game/catalog.ts). */
   fix: string | null;
   /** Inbox hint the day before (null = surprise). */
@@ -267,6 +270,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // loop in a single-TCB program burns at most one engine (APPROX: exactly that). The REMOVE drops an extra copy an
     // older save may still hold (it only touches extras), so the multiplier never lands on it.
     begin: [{ kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' }, mod('asCpu', 'CICSXLOG', XLOG_LOOP_ENGINES / CICSXLOG_ENGINES)],
+    fixedSeverity: true,
     // The on-call cancels it (z/OS 3.1 MVS System Commands (SA38-0666-60) PDF p.188 (printed 160)) and automation
     // restarts it healthy. APPROX: immediate cleanup.
     end: [mod('asCpu', 'CICSXLOG', 1), { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' }],

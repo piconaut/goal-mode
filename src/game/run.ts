@@ -223,7 +223,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     for (const e of events) {
       const def = defs.get(e.defId);
       if (!e.started && e.startTick <= tick) {
-        cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
+        cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.culprits) {
           const c = resolveCulprits(r.sim, allWorkloads(scenario, r), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
           cmds.push(...c.commands);
