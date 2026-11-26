@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-26: PT-54 moves card resolution to operator effects, linked rollouts and inbox replies, retains the CICS/HSM relief footprints, models settlement backout, and migrates legacy saves. PT-55 is ready.
+- 2026-11-26: PT-54 moves card resolution to operator effects, linked rollouts and inbox replies, retains the CICS/HSM relief footprints, models settlement backout, and migrates legacy saves. The three 20-seed sweeps stayed inside their balance bands. PT-55 is ready. [PR #501](https://github.com/piconaut/goal-mode/pull/501)
 - 2026-11-26: PT-53 adds other teams’ rollouts and backouts to the Change board. Paired rollouts share a title and get distinct references. Routine rollouts save CPU while live. All three review sweeps passed. PT-54 is ready. [PR #500](https://github.com/piconaut/goal-mode/pull/500)
 - 2026-11-26: PT-57 filed (backlog only; ready now that PT-56 merged): operator commands in the play CLI so player agents can use PT-56's operations.
 - 2026-11-26: PT-56 adds targeted operator commands, live Db2 thread and utility views, and gateway and DFSMShsm status in Change Desk → Operations. PT-53 is unblocked for change backout on the board; PT-54 will connect these operations to card endings. Db2 lock release on rollback is verified for PT-54. The three-scenario comparison against `dev` with the PT-52 refactor is identical.
@@ -177,11 +177,11 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest reference, PT-53 (2026-11-26, remote, Normal, seeds 1–20). Median end day for do-nothing / textbook / expert,
-  then expert wins. Midwest 17 / 27 / 40 and 20/20, Revenue 20.5 / 29 / 40 and 20/20, Harbourline 10 / 34.5 / 40
-  and 18/20 (textbook wins 2/20). All inside the CI bands. Against PT-52, Harbourline textbook rose from 32 to 34.5.
-  The other medians and win counts held. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45887502088),
-  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45887501539), [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45887501624).
+- Latest reference, PT-54 (2026-11-26, remote, Normal, seeds 1–20). Median end day for do-nothing / textbook / expert,
+  then expert wins. Midwest 17 / 27 / 40 and 20/20, Revenue 20.5 / 29 / 40 and 19/20, Harbourline 10 / 34.5 / 40
+  and 17/20 (textbook wins 2/20). All inside the CI bands. The medians held against PT-53, with one fewer expert win
+  each in Revenue and Harbourline. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45894718818),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45894719041), [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45894719341).
 - I13 quick reversals for S-1 through S-3 were 1/0/8, accepted by the user (2026-11-13, #331).
 - Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
   17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,

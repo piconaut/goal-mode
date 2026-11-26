@@ -108,7 +108,7 @@ export function applyOperation(s: SimState, scenario: Scenario, op: Operation): 
       // (z/OS 3.1 MVS System Codes SA38-0665-60 PDF p.336 (printed 324) and PDF p.253 (printed 241)).
       const holder = s.mods.lockHolder;
       // APPROX: back out the active batch attempt and retain its modeled locks through completion.
-      // Db2 13 Managing Performance PDF p.116 (printed 96), p.355 (printed 335).
+      // Db2 13 Managing Performance PDF p.116 (printed 96), PDF p.355 (printed 335).
       const lockBackout = holder && lockHolderJob(s.mods, s.batch.jobs) === job ? {
         untilTick: s.tick + Math.max(1, Math.ceil((s.tick - (job.startTick ?? s.tick)) * SETTLEMENT_BACKOUT_ELAPSED_MULT)),
         lockIndex: s.mods.lockBoost + job.def.lockIntensity,
