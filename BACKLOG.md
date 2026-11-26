@@ -58,7 +58,8 @@ that no general operation fits keep no targeted fix and are solved with the leve
   finishes SPEC §10's "Cancel job/query, quiesce address space" verb, of which only `CANCEL_DB2_READERS` exists),
   **recycle CICS regions** (which regions), **back out a change** (an entry on the Change board of PT-53), **throttle a
   channel at the gateway** (which workload) and **hold DFSMShsm recalls**;
-- a table of the 20 cards with a targeted fix today (`FIXES` in `src/game/catalog.ts`): the operation and target that
+- a table of the 23 cards with a targeted fix today (the 23 `FIXES` in `src/game/catalog.ts`, 20 once Revenue's three
+  `_REV` copies are folded into their Midwest originals): the operation and target that
   ends each, what a wrong target costs, and where its decoys come from. SCOPE_ENCRYPTION, NEGOTIATE_MLC_PRICE,
   SCOPE_SMF_AUDIT and COMMIT_SETTLEMENT_OFTEN are not operator actions and become replies on the inbox thread that
   announces them;
