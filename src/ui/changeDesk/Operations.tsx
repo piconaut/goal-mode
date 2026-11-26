@@ -105,6 +105,26 @@ const GATEWAY_MODE_LABEL: Record<GatewayMode, string> = {
   BLOCK: 'Block source addresses',
 };
 
+function OperationButton({ op, action, v, game, disabled = false, onSent }: {
+  op: Operation | null;
+  action: string;
+  v: ViewModel;
+  game: GameHandle;
+  disabled?: boolean;
+  onSent?: () => void;
+}) {
+  const hours = op ? operationHours(op, v.previewCtx.staffSurcharge?.mult) : undefined;
+  return (
+    <button disabled={v.phase !== 'LIVE' || !op || disabled} onClick={() => {
+      if (!op) return;
+      game.send({ type: 'OPERATION', op });
+      onSent?.();
+    }}>
+      {action}{hours !== undefined ? ` · ${hours}h` : ''}
+    </button>
+  );
+}
+
 function OperationPicker({ title, action, empty, options, v, game }: {
   title: string;
   action: string;
@@ -117,7 +137,6 @@ function OperationPicker({ title, action, empty, options, v, game }: {
   const [selected, setSelected] = useState('');
   const keyed = options.map((option) => ({ ...option, key: JSON.stringify(option.op) }));
   const choice = keyed.find((option) => option.key === selected);
-  const hours = choice && operationHours(choice.op, v.previewCtx.staffSurcharge?.mult);
   return (
     <div className="form">
       <label htmlFor={id}>{title}</label>
@@ -125,9 +144,7 @@ function OperationPicker({ title, action, empty, options, v, game }: {
         <option value="">{options.length ? 'Select a target' : empty}</option>
         {keyed.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
       </select>
-      <button disabled={v.phase !== 'LIVE' || !choice} onClick={() => choice && game.send({ type: 'OPERATION', op: choice.op })}>
-        {action}{hours !== undefined ? ` · ${hours}h` : ''}
-      </button>
+      <OperationButton op={choice?.op ?? null} action={action} v={v} game={game} />
     </div>
   );
 }
@@ -193,9 +210,7 @@ function OperatorCommands({ v, game }: { v: ViewModel; game: GameHandle }) {
           DFSMShsm recalls {recalls.held ? 'HELD' : 'RELEASED'} · {Math.round(recalls.backlogIo).toLocaleString()} queued I/Os
           <CodexHints ids={['hsm-recall-hold']} />
         </span>
-        <button disabled={v.phase !== 'LIVE'} onClick={() => game.send({ type: 'OPERATION', op: { kind: 'HOLD_HSM_RECALL', held: !recalls.held } })}>
-          {recalls.held ? 'Release recalls' : 'Hold recalls'} · {operationHours({ kind: 'HOLD_HSM_RECALL', held: !recalls.held }, v.previewCtx.staffSurcharge?.mult)}h
-        </button>
+        <OperationButton op={{ kind: 'HOLD_HSM_RECALL', held: !recalls.held }} action={recalls.held ? 'Release recalls' : 'Hold recalls'} v={v} game={game} />
       </div>
     </>
   );
@@ -218,12 +233,7 @@ function RecycleRegions({ v, game }: { v: ViewModel; game: GameHandle }) {
           </label>
         ))}
       </div>
-      <button disabled={v.phase !== 'LIVE' || !targets.length} onClick={() => {
-        game.send({ type: 'OPERATION', op });
-        setSelected([]);
-      }}>
-        Recycle selected · {operationHours(op, v.previewCtx.staffSurcharge?.mult)}h
-      </button>
+      <OperationButton op={op} action="Recycle selected" v={v} game={game} disabled={!targets.length} onSent={() => setSelected([])} />
       <CodexHints ids={['cics-recycle']} />
     </details>
   );

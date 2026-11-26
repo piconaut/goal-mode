@@ -42,6 +42,8 @@ export interface HsmRecalls {
   backlogIo: number;
 }
 
+export const recallHeld = (recalls: HsmRecalls | undefined): boolean => recalls?.heldSinceTick != null;
+
 export type Operation =
   | { kind: 'CANCEL_JOB'; day: number; jobname: string; lparId: string }
   | { kind: 'CANCEL_ADDRESS_SPACE'; jobname: string; lparId: string }
@@ -162,7 +164,7 @@ export function applyOperation(s: SimState, scenario: Scenario, op: Operation): 
     case 'HOLD_HSM_RECALL': {
       if (!s.config.dasd.lcus.some((l) => l.id === HSM_RECALL.lcuId)) return fail('No DFSMShsm recall volume is defined.');
       const { hsmRecalls, ...rest } = s;
-      const held = hsmRecalls?.heldSinceTick != null;
+      const held = recallHeld(hsmRecalls);
       if (op.held === held) return fail(held ? 'DFSMShsm recalls are already held.' : 'DFSMShsm recalls are already released.');
       const backlogIo = hsmRecalls?.backlogIo ?? 0;
       const recalls = { heldSinceTick: op.held ? s.tick : null, backlogIo };
@@ -175,15 +177,14 @@ export function applyOperation(s: SimState, scenario: Scenario, op: Operation): 
 export function rolloverOperations(s: SimState, scenario: Scenario): SimState {
   const day = dayAt(s.tick);
   const { cancelledSessions, terminatedUtilities } = s;
-  const oldSessions = cancelledSessions?.some((e) => e.day < day);
+  const sessions = cancelledSessions?.filter((e) => e.day >= day);
   let utilities = terminatedUtilities;
   if (terminatedUtilities?.some((u) => u.day < day)) {
     const before = activeUtilities(scenario.utilities, s.seed, s.tick - 1, s.utilityOverruns, terminatedUtilities);
     const now = activeUtilities(scenario.utilities, s.seed, s.tick, s.utilityOverruns, terminatedUtilities);
     utilities = terminatedUtilities.filter((u) => !before.some((a) => a.def.id === u.id) || now.some((a) => a.def.id === u.id));
   }
-  if (!oldSessions && utilities?.length === terminatedUtilities?.length) return s;
+  if (sessions?.length === cancelledSessions?.length && utilities?.length === terminatedUtilities?.length) return s;
   const { cancelledSessions: _sessions, terminatedUtilities: _utilities, ...rest } = s;
-  const sessions = cancelledSessions?.filter((e) => e.day >= day);
   return { ...rest, ...(sessions?.length ? { cancelledSessions: sessions } : {}), ...(utilities?.length ? { terminatedUtilities: utilities } : {}) };
 }

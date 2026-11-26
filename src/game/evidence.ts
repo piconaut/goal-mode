@@ -9,6 +9,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
 import { workManagerStatePct } from '../sim/wlm/reporting';
 import { buildMon3 } from './mon3';
+import { monitorCollectorDown } from './tools';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
 import { cfPeer, lcuPeer, type PeerReading } from './peerSlow';
@@ -188,7 +189,11 @@ function hourlyEvidence(
 function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
   const mon3 = (tick: number | undefined): { tick: number; view: Mon3PinView } | string => {
-    if (tick === undefined) return { tick: sim.tick, view: buildMon3(run, scenario) };
+    if (tick === undefined) {
+      return monitorCollectorDown(run)
+        ? 'Live Monitor III data is unavailable while MONAGENT is down'
+        : { tick: sim.tick, view: buildMon3(run, scenario) };
+    }
     return history?.(tick) ?? 'Monitor III history does not reach back that far';
   };
   switch (req.source) {

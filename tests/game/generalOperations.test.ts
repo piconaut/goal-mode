@@ -96,6 +96,16 @@ describe('general operator commands', () => {
     const afterCopy = { ...nextNight, tick: nextNight.tick + 60 / TICK_SEC };
     expect(rolloverOperations(afterCopy, site).terminatedUtilities).toBeUndefined();
   });
+  it('charges each CICS owner once when recycling a region', () => {
+    const run = live();
+    const { name, lparId } = scenario.world.cics[0]!;
+    const before = run.trust.Retail!;
+    const out = issue(run, { kind: 'RECYCLE_CICS', targets: [{ name, lparId }] });
+    expect(out.ok).toBe(true);
+    // Retail owns both RBANK and TELLER, which route to this image.
+    expect(out.run.trust.Retail).toBeCloseTo(before - 1);
+  });
+
   it('removes a logged-off TSO user\'s share of demand on its image', () => {
     const run = live();
     const target = operatorRoster(run.sim, scenario, 'TSO_USER').sort((a, b) => b.shareFrac - a.shareFrac)[0]!;

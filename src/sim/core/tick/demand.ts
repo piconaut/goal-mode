@@ -55,17 +55,13 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const reader = profile?.reader;
   const resident = profile ? content?.before?.readers[db2!.ssid] : undefined;
   const residentReader = resident && reader && !workloadById[reader]?.routing[l.id] ? reader : undefined;
-  let imageRates = rates;
-  if (prev.cancelledSessions) {
-    const lostShare: Record<string, number> = {};
-    for (const session of prev.cancelledSessions) {
-      if (session.kind === 'TSO_USER' && session.lparId === l.id) lostShare[session.workloadId] = (lostShare[session.workloadId] ?? 0) + session.shareFrac;
-    }
-    for (const [id, share] of Object.entries(lostShare)) {
-      if (imageRates === rates) imageRates = { ...rates };
-      imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - share);
-    }
+  const lostShare: Record<string, number> = {};
+  for (const session of prev.cancelledSessions ?? []) {
+    if (session.kind === 'TSO_USER' && session.lparId === l.id) lostShare[session.workloadId] = (lostShare[session.workloadId] ?? 0) + session.shareFrac;
   }
+  const lostIds = Object.keys(lostShare);
+  const imageRates = lostIds.length ? { ...rates } : rates;
+  for (const id of lostIds) imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - lostShare[id]!);
   const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))

@@ -115,8 +115,10 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceStat
   switch (c.cmd) {
     case 'change':
       return settled(requestChange(run, contentOf(run), c.req));
-    case 'operation':
-      return settled(requestOperation(run, scOf(run), contentOf(run), c.op));
+    case 'operation': {
+      const out = requestOperation(run, scOf(run), contentOf(run), c.op);
+      return out.ok ? settled(out) : corrupt(`a recorded operation was refused: ${out.message}`);
+    }
     case 'cancel': {
       const o = cancelChange(run, c.changeId);
       return { run: o.run, pendingPolicy: o.restoredPolicy && !st.pendingPolicy ? o.restoredPolicy : st.pendingPolicy };

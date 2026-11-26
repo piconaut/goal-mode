@@ -36,7 +36,7 @@ export function scenarioFor(given: Scenario, id: DifficultyId | undefined): Scen
   return derived;
 }
 
-const scaleExcess = (value: number, mult: number) => Math.max(0.05, 1 + (value - 1) * mult);
+export const scaleExcess = (value: number, mult: number) => Math.max(0.05, 1 + (value - 1) * mult);
 
 /** An event card's begin commands at this severity (1 = unchanged). Multipliers scale their excess over 1;
  * the absolute fractions (region failures, Db2 rollbacks) scale from zero instead, capped at 1. */

@@ -320,7 +320,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];
-      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
+      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3') && !monitorCollectorDown(r)) r = evaluateAlerts(r, scenario);
       if (toolOn(r, 'AUTOMATION') && r.phase === 'LIVE') {
         const fired = (r.alerts?.firing ?? []).filter((id) => !before.includes(id));
         r = runAutomation(r, content, fired, requestChange);

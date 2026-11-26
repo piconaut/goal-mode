@@ -1,7 +1,7 @@
 import { CICS_RECYCLE, GATEWAY, HSM_RECALL } from '../../../content/operations';
 import type { JobRuntime } from '../../subsys/batch';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
-import type { CicsRecycle, GatewayMode, HsmRecalls } from '../operations';
+import { recallHeld, type CicsRecycle, type GatewayMode, type HsmRecalls } from '../operations';
 import { streamRng } from '../rng';
 import type { SimState, WorldConfig } from '../types';
 import { TICK_SEC } from '../units';
@@ -35,6 +35,13 @@ export function recycleRouting(s: SimState, workloads: WorkloadDef[], addressSpa
   if (!down?.length) return { workloads, addressSpaces, config: s.config };
   const includes = (name: string, lparId: string) => down.some((r) => r.name === name && r.lparId === lparId);
   const cics = s.config.cics.filter((c) => !includes(c.name, c.lparId));
+  const byLpar = new Map<string, { total: number; down: CicsRecycle[] }>();
+  for (const c of s.config.cics) {
+    const entry = byLpar.get(c.lparId) ?? { total: 0, down: [] };
+    entry.total += 1;
+    byLpar.set(c.lparId, entry);
+  }
+  for (const r of down) byLpar.get(r.lparId)?.down.push(r);
   const failed: Record<string, number> = {};
   const modified = workloads.map((w) => {
     if (w.subsystem !== 'CICS') return w;
@@ -43,8 +50,7 @@ export function recycleRouting(s: SimState, workloads: WorkloadDef[], addressSpa
     let lostShare = 0;
     let stranded = 0;
     for (const [lparId, share] of Object.entries(w.routing)) {
-      const total = s.config.cics.filter((c) => c.lparId === lparId).length;
-      const unavailable = down.filter((r) => r.lparId === lparId);
+      const { total, down: unavailable } = byLpar.get(lparId) ?? { total: 0, down: [] };
       const loss = total ? share * unavailable.length / total : 0;
       eligible[lparId] = share - loss;
       survivingShare += eligible[lparId];
@@ -100,20 +106,21 @@ export function hsmIo(s: SimState): { dasd: WorldConfig['dasd']; recalls?: HsmRe
   const recalls = s.hsmRecalls;
   if (!recalls) return { dasd };
   const lcu = dasd.lcus.find((l) => l.id === HSM_RECALL.lcuId);
+  const held = recallHeld(recalls);
   const incomingIops = lcu?.extraIops?.RANDOM ?? 0;
-  const drainedIops = recalls.heldSinceTick === null ? Math.min(HSM_RECALL.drainIops, recalls.backlogIo / TICK_SEC) : 0;
-  const extraIops = recalls.heldSinceTick === null ? incomingIops + drainedIops : 0;
-  const backlogIo = recalls.heldSinceTick === null ? recalls.backlogIo - drainedIops * TICK_SEC : recalls.backlogIo + incomingIops * TICK_SEC;
+  const drainedIops = held ? 0 : Math.min(HSM_RECALL.drainIops, recalls.backlogIo / TICK_SEC);
+  const extraIops = held ? 0 : incomingIops + drainedIops;
+  const backlogIo = held ? recalls.backlogIo + incomingIops * TICK_SEC : recalls.backlogIo - drainedIops * TICK_SEC;
   return {
     dasd: lcu && extraIops !== incomingIops
       ? { ...dasd, lcus: dasd.lcus.map((l) => l === lcu ? { ...l, extraIops: { ...l.extraIops, RANDOM: extraIops } } : l) }
       : dasd,
-    ...(recalls.heldSinceTick !== null || backlogIo > 0 ? { recalls: { ...recalls, backlogIo } } : {}),
+    ...(held || backlogIo > 0 ? { recalls: { ...recalls, backlogIo } } : {}),
   };
 }
 
 export function failHeldRecalls(s: SimState, jobs: JobRuntime[]): void {
-  if (s.hsmRecalls?.heldSinceTick == null) return;
+  if (!recallHeld(s.hsmRecalls)) return;
   for (const job of jobs) {
     if (job.status !== 'RUNNING' || job.startTick !== s.tick || job.def.ioCount <= 0) continue;
     if (!streamRng(s.seed, 'batch-wait-recall', job.day, job.def.name).chance(HSM_RECALL.waitJobFrac)) continue;

@@ -8,8 +8,11 @@ import type { GatewayTraffic } from '../sim/core/tick/operatorEffects';
 import { activeUtilities } from '../sim/subsys/utilities';
 import { rosterCpuSec, type RosterEntry, type RosterKind } from '../sim/workload/rosters';
 import { previewContext, spendHours, type ChangeOutcome } from './run/changes';
-import { difficultyOf } from './difficulty';
-import { clampTrust, logLine, type GameContent } from './run/shared';
+import { poolUse } from './displaceable';
+import { difficultyOf, scaleExcess } from './difficulty';
+import { hostImages } from './footprint';
+import { allWorkloads } from './workloads';
+import { clampTrust, facetOf, logLine, type GameContent } from './run/shared';
 import type { RunState } from './types';
 
 export function operationHours(op: Operation, staffMult = 1): number {
@@ -23,7 +26,8 @@ export function operationHours(op: Operation, staffMult = 1): number {
   }
 }
 
-/** Legacy cards already describe the additional traffic as an arrival multiplier. */
+/** Legacy cards already describe the additional traffic as an arrival multiplier. The edge reads the cards, not the
+ * live `mods.rate`, so overlapping rate cards keep the pre-existing last-begin-wins approximation. */
 export function gatewaySources(run: RunState, content: GameContent, excluded?: ReadonlySet<string>): Record<string, GatewayTraffic> {
   const result: Record<string, GatewayTraffic> = {};
   for (const e of run.events) {
@@ -33,7 +37,7 @@ export function gatewaySources(run: RunState, content: GameContent, excluded?: R
     const severity = def?.fixedSeverity ? 1 : difficultyOf(run.difficulty).eventSeverityMult;
     for (const cmd of def?.begin ?? []) {
       if (cmd.kind !== 'SET_MODIFIER' || cmd.mod !== 'rate') continue;
-      (result[cmd.key] ??= {})[source] = Math.max(1, 1 + (cmd.value - 1) * severity);
+      (result[cmd.key] ??= {})[source] = scaleExcess(cmd.value, severity);
     }
   }
   return result;
@@ -72,8 +76,11 @@ export function requestOperation(run: RunState, scenario: Scenario, content: Gam
   } else if (op.kind === 'TERM_UTILITY') {
     next = loseTrust(next, OPERATION_TRUST.utilityFacets, OPERATIONS.utilityTrust);
   } else if (op.kind === 'RECYCLE_CICS') {
-    const owners = new Set(scenario.workloads.filter((w) => w.subsystem === 'CICS' &&
-      op.targets.some((r) => ((run.sim.routing[w.id] ?? w.routing)[r.lparId] ?? 0) > 0)).map((w) => w.stakeholder));
+    const owners = new Set(allWorkloads(scenario, run).flatMap((w) => {
+      const facet = w.subsystem === 'CICS' &&
+        op.targets.some((r) => hostImages(run.sim.routing[w.id] ?? w.routing).includes(r.lparId)) ? facetOf(w) : null;
+      return facet === null ? [] : [facet];
+    }));
     next = loseTrust(next, owners, OPERATIONS.cicsTrust);
   } else if (op.kind === 'SET_GATEWAY' && op.mode !== null) {
     const owner = gatewayChannels(run.sim, scenario).find((w) => w.id === op.workloadId)!.stakeholder;
@@ -83,27 +90,45 @@ export function requestOperation(run: RunState, scenario: Scenario, content: Gam
   return { run: logLine(next, message), ok: true, message };
 }
 
+interface RosterGroup {
+  workloadId: string;
+  lparId: string;
+  shareSum: number;
+  entries: (RosterEntry & { day: number })[];
+}
+
 function rosterView(run: RunState, scenario: Scenario, kind: RosterKind) {
   const { sim } = run;
-  const groups = new Map<string, (RosterEntry & { day: number })[]>();
+  const groups = new Map<string, RosterGroup>();
   for (const e of operatorRoster(sim, scenario, kind)) {
     const key = `${e.workloadId}@${e.lparId}`;
-    const group = groups.get(key) ?? [];
-    group.push(e);
-    groups.set(key, group);
+    let group = groups.get(key);
+    if (!group) groups.set(key, group = { workloadId: e.workloadId, lparId: e.lparId, shareSum: 0, entries: [] });
+    group.entries.push(e);
+    group.shareSum += e.shareFrac;
   }
-  return [...groups.values()].flatMap((entries) => {
-    const { workloadId, lparId } = entries[0]!;
+  return [...groups.values()].flatMap(({ workloadId, lparId, shareSum, entries }) => {
     const grant = sim.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.[workloadId];
-    const measuredCpuSec = grant ? (grant.cp + (grant.iipcp ?? 0) + grant.ziip) * TICK_SEC : 0;
-    const totalShareFrac = entries.reduce((sum, e) => sum + e.shareFrac, 0);
-    const cpuSec = rosterCpuSec(entries.map((e) => ({ ...e, shareFrac: e.shareFrac / totalShareFrac })), measuredCpuSec, sim.entityLoads);
+    const measuredCpuSec = grant ? (poolUse(grant, 'CP') + poolUse(grant, 'ZIIP')) * TICK_SEC : 0;
+    const cpuSec = rosterCpuSec(entries.map((e) => ({ ...e, shareFrac: e.shareFrac / shareSum })), measuredCpuSec, sim.entityLoads);
     const member = sim.config.db2.find((m) => m.lparId === lparId)?.ssid;
     return entries.map((e) => ({ ...e, cpuSec: cpuSec[e.id] ?? 0, member }));
   }).sort((a, b) => b.cpuSec - a.cpuSec);
 }
 
-export function operationsView(run: RunState, scenario: Scenario) {
+type OperationsView = ReturnType<typeof buildOperationsView>;
+const viewCache = new WeakMap<RunState, { scenario: Scenario; view: OperationsView }>();
+
+/** The view is read on every frame; rebuild it only when the run or its scenario changes. */
+export function operationsView(run: RunState, scenario: Scenario): OperationsView {
+  const hit = viewCache.get(run);
+  if (hit?.scenario === scenario) return hit.view;
+  const view = buildOperationsView(run, scenario);
+  viewCache.set(run, { scenario, view });
+  return view;
+}
+
+function buildOperationsView(run: RunState, scenario: Scenario) {
   const { sim } = run;
   const day = Math.floor(sim.tick / TICKS_PER_DAY);
   return {
