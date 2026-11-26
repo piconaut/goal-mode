@@ -2,7 +2,7 @@
 
 import { DIFFICULTIES, type DifficultyDef, type DifficultyId } from '../content/difficulty';
 import type { ScriptedBeat } from '../content/events/midwest-events';
-import type { Command } from '../sim/core/commands';
+import { isFractionMod, type Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
 
 export const difficultyOf = (id: DifficultyId | undefined): DifficultyDef => DIFFICULTIES[id ?? 'NORMAL'];
@@ -45,7 +45,7 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
   return cmds.map((c): Command => {
     switch (c.kind) {
       case 'SET_MODIFIER':
-        return { ...c, value: c.mod === 'regionFailFrac' || c.mod === 'aorFailFrac' || c.mod === 'rollbackFrac' ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
+        return { ...c, value: isFractionMod(c.mod) ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
       case 'SET_CF':
         return c.degrade === undefined ? c : { ...c, degrade: scaleExcess(c.degrade, mult) };
       case 'SET_DASD':

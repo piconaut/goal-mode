@@ -3,6 +3,7 @@
 
 import { DB2_PACKAGES, lsprCategory, SMF113 } from '../content/smf';
 import { clockAt, hhmm, pad2 } from '../sim/core/clock';
+import { lockHolderJob } from '../sim/subsys/batch';
 import { emptyDb2Counters, type Db2ContentionCounters, type Db2Isolation } from '../sim/subsys/db2Contention';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
@@ -180,9 +181,8 @@ export interface Db2BlockerView {
 /** The running job of the stream that holds the lock boost's escalated locks, if the boost is on and one runs. */
 export function db2LockHolder(run: RunState): Db2LockHolder | undefined {
   const holder = run.sim.mods.lockHolder;
-  if (!holder || !run.sim.mods.lockBoost) return undefined;
-  const j = run.sim.batch.jobs.find((x) => x.status === 'RUNNING' && x.def.stream === holder.stream);
-  if (!j?.lparId) return undefined;
+  const j = lockHolderJob(run.sim.mods, run.sim.batch.jobs);
+  if (!holder || !j?.lparId) return undefined;
   return { job: j.def.name, lparId: j.lparId, member: run.sim.config.db2.find((m) => m.lparId === j.lparId)?.ssid ?? null, object: holder.object };
 }
 

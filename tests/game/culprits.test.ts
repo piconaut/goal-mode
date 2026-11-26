@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST } from '../../src/content/scenarios';
 import type { CulpritSpec } from '../../src/content/events/midwest-events';
-import { liveRouting, resolveCulprits } from '../../src/game/culprits';
+import { resolveCulprits } from '../../src/game/culprits';
 import { initState } from '../../src/sim/core/init';
 
 const sim = initState(42, MIDWEST);
@@ -25,7 +25,7 @@ describe('resolveCulprits', () => {
   });
 
   it('splits (cpuMult - 1) over the culprits, scaled by total routing over the image share; severity 2 doubles it', () => {
-    const routing = liveRouting(sim, tso);
+    const routing = tso.routing;
     const total = Object.values(routing).reduce((x, y) => x + y, 0);
     const extras = (sev: number) => {
       const r = resolveCulprits(sim, ws, tsoSpec, 'card-1', sev);
@@ -47,7 +47,7 @@ describe('resolveCulprits', () => {
     expect(c.kind).toBe('SET_ENTITY_LOAD');
     if (c.kind === 'SET_ENTITY_LOAD') {
       expect(c.load.kind).toBe('DDF_THREAD');
-      expect(liveRouting(sim, adhoc)[c.load.lparId]).toBeGreaterThan(0);
+      expect(adhoc.routing[c.load.lparId]).toBeGreaterThan(0);
       expect(c.load.extraCpuFrac).toBeCloseTo(9, 9);
     }
   });

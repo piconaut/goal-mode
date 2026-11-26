@@ -16,10 +16,12 @@ export const ROSTERS = {
 };
 
 /** A Db2 utility in a scenario's nightly schedule (`-DISPLAY UTILITY` shows it by utility ID). */
+export type UtilityKind = 'REORG' | 'COPY' | 'RUNSTATS';
+
 export interface UtilityDef {
   /** Utility ID, as -DISPLAY UTILITY prints it. */
   id: string;
-  kind: 'REORG' | 'COPY' | 'RUNSTATS';
+  kind: UtilityKind;
   /** Db2 member it runs on. */
   member: string;
   /** Table space it works on. */

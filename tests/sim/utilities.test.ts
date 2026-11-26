@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_UTILITIES, type UtilityDef } from '../../src/content/entities';
+import { tickOfPlayedHour } from '../../src/sim/core/clock';
 import { TICK_SEC, TICKS_PER_DAY } from '../../src/sim/core/units';
 import { activeUtilities, scheduledTonight, utilityIopsByLcu } from '../../src/sim/subsys/utilities';
 
 const byKind = (k: UtilityDef['kind']) => MIDWEST_UTILITIES.find((u) => u.kind === k)!;
 const reorg = byKind('REORG');
 const runstats = byKind('RUNSTATS');
-
-// Tick offset from a played day's 06:00 start to a wall-clock hour (hours below 6 are the next morning).
-const offset = (hour: number) => Math.round((((hour - 6 + 24) % 24) * 3600) / TICK_SEC);
 
 describe('scheduledTonight', () => {
   it('is deterministic and hits nightFrac over many days', () => {
@@ -32,7 +30,7 @@ describe('activeUtilities', () => {
   it('runs a utility only inside its window on a scheduled night', () => {
     const { on, off } = nights(reorg);
     expect(off).toBeDefined();
-    const start = on * TICKS_PER_DAY + offset(reorg.startHour);
+    const start = on * TICKS_PER_DAY + tickOfPlayedHour(reorg.startHour);
     const len = Math.round((reorg.durationMin * 60) / TICK_SEC);
     expect(activeUtilities(MIDWEST_UTILITIES, 3, start, undefined).map((a) => a.def.id)).toContain('REORGSET');
     expect(activeUtilities(MIDWEST_UTILITIES, 3, start + len - 1, undefined).map((a) => a.def.id)).toContain('REORGSET');
@@ -41,13 +39,13 @@ describe('activeUtilities', () => {
     const a = activeUtilities(MIDWEST_UTILITIES, 3, start, undefined).find((x) => x.def.id === 'REORGSET')!;
     expect(a).toMatchObject({ seqIops: reorg.seqIops, overrun: false });
     // Not scheduled that night: quiet at the same time of day.
-    const offStart = off * TICKS_PER_DAY + offset(reorg.startHour);
+    const offStart = off * TICKS_PER_DAY + tickOfPlayedHour(reorg.startHour);
     expect(activeUtilities(MIDWEST_UTILITIES, 3, offStart, undefined).map((x) => x.def.id)).not.toContain('REORGSET');
   });
 
   it('puts small-hours utilities in the next morning of the same played day', () => {
     const { on } = nights(runstats);
-    const tick = on * TICKS_PER_DAY + offset(runstats.startHour);
+    const tick = on * TICKS_PER_DAY + tickOfPlayedHour(runstats.startHour);
     expect(tick % TICKS_PER_DAY).toBeGreaterThan(TICKS_PER_DAY / 2);
     expect(activeUtilities(MIDWEST_UTILITIES, 3, tick, undefined).map((a) => a.def.id)).toContain('RUNSTDAT');
     expect(activeUtilities(MIDWEST_UTILITIES, 3, on * TICKS_PER_DAY, undefined).map((a) => a.def.id)).not.toContain('RUNSTDAT');
