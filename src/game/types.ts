@@ -80,6 +80,8 @@ export interface ActiveEvent {
   /** Start tick of the hour whose union `affects` (a power cap's scope follows the routing) and `reach` hold. */
   affectsHour?: number;
   endCommands: Command[];
+  /** Roster entities the card loaded when it began (thread tokens or userids), for its truth and later operations. */
+  culprits?: string[];
   started: boolean;
   ended: boolean;
 }
@@ -119,6 +121,8 @@ export interface CicsStorageHour {
   limitMb: number;
   /** Seconds the region spent short on storage. */
   sosSec: number;
+  /** Transactions that abended in this region (the region's transaction statistics, XMRAENDC); absent when none. */
+  abends?: number;
 }
 
 /** One played day's capacity peaks (hourly averages), kept for the capacity planner. */

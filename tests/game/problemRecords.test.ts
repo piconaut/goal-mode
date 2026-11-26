@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { resolveCulprits } from '../../src/game/culprits';
 import { MIDWEST } from '../../src/content/scenarios';
 import { cardMechanisms } from '../../src/content/footprint';
 import { PROBLEM } from '../../src/content/rca';
@@ -207,7 +208,7 @@ describe('problem records (RT-22)', () => {
     let run = startDay(newRun(MIDWEST, content, 7), content);
     run = {
       ...run,
-      sim: applyCommands(run.sim, def.begin),
+      sim: applyCommands(run.sim, [...def.begin, ...resolveCulprits(run.sim, MIDWEST.workloads, def.culprits!, 'SHADOW_IT@0').commands]),
       events: [{
         uid: 'SHADOW_IT@0', defId: def.id, name: def.name, startTick: 0, endTick: null, trigger: def.trigger,
         affects: def.affects, reach: ['DEVT', 'PROD1', 'PROD2'], mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false,

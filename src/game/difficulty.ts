@@ -45,7 +45,7 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
   return cmds.map((c): Command => {
     switch (c.kind) {
       case 'SET_MODIFIER':
-        return { ...c, value: c.mod === 'regionFailFrac' || c.mod === 'rollbackFrac' ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
+        return { ...c, value: c.mod === 'regionFailFrac' || c.mod === 'aorFailFrac' || c.mod === 'rollbackFrac' ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
       case 'SET_CF':
         return c.degrade === undefined ? c : { ...c, degrade: scaleExcess(c.degrade, mult) };
       case 'SET_DASD':
@@ -54,6 +54,8 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
         return { ...c, value: c.value * mult };
       case 'SET_MLC_PRICE':
         return { ...c, mult: scaleExcess(c.mult, mult) };
+      case 'SET_UTILITY_OVERRUN':
+        return c.seqIops === null ? c : { ...c, seqIops: Math.round(c.seqIops * mult) };
       case 'SET_LCU':
         return c.extraIops === undefined ? c : { ...c, extraIops: Object.fromEntries(Object.entries(c.extraIops).map(([k, v]) => [k, Math.round((v ?? 0) * mult)])) };
       default:

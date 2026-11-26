@@ -14,7 +14,7 @@ import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { prepareDb2Reader } from './db2Contention';
 import { atOrFind } from './plan';
-import { applyCpuModifiers, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
+import { applyCpuModifiers, applyEntityLoads, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
  * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
@@ -54,7 +54,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const reader = profile?.reader;
   const resident = profile ? content?.before?.readers[db2!.ssid] : undefined;
   const residentReader = resident && reader && !workloadById[reader]?.routing[l.id] ? reader : undefined;
-  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods);
+  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;
@@ -173,6 +173,15 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     if (mqFailFrac > 0 && w.mq) abendFrac = Math.max(abendFrac, mqFailFrac);
     const regionFail = prev.mods.regionFailFrac?.[img.wlKey[w.id] ?? wlLparKey(w.id, l.id)];
     if (regionFail) abendFrac = Math.max(abendFrac, regionFail);
+    if (prev.mods.aorFailFrac && w.subsystem === 'CICS' && aors.length) {
+      const sick = aorFailFrac(prev.mods.aorFailFrac, w.id, aors);
+      if (sick.imageFrac > 0) {
+        abendFrac = Math.max(abendFrac, sick.imageFrac);
+        // Reporting: the abends fall in the sick regions only (CICS work is spread evenly over the AORs).
+        const abends = (t.cicsAbendsBy[l.id] ??= {});
+        for (const [region, frac] of sick.byRegion) abends[region] = (abends[region] ?? 0) + (s.rate * TICK_SEC * frac) / aors.length;
+      }
+    }
     failFrac = Math.max(failFrac, abendFrac);
     if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
