@@ -16,6 +16,16 @@ export const OPERATIONS = {
   hsmTrustPerHour: 1,
 };
 
+// Who loses trust for an operation: the first facet the scenario has from each list (game rule). The journal STC is
+// the one whose cancellation the regulator notices.
+export const OPERATION_TRUST = {
+  tsoFacets: ['Digital', 'Taxpayers', 'Retail'],
+  hsmFacets: ['Agents', 'Retail'],
+  journalFacets: ['Regulator'],
+  journalJobname: 'CICSXLOG',
+  utilityFacets: ['Finance'],
+} as const;
+
 // FICTIONAL: brief rolling CICS outage; normally work can move, but affinities still strand some requests.
 export const CICS_RECYCLE = { restartMin: 3, affinityFrac: 0.15 };
 

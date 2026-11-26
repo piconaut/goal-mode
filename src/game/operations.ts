@@ -1,4 +1,4 @@
-import { GATEWAY_TRAFFIC_CARDS, OPERATIONS } from '../content/operations';
+import { GATEWAY_TRAFFIC_CARDS, OPERATION_TRUST, OPERATIONS } from '../content/operations';
 import { STC_AUTOMATION } from '../content/entities';
 import { applyOperation, gatewayChannels, operatorRoster, type Operation } from '../sim/core/operations';
 import type { Scenario } from '../sim/core/scenario';
@@ -39,6 +39,12 @@ export function gatewaySources(run: RunState, content: GameContent, excluded?: R
   return result;
 }
 
+/** The first of `facets` the run tracks (none when it has none of them). */
+const firstFacet = (run: RunState, facets: readonly string[]): string[] => {
+  const facet = facets.find((f) => run.trust[f] !== undefined);
+  return facet === undefined ? [] : [facet];
+};
+
 function loseTrust(run: RunState, facets: Iterable<string>, amount: number): RunState {
   const trust = { ...run.trust };
   for (const facet of facets) if (trust[facet] !== undefined) trust[facet] = clampTrust(trust[facet]! - amount);
@@ -48,7 +54,7 @@ function loseTrust(run: RunState, facets: Iterable<string>, amount: number): Run
 export function chargeHeldRecalls(run: RunState, tick: number): RunState {
   const since = run.sim.hsmRecalls?.heldSinceTick;
   if (since == null || (tick - since + 1) % TICKS_PER_HOUR !== 0) return run;
-  return loseTrust(run, [run.trust.Agents !== undefined ? 'Agents' : 'Retail'], OPERATIONS.hsmTrustPerHour);
+  return loseTrust(run, firstFacet(run, OPERATION_TRUST.hsmFacets), OPERATIONS.hsmTrustPerHour);
 }
 
 export function requestOperation(run: RunState, scenario: Scenario, content: GameContent, op: Operation): ChangeOutcome {
@@ -60,11 +66,11 @@ export function requestOperation(run: RunState, scenario: Scenario, content: Gam
   let next = spendHours({ ...run, sim: result.state }, operationHours(op, surcharge));
   let message = result.message;
   if (tso) {
-    next = loseTrust(next, [next.trust.Digital !== undefined ? 'Digital' : next.trust.Taxpayers !== undefined ? 'Taxpayers' : 'Retail'], OPERATIONS.tsoTrust);
-  } else if (op.kind === 'CANCEL_ADDRESS_SPACE' && op.jobname === 'CICSXLOG') {
-    next = loseTrust(next, ['Regulator'], OPERATIONS.journalTrust);
+    next = loseTrust(next, firstFacet(next, OPERATION_TRUST.tsoFacets), OPERATIONS.tsoTrust);
+  } else if (op.kind === 'CANCEL_ADDRESS_SPACE' && op.jobname === OPERATION_TRUST.journalJobname) {
+    next = loseTrust(next, OPERATION_TRUST.journalFacets, OPERATIONS.journalTrust);
   } else if (op.kind === 'TERM_UTILITY') {
-    next = loseTrust(next, ['Finance'], OPERATIONS.utilityTrust);
+    next = loseTrust(next, OPERATION_TRUST.utilityFacets, OPERATIONS.utilityTrust);
   } else if (op.kind === 'RECYCLE_CICS') {
     const owners = new Set(scenario.workloads.filter((w) => w.subsystem === 'CICS' &&
       op.targets.some((r) => ((run.sim.routing[w.id] ?? w.routing)[r.lparId] ?? 0) > 0)).map((w) => w.stakeholder));
