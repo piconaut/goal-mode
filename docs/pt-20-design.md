@@ -1,7 +1,7 @@
 # PT-20: general operations instead of per-card fixes
 
 Status: **decided** (user, 2026-11-26: Q1–Q7 of §8 as recommended). Revised the same day after an adversarial review
-by a second agent (§11 lists what it changed). The work is BACKLOG.md PT-52 … PT-55.
+by a second agent (§11 lists what it changed). The work is BACKLOG.md PT-52, PT-56, PT-53, PT-54 and PT-55, in that order.
 
 ## 1. Why
 
@@ -65,7 +65,7 @@ Every card with a fix today, plus Harbourline's three twins, grouped by the oper
 | RUNAWAY (Midwest, Harbourline), RUNAWAY_COMPLIANCE (Revenue) | CANCEL_RUNAWAY | One BI/analytics thread in the roster, given the card's extra CPU (replaces the ×10 workload modifier) | Cancel that thread | Cancelling another thread fails its request and reruns its CPU | DDF period goals, caps, zIIP overflow |
 | XLOG_LOOP (Midwest, Revenue) | CANCEL_XLOG | The permanent CICSXLOG STC, which loops | Cancel CICSXLOG: the loop stops and automation restarts it healthy | Cancelling another STC loses its function until restart | Classification rule to a low STC class |
 | SHADOW_IT (Midwest) | STOP_SHADOW_IT | Two or three TSO userids in the daily roster, given the extra CPU | Cancel those userids (a game rule: their manager is called, so they don't log back on) | Cancelling other developers costs engineer-hours and Digital trust | Cap DEVT, lower TSO importance |
-| LOCK_ESCALATION (all) | COMMIT_SETTLEMENT_OFTEN | The lock-heavy settlement job running when the card starts (Midwest STL, Harbourline SET, Revenue REF), named by a new lock-holder clue (DISPLAY DATABASE LOCKS style) | Cancel that job: its locks are held while it backs out (APPROX, about as long as it ran; checked with zos-docs in PT-52), then clear; the job reruns and stretches the batch window (Q5) | Cancelling CRD or GLF, also lock-heavy, reruns them for nothing | Keep online work off the tables until the step ends |
+| LOCK_ESCALATION (all) | COMMIT_SETTLEMENT_OFTEN | The lock-heavy settlement job running when the card starts (Midwest STL, Harbourline SET, Revenue REF), named by a new lock-holder clue (DISPLAY DATABASE LOCKS style) | Cancel that job: its locks are held while it backs out (APPROX, about as long as it ran; checked with zos-docs in PT-56), then clear; the job reruns and stretches the batch window (Q5) | Cancelling CRD or GLF, also lock-heavy, reruns them for nothing | Keep online work off the tables until the step ends |
 | REORG_OVERRUN (all) | TERM_UTILITY | The night's REORG in the utility schedule; the LCU 21 volumes show which one is overrunning | Terminate it; it reruns from the next night's schedule | Terminating COPY or RUNSTATS loses that night's backup or statistics | Move aliases to LCU 21 |
 | REGRESSION (Midwest, Harbourline), EFILE_REGRESSION (Revenue) | REBIND_REVERT, EFILE_REBIND_REVERT | The overnight REBIND entry on the Change board | Back it out (immediate) | Backing out a helpful REBIND loses its better access path | Absorb with capacity |
 | MONITOR_CREEP (all) | ROLLBACK_MONITOR | The monitoring-agent release entry | Back it out | Cancelling MONAGENT stops the CPU only until automation restarts it, with a data gap in the tool it feeds | Cap, absorb |
@@ -163,17 +163,20 @@ Today a forewarned card's fix can be armed before it starts (`armableEvents`). U
 
 ## 10. What the entries become
 
-- **PT-52** (sim, L): the seven operations of §3 with their effects and costs; the entity rosters (DDF threads, TSO
-  userids), a permanent CICSXLOG STC, the nightly utility schedule, STC restart by automation, `RECYCLE_CICS`, the
-  gateway modes and the HSM hold with its backlog; the DISPLAY THREAD and DISPLAY UTILITY views and the report lines
-  for toggled state; Codex entries. Changes baseline behaviour: goldens, a "Behaviour change" note and a sweep. Cards
-  and fix buttons unchanged.
+Five entries, in order; each leaves a coherent game, and only PT-52 and PT-54 move the bot bands.
+
+- **PT-52** (sim, L): the entity rosters (DDF threads, TSO userids), a permanent CICSXLOG STC, the nightly utility
+  schedule, STC restart by automation; the cards built from modifiers re-pointed at them; the lock-holder clue and
+  per-region SICK_AOR abends. Cards still end by fix id. Goldens, a "Behaviour change" note and a sweep.
+- **PT-56** (sim, M): the seven operations of §3 with their effects and costs, `RECYCLE_CICS`, the gateway modes, the
+  HSM hold with its backlog, the DISPLAY THREAD and DISPLAY UTILITY views, report lines for toggled state, Codex
+  entries. Nothing uses them yet: `npm run compare` shows no sim difference.
 - **PT-53** (game, M): the Change board's other-teams section with card-introduced and harmless or helpful entries,
   the back-out operation and its costs; forewarnings post their entry. Moves goldens.
-- **PT-54** (game, M): cards re-pointed at their entities, `endedBy` on the cards an operation ends, the two relieved
-  cards and their footprint rule, the lock-holder clue and per-region SICK_AOR abends, inbox replies for the 4
-  business cards, Harbourline's twins, removal of `FIXES`, `visibleFixIds`, `armableEvents` and the verdict lines;
-  save migration; SPEC §9 and §10; goldens and a sweep against the expected moves of §7.
+- **PT-54** (game, M): `endedBy` on the cards an operation ends, the two relieved cards and their footprint rule,
+  LOCK_ESCALATION's backout lock hold, inbox replies for the 4 business cards, Harbourline's twins, removal of
+  `FIXES`, `visibleFixIds`, `armableEvents` and the verdict lines; save migration; SPEC §9 and §10; goldens and a
+  sweep against the expected moves of §7.
 - **PT-55** (tooling, M): bots choose targets from report data and release their toggles; sweep and re-tune.
 
 ## 11. What the review changed
@@ -183,5 +186,5 @@ An adversarial review on 2026-11-26 found: cards built from modifiers had nothin
 backing out its release (now automation restarts STCs); Harbourline's fixless twins would make operations lie there
 (now targeted); the HSM hold postpones a storm rather than ending it (now relieved); cancelling a lock holder doesn't
 free its locks at once (now a backout period and a lock-holder clue); hours are no cost late in a run (now every wrong
-target has a sim effect, and block sources sheds some real traffic); and the compare-clean claims for PT-52 and PT-53
+target has a sim effect, and block sources sheds some real traffic); and the first draft's compare-clean claims for its operations and Change board entries
 were wrong.
