@@ -351,10 +351,14 @@ export function workScopeOf(s: { hosts: readonly string[]; servers?: readonly { 
 export const hourWindow = (hourIndex: number): { startTick: number; endTick: number } =>
   ({ startTick: hourIndex * TICKS_PER_HOUR, endTick: (hourIndex + 1) * TICKS_PER_HOUR });
 
-/** A card was active in a half-open window: one ending at its start or starting at its end does not overlap, and a
- * card fixed or expired inside it still does (SPEC §10). */
-export const activeIn = (e: ActiveEvent, w: { startTick: number; endTick: number }): boolean =>
-  e.started && e.startTick < w.endTick && (e.endTick === null || e.endTick > w.startTick);
+function effectOverlap(e: ActiveEvent, w: { startTick: number; endTick: number }): number {
+  const overlap = (start: number, end: number) => Math.max(0, Math.min(end, w.endTick) - Math.max(start, w.startTick));
+  const replay = e.footprintReplay;
+  return overlap(e.startTick, e.endTick ?? Infinity) + (replay ? overlap(replay.startTick, replay.endTick) : 0);
+}
+
+/** A card was active in the half-open window, including any recall I/O replayed there after the storm. */
+export const activeIn = (e: ActiveEvent, w: { startTick: number; endTick: number }): boolean => e.started && effectOverlap(e, w) > 0;
 
 /** How a card's footprint (RT-14, docs/rca-design.md §4.4(1)) meets the work: listed (direct), or the work's images or
  * its servers' images or regions are in the card's reach (collateral). */
@@ -401,7 +405,7 @@ export function qualifyingCards(
       card: e,
       direct: rel === 'direct',
       background: e.metWith?.includes(workloadId) ?? false,
-      overlapTicks: Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick),
+      overlapTicks: effectOverlap(e, { startTick, endTick }),
     });
   }
   return out.sort((a, b) =>

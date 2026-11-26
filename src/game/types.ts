@@ -42,11 +42,8 @@ export interface PlannedChange {
   /** Temporary changes (On/Off CoD) revert at the start of this day. */
   revertDay: number | null;
   revertCommands: Command[];
-  /** Game-level fix that ends an active event (e.g. cancel a runaway query). */
-  endsEvent: string | null;
-  /** Applied fixes only: cards of this fix that the player could see and that had not started yet when the fix
-   * applied. They end when they start that day (a forewarned change met by the fix already in place). */
-  armedEvents?: string[];
+  /** An in-flight request imported from a save made before operator commands replaced fixes. */
+  migratedEventId?: string;
   /** Other-team rollout targeted by this Change Desk request. */
   backoutChangeId?: string;
 }
@@ -91,6 +88,10 @@ export interface ActiveEvent {
   /** Start tick of the hour whose union `affects` (a power cap's scope follows the routing) and `reach` hold. */
   affectsHour?: number;
   endCommands: Command[];
+  /** Last tick carrying a relieved card’s effect, exclusive, including a storm’s backlog replay. */
+  footprintReplay?: { startTick: number; endTick: number };
+  /** A matching rolling recycle takes effect when the target shutdowns have started. */
+  endOnRecycleTick?: number;
   /** Roster entities the card loaded when it began (thread tokens or userids), for its truth and later operations. */
   culprits?: string[];
   started: boolean;
@@ -432,6 +433,7 @@ export interface Message {
   from: string;
   subject: string;
   body: string;
+  replyToEventUid?: string;
 }
 
 export interface RunState {

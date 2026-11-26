@@ -2,6 +2,10 @@
 
 import type { GameContent } from '../src/game/run';
 import { chooseDraft, submitRca } from '../src/game/run';
+import { cicsStorageReach, regionKey } from '../src/game/footprint';
+import { requestOperation } from '../src/game/operations';
+import { operationsForEvent } from '../src/game/run/eventEffects';
+import { requestBackout } from '../src/game/run/otherTeamChanges';
 import type { RunState } from '../src/game/types';
 import type { Scenario } from '../src/sim/core/scenario';
 
@@ -36,6 +40,7 @@ export const STRATEGIES: Record<string, Strategy> = { donothing: passive, oracle
 
 import { BASEPOL } from '../src/content/wlm/basepol';
 import { REVPOL } from '../src/content/wlm/revpol';
+import { GATEWAY_TRAFFIC_CARDS } from '../src/content/operations';
 import { HBPOL } from '../src/content/wlm/hbpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
@@ -64,15 +69,7 @@ export function textbookPolicy(): ServiceDefinition {
   return def;
 }
 
-// Frozen set of card ids the textbook/expert "obvious" rule fixes. Membership is pinned to the cards whose
-// trigger is RUNAWAY_WORK or CHANGE_REGRESSION as of 2026-11-10 (RUNAWAY, REGRESSION, XLOG_LOOP and their
-// deck adaptations RUNAWAY_COMPLIANCE, EFILE_REGRESSION), so RT-09's trigger relabelling (which moves
-// ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT onto CHANGE_REGRESSION) does not
-// silently pull those cards into the bots' fix path. Each card's own `fix` is taken from its definition, so the
-// agency exception (EFILE_REGRESSION -> EFILE_REBIND_REVERT) needs no special map. Do not regenerate this set
-// from triggers; that would undo the freeze.
-// XLOG_LOOP is the one intended change: the old trigger map sent CANCEL_RUNAWAY for it, which ends no XLOG_LOOP
-// card; the bots now request its own CANCEL_XLOG (user decision 2026-11-10, PR #264).
+// Keep the cards the textbook strategy reacts to when an incident points at them (RT-09).
 const OBVIOUS_FIX_CARD_IDS = new Set([
   'RUNAWAY',
   'REGRESSION',
@@ -216,50 +213,74 @@ function textbookDay0(r: RunState, c: GameContent): RunState {
   return run;
 }
 
-/** The obvious reactions: restart abended critical jobs and apply an open incident's listed fix. */
-function obviousHourly(r: RunState, c: GameContent): RunState {
-  let run = r;
-  for (const j of run.sim.batch.jobs.filter((x) => x.status === 'ABENDED' && x.def.critical)) {
-    run = requestChange(run, c, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
-  }
-  for (const inc of run.incidents.filter((i) => i.endTick === null)) {
-    const active = run.events.filter((e) => e.started && !e.ended && e.trigger === inc.truth.trigger && OBVIOUS_FIX_CARD_IDS.has(e.defId));
-    const fixId = active.map((e) => c.events.find((d) => d.id === e.defId)?.fix ?? null).find((f) => f) ?? null;
-    if (fixId && active.length > 0) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
+/** Operate on the card's known target. PT-55 moves target selection to the reports. */
+function remedy(run: RunState, scenario: Scenario, content: GameContent, event: RunState['events'][number]): RunState {
+  const def = content.events.find((d) => d.id === event.defId);
+  if (!def || !event.started || event.ended || (event.endTick !== null && event.endTick <= run.sim.tick)) return run;
+  for (const operation of operationsForEvent(run, scenario, def, event)) {
+    if (operation.kind === 'BACKOUT_CHANGE') {
+      run = requestBackout(run, content, operation.changeId).run;
+      continue;
+    }
+    if (operation.kind === 'HOLD_HSM_RECALL' && run.sim.hsmRecalls?.heldSinceTick != null) continue;
+    if (operation.kind === 'RECYCLE_CICS' && def.relief === 'CICS_STORAGE') {
+      const pressure = cicsStorageReach(operation.targets.map((target) => target.name), run.sim.last.lpars);
+      const targets = operation.targets.filter((target) => pressure.includes(regionKey(target.name, target.lparId)) &&
+        !run.sim.cicsRecycles?.some((r) => r.name === target.name && r.lparId === target.lparId && r.restartTick > run.sim.tick));
+      if (targets.length > 0) run = requestOperation(run, scenario, content, { ...operation, targets }).run;
+      continue;
+    }
+    run = requestOperation(run, scenario, content, operation).run;
   }
   return run;
 }
 
-// Textbook: fixes the planted flaws on day 0 and reacts only to what pages it (abends, SLA incidents).
-// It never diagnoses trends (batch growth, merger work, CF placement, REORG stretch), so it is the
-// "reads the manual" floor that should lose around day 28–32 (SPEC §16).
+/** Restart abended critical jobs and react to open incidents the operator recognizes. */
+function obviousHourly(r: RunState, scenario: Scenario, content: GameContent): RunState {
+  let run = r;
+  for (const j of run.sim.batch.jobs.filter((x) => x.status === 'ABENDED' && x.def.critical)) {
+    run = requestChange(run, content, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
+  }
+  for (const inc of run.incidents.filter((i) => i.endTick === null)) {
+    const active = run.events.find((e) => e.started && !e.ended && e.trigger === inc.truth.trigger && OBVIOUS_FIX_CARD_IDS.has(e.defId));
+    if (active) run = remedy(run, scenario, content, active);
+  }
+  return run;
+}
+
+// Textbook fixes the planted flaws on day 0 and reacts to abends and SLA incidents.
 const textbook: Strategy = {
   briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : r),
-  hourly: (r, _s, c) => obviousHourly(r, c),
+  hourly: obviousHourly,
   review: passive.review,
 };
 
-const ON_SIGHT_FIXES: Record<string, string> = {
-  REORG_OVERRUN: 'TERM_UTILITY',
-  MONITOR_CREEP: 'ROLLBACK_MONITOR',
-  SHADOW_IT: 'STOP_SHADOW_IT',
-  QR_RELEASE: 'ROLLBACK_TELLER_RELEASE',
-  HSM_RECALL_STORM: 'HOLD_HSM_RECALLS',
-  CICS_SOS: 'RECYCLE_PROD2_AORS',
-};
+const ON_SIGHT_CARDS = new Set(['REORG_OVERRUN', 'MONITOR_CREEP', 'SHADOW_IT', 'QR_RELEASE', 'HSM_RECALL_STORM', 'CICS_SOS']);
+const HARBOURLINE_ON_SIGHT_CARDS = new Set(['BOT_ATTACK', 'RETRY_STORM', 'ZIIP_LOSS']);
 
-// Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, classifying new work,
-// CF structures back home, ending cards on sight with their fix). The base for expert and spend-to-win.
+// The bot knows the storm's end from the card. PT-55 will release protection from report data.
+function releaseProtection(run: RunState, scenario: Scenario, content: GameContent): RunState {
+  const active = run.events.filter((e) => e.started && !e.ended && (e.endTick === null || e.endTick > run.sim.tick));
+  if (run.sim.hsmRecalls?.heldSinceTick != null && !active.some((e) => e.defId === 'HSM_RECALL_STORM')) {
+    run = requestOperation(run, scenario, content, { kind: 'HOLD_HSM_RECALL', held: false }).run;
+  }
+  for (const workloadId of Object.keys(run.sim.gatewayModes ?? {})) {
+    const storm = active.some((e) => GATEWAY_TRAFFIC_CARDS[e.defId] &&
+      content.events.some((d) => d.id === e.defId && d.endedBy?.kind === 'SET_GATEWAY' && d.endedBy.workloadId === workloadId));
+    if (!storm) run = requestOperation(run, scenario, content, { kind: 'SET_GATEWAY', workloadId, mode: null }).run;
+  }
+  return run;
+}
+
+// Fixer also reacts to cards whose clues show trouble before an SLA page.
 const fixer: Strategy = {
   briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : reactBriefing(r, c)),
-  hourly: (r, _s, c) => {
-    let run = obviousHourly(moveStructuresHome(r, c), c);
-    // Cards an analyst spots from their clue and ends with the card's own fix, incident or not (the REORG
-    // overrun raises no SLA incident at all, only batch stretch).
-    for (const [defId, midwestFixId] of Object.entries(ON_SIGHT_FIXES)) {
-      // The agency twin of a card keeps its id but may carry its own fix (charging an agency facet).
-      const fixId = c.events.find((d) => d.id === defId)?.fix ?? midwestFixId;
-      if (run.events.some((e) => e.defId === defId && e.started && !e.ended)) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
+  hourly: (r, scenario, content) => {
+    let run = obviousHourly(releaseProtection(moveStructuresHome(r, content), scenario, content), scenario, content);
+    const cards = scenario.id === 'harbourline' ? [...ON_SIGHT_CARDS, ...HARBOURLINE_ON_SIGHT_CARDS] : ON_SIGHT_CARDS;
+    for (const id of cards) {
+      const event = run.events.find((e) => e.defId === id && e.started && !e.ended);
+      if (event) run = remedy(run, scenario, content, event);
     }
     return run;
   },

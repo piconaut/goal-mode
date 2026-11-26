@@ -1,7 +1,6 @@
 // Harbourline Bank story beats and event deck (SPEC §13.5). Like the agency deck: the neutral Midwest cards,
 // adaptations of the workload-specific ones retargeted at Harbourline's workloads, and bank-specific cards for the
-// planted flaws (B2 storm drain) and the trading/card calendar. Cards whose Midwest fix charges a facet Harbourline
-// does not track have no fix; their clue lists the player-side levers instead.
+// planted flaws (B2 storm drain) and the trading/card calendar.
 
 import type { Command } from '../../sim/core/commands';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
@@ -35,7 +34,7 @@ const BANK_CARDS: EventDef[] = [
     // healthy, so a third of the work routed to PRDC fails while both regions run there (PT-52: per region).
     begin: [aorFail('MKTORD', 'CICSAOR3', 0.7), aorFail('CARDS', 'CICSAOR3', 0.7)],
     end: [aorFail('MKTORD', 'CICSAOR3', 0), aorFail('CARDS', 'CICSAOR3', 0)],
-    fix: 'RECYCLE_SICK_AOR',
+    endedBy: { kind: 'RECYCLE_CICS', targets: [{ name: 'CICSAOR3', lparId: 'PRDC' }] },
     forewarning: null,
     announcement: null,
     clue: 'CPSM / CICS monitoring: MKTORD and CARDS abends (and the error-rate SLA misses) concentrate on PRDC, all of them in CICSAOR3 (CICS region statistics), while its response time looks excellent, and PRDC attracts a growing share of the routed work. Without abend compensation the CPSM goal router reads a fast failure as a fast response and sends it more work (the storm drain). Fixes: set ABENDTHRESH/ABENDCRIT on the CPSM routing policy, quiesce the PRDC region, or restart it.',
@@ -56,7 +55,6 @@ const BANK_CARDS: EventDef[] = [
     durationHours: 2,
     begin: [mod('rate', 'MKTORD', 1.6), mod('rate', 'MKTQRY', 1.6)],
     end: [mod('rate', 'MKTORD', 1), mod('rate', 'MKTQRY', 1)],
-    fix: null,
     forewarning: 'Markets desk: "Index rebalance today, and the central bank speaks at nine. Expect a heavy open."',
     announcement: null,
     clue: 'Mon III SYSSUM (120 s range): MKTORD PI spikes from 09:30 while the 15-minute WLMGL interval looks mild; SYSWKM shows its time going to READY and the serving AORs\' velocity dropping; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
@@ -76,7 +74,6 @@ const BANK_CARDS: EventDef[] = [
     durationHours: 8,
     begin: [mod('rate', 'CARDS', 1.7), mod('rate', 'RETAIL', 1.2)],
     end: [mod('rate', 'CARDS', 1), mod('rate', 'RETAIL', 1)],
-    fix: null,
     forewarning: 'Cards: "Today is the big shopping holiday. Last year authorisations ran well above a normal Friday."',
     announcement: null,
     clue: 'CARDS END/S ×1.7 from mid-morning with CPU per transaction unchanged; the 99%-in-0.15 s goal is tight, so CARDS PI creeps up on the busiest images (Mon III SYSSUM, WLMGL). Fixes: headroom, CICS MAXTASKS on the AORs, or protect CARDS at importance 1.',
@@ -103,19 +100,16 @@ const HB_CARDS: EventDef[] = [
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: "EXPLAIN diff after last night's REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction." },
   }, { RBANK: 'RETAIL' }),
   adapt('BOT_ATTACK', {
-    fix: null,
-    clue: 'Mobile END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes. Fixes: protect Cards and Markets with importance and goals and ride it out, or cap DDF with MAXDBAT.',
+    clue: 'Mobile END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes. Fixes: block the source addresses at the gateway, protect Cards and Markets with importance and goals, or cap DDF with MAXDBAT.',
   }),
   adapt('RETRY_STORM', {
-    fix: null,
-    clue: 'Mobile END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: protect Cards and Markets and ride it out, or shed with MAXDBAT.',
+    clue: 'Mobile END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: enable gateway backoff, protect Cards and Markets, or shed with MAXDBAT.',
   }),
   adapt('ENCRYPTION_MANDATE', {
     clue: 'CPU per transaction up ~6% on cards, retail and payments from one morning (WLMGL: STCHI APPL% up against flat CICS END/S; CICS monitoring per transaction), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   }, { CARDAUTH: 'CARDS', TELLER: 'RETAIL', PAYMQ: 'PAYMENTS' }),
   adapt('ZIIP_LOSS', {
-    fix: null,
-    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PRDA with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP, route to CPC2 zIIPs).',
+    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PRDA with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: back out the procedures deployment, or absorb it (cap, more CP, route to CPC2 zIIPs).',
   }),
   adapt('CF_LINK', { affects: CF_AFFECTED }),
   adapt('CF_FAILURE', { affects: CF_AFFECTED }),

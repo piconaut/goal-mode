@@ -6,7 +6,7 @@ import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { DayTrace } from '../src/game/dayTrace';
 import { scenarioFor } from '../src/game/difficulty';
-import { newRun, visibleFixIds, type ChangeRequest } from '../src/game/run';
+import { newRun, type ChangeRequest } from '../src/game/run';
 import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, ProblemSubject, RunState, Trigger } from '../src/game/types';
@@ -16,12 +16,12 @@ import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
 import { monthElapsedFrac } from '../src/sim/cost/mlc';
 import { msuPerCp } from '../src/sim/hw/cpc';
-import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { MON3_HISTORY } from '../src/content/tools';
 
 import { clockAt, hhmm, pad2, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads } from '../src/game/workloads';
+import { migrateDayTrace, migrateRunState } from '../src/game/run/migrate';
 import { SAVE_VERSION, assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
 import { inquiriesView } from '../src/game/inquiries';
@@ -50,6 +50,7 @@ export type PlayCommand =
   | { cmd: 'start' }
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
+  | { cmd: 'reply'; eventUid: string }
   /** Withdraw a planned change (ids in status); capex back, hours back on the day they were spent. */
   | { cmd: 'cancel'; changeId: number }
   /** End an active On/Off CoD lease at 06:00 tomorrow. */
@@ -120,7 +121,7 @@ export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => {
   const f = decodeRunFileText<PlayFile>(text);
   assertSaveVersion(f);
-  return f;
+  return { ...f, run: migrateRunState(f.run), ...(f.dayTrace ? { dayTrace: migrateDayTrace(f.dayTrace)! } : {}) };
 };
 
 /** Load a play file as the CLI does: the current save version, decoded and checked. */
@@ -177,6 +178,10 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'change': {
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'CHANGE', req: c.req }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
+    case 'reply': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'EVENT_REPLY', eventUid: c.eventUid }, content, sc(run));
       return done(o.run, o.message, o.ok, o.pending);
     }
     case 'restart': {
@@ -431,10 +436,13 @@ export function statusText(file: PlayFile): string {
     out.push('  ' + r.sla.map((s) => `${s.workloadId} ${s.attainmentPct.toFixed(1)}%`).join('  '));
   }
   // Yesterday's mail stays (night-time alerts land on the played day before); only today's hints are shown.
-  const today = v.inbox.filter((m) => m.day >= v.day - 1 && (m.from !== HINT_SENDER || m.day >= v.day));
+  const today = v.inbox.filter((m) => m.reply || (m.day >= v.day - 1 && (m.from !== HINT_SENDER || m.day >= v.day)));
   if (today.length) {
     out.push('inbox:');
-    for (const m of today) out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
+    for (const m of today) {
+      out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
+      if (m.reply) out.push(`    reply ${m.replyToEventUid}: ${m.reply.label} (${m.reply.hours}h)`);
+    }
   }
   const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
@@ -709,11 +717,8 @@ export function problemsText(file: PlayFile, recordId?: number): string {
 
 export function catalogText(file: PlayFile): string {
   const v = buildView(file.run, sc(file.run));
-  const fixes = visibleFixIds(file.run, packOf(file.run.scenarioId).game);
   const out = ['hardware (change {"label":..,"hardwareId":ID}):'];
   for (const h of HARDWARE) out.push(`  ${h.id}: ${h.name}. capex $${h.capex.toLocaleString()}, opex $${h.opexPerDay.toLocaleString()}/day, lead ${h.leadDays}d${h.durationDays ? `, lasts ${h.durationDays}d` : ''}. ${h.description}`);
-  out.push('fixes (change {"label":..,"fixId":ID}):');
-  for (const f of FIXES.filter((x) => fixes.includes(x.id))) out.push(`  ${f.id}: ${f.name}. ${f.hours}h${f.trustCost ? `, ${f.trustCost.facet} trust -${f.trustCost.amount}` : ''}${f.operational ? ', operator command (no change-board trust cost)' : ''}. ${f.description}`);
   out.push(`batch restart (restart JOB; 0.5h; from the last checkpoint, only during its batch night): abended now: ${v.batch.abended.map((a) => `${a.name}${a.critical ? ' (critical path)' : ''}`).join(' ') || 'none'}`);
   out.push(`tools (buy ID; insight ${v.insight}):`);
   for (const t of v.tools) out.push(`  ${t.id}${t.trialLastDay !== null ? ` [free trial to end of day ${t.trialLastDay + 1}; buy to keep]` : t.owned ? ' [owned]' : ''}${t.comingSoon ? ' [coming soon]' : ''}: ${t.name}, tier ${t.tier}, ${t.insightCost} insight${t.prereqs.length ? `, needs ${t.prereqs.join('+')}` : ''}. ${t.reveals}`);

@@ -23,6 +23,8 @@ import { applyReportClassAdvice } from './rcAdvisor';
 import { applyWlmEdit, pendingBase, playerWlmEditError, serviceClassGoalIssues, type WlmEdit } from './wlmEdit';
 import { askAround } from './inquiries';
 import { requestOperation } from './operations';
+import { replayLegacyRequest } from './run/migrate';
+import { requestEventReply } from './run/events';
 import { requestBackout } from './run/otherTeamChanges';
 import { workOnProject } from './projects';
 import { buyTool, noteReportOpened, normalizeDefinition, setToolActive } from './tools';
@@ -37,6 +39,7 @@ export type DayTraceCommand =
   | { cmd: 'change'; req: ChangeRequest }
   | { cmd: 'operation'; op: Operation }
   | { cmd: 'backoutChange'; changeId: string }
+  | { cmd: 'eventReply'; eventUid: string }
   | { cmd: 'cancel'; changeId: number }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
@@ -115,8 +118,12 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceStat
   const run = st.run;
   const settled = (out: { run: RunState }): TraceState => ({ ...st, run: out.run });
   switch (c.cmd) {
-    case 'change':
-      return settled(requestChange(run, contentOf(run), c.req));
+    case 'change': {
+      const migrated = replayLegacyRequest(run, scOf(run), contentOf(run), c.req);
+      return migrated ? settled({ run: migrated }) : settled(requestChange(run, contentOf(run), c.req));
+    }
+    case 'eventReply':
+      return { ...st, run: requestEventReply(run, contentOf(run), c.eventUid).run };
     case 'backoutChange':
       return settled(requestBackout(run, contentOf(run), c.changeId));
     case 'operation': {

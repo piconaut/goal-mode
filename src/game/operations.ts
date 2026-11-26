@@ -7,6 +7,7 @@ import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import type { GatewayTraffic } from '../sim/core/tick/operatorEffects';
 import { activeUtilities } from '../sim/subsys/utilities';
 import { rosterCpuSec, type RosterEntry, type RosterKind } from '../sim/workload/rosters';
+import { endEventsByOperation } from './run/events';
 import { previewContext, spendHours, type ChangeOutcome } from './run/changes';
 import { poolUse } from './displaceable';
 import { difficultyOf, scaleExcess } from './difficulty';
@@ -28,11 +29,11 @@ export function operationHours(op: Operation, staffMult = 1): number {
 
 /** Legacy cards already describe the additional traffic as an arrival multiplier. The edge reads the cards, not the
  * live `mods.rate`, so overlapping rate cards keep the pre-existing last-begin-wins approximation. */
-export function gatewaySources(run: RunState, content: GameContent, excluded?: ReadonlySet<string>): Record<string, GatewayTraffic> {
+export function gatewaySources(run: RunState, content: GameContent): Record<string, GatewayTraffic> {
   const result: Record<string, GatewayTraffic> = {};
   for (const e of run.events) {
     const source = GATEWAY_TRAFFIC_CARDS[e.defId];
-    if (!source || e.ended || excluded?.has(e.uid) || e.startTick > run.sim.tick || (e.endTick !== null && e.endTick <= run.sim.tick)) continue;
+    if (!source || e.ended || e.startTick > run.sim.tick || (e.endTick !== null && e.endTick <= run.sim.tick)) continue;
     const def = content.events.find((d) => d.id === e.defId);
     const severity = def?.fixedSeverity ? 1 : difficultyOf(run.difficulty).eventSeverityMult;
     for (const cmd of def?.begin ?? []) {
@@ -55,13 +56,14 @@ export function chargeHeldRecalls(run: RunState, tick: number): RunState {
   return loseTrust(run, firstFacet(run, OPERATION_TRUST.hsmFacets), OPERATIONS.hsmTrustPerHour);
 }
 
-export function requestOperation(run: RunState, scenario: Scenario, content: GameContent, op: Operation): ChangeOutcome {
+export function requestOperation(run: RunState, scenario: Scenario, content: GameContent, op: Operation, prepaid = false): ChangeOutcome {
   if (run.phase !== 'LIVE') return { run, ok: false, message: 'Operator commands run during the live day.' };
   const result = applyOperation(run.sim, scenario, op);
   if (!result.ok) return { run, ok: false, message: result.message };
   const tso = op.kind === 'CANCEL_SESSION' && op.target.kind === 'TSO_USER';
   const surcharge = previewContext(run, content).staffSurcharge?.mult ?? 1;
-  let next = spendHours({ ...run, sim: result.state }, operationHours(op, surcharge));
+  let next = { ...run, sim: result.state };
+  if (!prepaid) next = spendHours(next, operationHours(op, surcharge));
   let message = result.message;
   if (tso) {
     next = loseTrust(next, firstFacet(next, OPERATION_TRUST.tsoFacets), OPERATIONS.tsoTrust);
@@ -81,7 +83,7 @@ export function requestOperation(run: RunState, scenario: Scenario, content: Gam
     next = loseTrust(next, [owner], OPERATIONS.gatewayTrust);
     if (op.mode === 'BLOCK' && gatewaySources(run, content)[op.workloadId]?.attackRateMult === undefined) message += '. Edge team: no unusual source addresses.';
   }
-  return { run: logLine(next, message), ok: true, message };
+  return { run: logLine(endEventsByOperation(run, next, scenario, content, op), message), ok: true, message };
 }
 
 interface RosterGroup {

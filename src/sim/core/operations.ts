@@ -1,5 +1,6 @@
 import type { UtilityKind } from '../../content/entities';
-import { CICS_RECYCLE, HSM_RECALL } from '../../content/operations';
+import { CICS_RECYCLE, HSM_RECALL, SETTLEMENT_BACKOUT_ELAPSED_MULT } from '../../content/operations';
+import { lockHolderJob } from '../subsys/batch';
 import { activeUtilities } from '../subsys/utilities';
 import { dailyRoster, type RosterEntry, type RosterKind } from '../workload/rosters';
 import { applyCommand, type CommandResult } from './commands';
@@ -105,8 +106,17 @@ export function applyOperation(s: SimState, scenario: Scenario, op: Operation): 
       if (!job) return fail(`IEE341I ${op.jobname} NOT ACTIVE on ${op.lparId}`);
       // CANCEL without DUMP ends the job with system completion code 222; 122 is CANCEL with DUMP
       // (z/OS 3.1 MVS System Codes SA38-0665-60 PDF p.336 (printed 324) and PDF p.253 (printed 241)).
+      const holder = s.mods.lockHolder;
+      // APPROX: back out the active batch attempt and retain its modeled locks through completion.
+      // Db2 13 Managing Performance PDF p.116 (printed 96), p.355 (printed 335).
+      const lockBackout = holder && lockHolderJob(s.mods, s.batch.jobs) === job ? {
+        untilTick: s.tick + Math.max(1, Math.ceil((s.tick - (job.startTick ?? s.tick)) * SETTLEMENT_BACKOUT_ELAPSED_MULT)),
+        lockIndex: s.mods.lockBoost + job.def.lockIntensity,
+        object: holder.object,
+      } : undefined;
       const jobs = s.batch.jobs.map((j) => j === job
-        ? { ...j, status: 'ABENDED' as const, abended: true, failCode: 'S222', failTick: s.tick, endTick: s.tick + 1 }
+        ? { ...j, status: 'ABENDED' as const, abended: true, failCode: 'S222', failTick: s.tick, endTick: s.tick + 1,
+          ...(lockBackout ? { lockBackout } : {}) }
         : j);
       return ok({ ...s, batch: { ...s.batch, jobs } }, `CANCEL ${op.jobname}: ABEND S222 on ${op.lparId}`);
     }

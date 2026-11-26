@@ -1,6 +1,5 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
-import { cardMechanisms } from '../../src/content/footprint';
 import { DASD_REBALANCE } from '../../src/content/hardware-catalog';
 import { previewChange } from '../../src/game/catalog';
 import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
@@ -34,49 +33,6 @@ describe('change preview', () => {
     expect(broke.ok).toBe(false);
     expect(broke.reason).toMatch(/Capex/);
     expect(previewChange(previewContext(live), { commands: [] }).reason).toBe('Nothing to change');
-  });
-
-  it("offers only fixes whose card this run has revealed, and accepts only the scenario's fixes", () => {
-    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
-    const sos = MIDWEST_GAME.events.find((e) => e.id === 'CICS_SOS')!;
-    const started = {
-      ...r,
-      events: [{ uid: 'CICS_SOS@0', defId: sos.id, name: sos.name, startTick: 0, endTick: null, trigger: sos.trigger, affects: sos.affects, mechanisms: cardMechanisms(sos) ?? [], endCommands: sos.end, started: true, ended: false }],
-    };
-    const drawn = { ...started, events: started.events.map((e) => ({ ...e, started: false })) };
-    expect(buildView(started, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
-    // Drawn for today but not started and not forewarned: the Operations list must not spoil the card.
-    expect(buildView(drawn, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS');
-    expect(buildView(started, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
-    expect(previewChange(previewContext(started, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
-    expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
-  });
-
-  it('reveals a fix when the card was only forewarned', () => {
-    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
-    const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
-    const forewarned = {
-      ...r,
-      events: [{ uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, mechanisms: cardMechanisms(enc) ?? [], endCommands: enc.end, started: false, ended: false }],
-    };
-    expect(buildView(r, MIDWEST).fixIds).not.toContain('SCOPE_ENCRYPTION');
-    expect(buildView(forewarned, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
-  });
-
-  it('reveals a fix when the card was only rumoured through Ask Around', () => {
-    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
-    const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
-    const card = { uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, mechanisms: cardMechanisms(enc) ?? [], endCommands: enc.end, started: false, ended: false };
-    const rumoured = { ...r, events: [card], inquiries: { pending: [], revealed: [`ev:${card.uid}`] } };
-    expect(buildView(rumoured, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
-  });
-
-  it('an operator command during the live day skips the change-board trust cost but still takes hours', () => {
-    const live = startDay(newRun(MIDWEST, MIDWEST_GAME, 7), MIDWEST_GAME);
-    const op = previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'CANCEL_RUNAWAY' });
-    expect(op.trustCostEach).toBe(0);
-    expect(op.hours).toBeGreaterThan(0);
-    expect(previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'REBIND_REVERT' }).trustCostEach).toBeGreaterThan(0);
   });
 
   it('a lead-time hardware order during the live day is planned, not an emergency change', () => {
@@ -304,24 +260,11 @@ describe('a player change carries only change-desk commands', () => {
     expect(refuse({ kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSAOR1', lparId: 'PROD1' })).toMatch(/not a change-desk command/);
   });
 
-  it('refuses commands riding along with a fix, so they cannot skip the checks', () => {
-    const live = startDay(fresh(), content);
-    const out = requestChange(live, MIDWEST_GAME, {
-      label: 'cancel + engines',
-      fixId: 'CANCEL_RUNAWAY',
-      commands: [{ kind: 'ADD_CPC_ENGINES', cpcId: 'CPCA', pool: 'CP', delta: 4 }],
-    });
-    expect(out.ok).toBe(false);
-    expect(out.message).toMatch(/A fix or hardware order cannot also carry change commands/);
-    expect(out.run.hoursLeft).toBe(live.hoursLeft);
-    expect(out.run.sim.config.cpcs).toEqual(live.sim.config.cpcs);
-  });
-
   it('refuses commands riding along with a hardware order', () => {
     const live = startDay(fresh(), content);
     const out = requestChange(live, content, { label: 'ziip + weight', hardwareId: 'ADD_ZIIP', commands: [weight(500)] });
     expect(out.ok).toBe(false);
-    expect(out.message).toMatch(/A fix or hardware order cannot also carry change commands/);
+    expect(out.message).toMatch(/hardware order cannot also carry change commands/i);
     expect(out.run.capexRemaining).toBe(live.capexRemaining);
     expect(out.run.hoursLeft).toBe(live.hoursLeft);
   });
@@ -397,7 +340,7 @@ describe('alias moves in the basket', () => {
 // Playtest round 1: a failed 9-change request was unrecoverable; its changes now go back to the basket.
 describe('basketAfterFailure', () => {
   const change = (id: number, status: 'PLANNED' | 'APPLIED' | 'FAILED', commands: Command[], over: Record<string, unknown> = {}) => ({
-    id, label: `c${id}`, commands, hours: 1, capex: 0, opexPerDay: 0, activateDay: 0, plannedDay: 0, emergency: false, status, revertDay: null, revertCommands: [], endsEvent: null, ...over,
+    id, label: `c${id}`, commands, hours: 1, capex: 0, opexPerDay: 0, activateDay: 0, plannedDay: 0, emergency: false, status, revertDay: null, revertCommands: [], ...over,
   });
   it('hands back the desk changes of newly failed changes, keeping later drafts of the same target', () => {
     const r = fresh();

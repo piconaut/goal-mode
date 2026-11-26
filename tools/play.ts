@@ -181,6 +181,7 @@ function parse(): PlayCommand | ReadOnly {
       const trigger = (rest[2] ?? '') as Trigger;
       return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
     }
+    case 'reply': return { cmd: 'reply', eventUid: rest[0] ?? '' };
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
     case 'unpin': return { cmd: 'unpin', id: parseIdText('pin', rest[0] ?? '') };

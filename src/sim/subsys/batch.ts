@@ -51,6 +51,8 @@ export interface JobRuntime {
   failCode?: string;
   /** Tick of the last Db2 connect failure (so a job that fails again after a restart is logged again). */
   failTick?: number;
+  /** Escalated locks from the cancelled attempt that Db2 retains through backout. */
+  lockBackout?: { untilTick: number; lockIndex: number; object: string };
 }
 
 export interface JobDelaySec {

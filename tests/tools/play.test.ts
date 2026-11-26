@@ -51,7 +51,7 @@ describe('On/Off CoD deactivation', () => {
         changes: [{
           id: 99, label: 'CPM: On/Off CoD +1 CP', commands: [], hours: 0, capex: 0, opexPerDay: 9000,
           activateDay: day, plannedDay: day, emergency: false, status: 'APPLIED', revertDay: day + 3,
-          revertCommands: [{ kind: 'ADD_CPC_ENGINES', cpcId: f.run.sim.config.cpcs[0]!.id, pool: 'CP', delta: -1 }], endsEvent: null,
+          revertCommands: [{ kind: 'ADD_CPC_ENGINES', cpcId: f.run.sim.config.cpcs[0]!.id, pool: 'CP', delta: -1 }],
         }],
       },
     };

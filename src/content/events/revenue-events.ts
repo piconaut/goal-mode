@@ -29,7 +29,6 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('REGRESSION', {
     id: 'EFILE_REGRESSION',
     name: 'Access-path regression after REBIND',
-    fix: 'EFILE_REBIND_REVERT',
     forewarning: 'Change board: "Db2 package REBINDs for the e-filing app ran overnight."',
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: "EXPLAIN diff after last night's REBIND: package EF01 changed access path (index probe → tablespace scan). Expect more CPU per e-filing transaction." },
     clue: 'WLMGL: e-filing service per transaction ×3 (APPL% up, END/S flat). Db2 accounting by package would point at EF01. Fixes: restore the previous access path, or absorb it with capacity.',
@@ -37,13 +36,11 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('BOT_ATTACK', {
     id: 'FILING_BOTS',
     name: 'Credential stuffing on taxpayer login',
-    fix: 'BLOCK_FILING_BOTS',
     clue: 'E-filing END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes. Fixes: block the source addresses at the edge (Taxpayers trust), or protect refund and agent work and ride it out.',
   }, { MOBILE: 'EFILE' }),
   adapt('RETRY_STORM', {
     id: 'REFUND_RETRY_STORM',
     name: 'Refund status retry storm',
-    fix: 'REFSTAT_BACKOFF',
     clue: 'Refund-status END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); CICS RFST transaction rate up, with STCHI (the CICS regions\' class) APPL% in step. Fixes: have the status page say "check back tomorrow" and back off retries (Refunds trust), or protect refund status and ride it out.',
   }, { MOBILE: 'REFSTAT' }),
   adapt('ENCRYPTION_MANDATE', {
@@ -53,7 +50,6 @@ const AGENCY_CARDS: EventDef[] = [
     clue: 'CPU per transaction up ~6% on account, refund status and employer filing from one morning (WLMGL: APPL% per END/S; for CICS work read STCHI APPL% against CICS END/S), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   }, { CARDAUTH: 'ACCOUNT', TELLER: 'REFSTAT', PAYMQ: 'EMPLOYER' }),
   adapt('ZIIP_LOSS', {
-    fix: 'NATIVE_SQL_PROCS_REV',
     forewarning: 'Change board: "E-filing stored procedures were redeployed overnight (new COBOL versions)."',
     clue: 'WLMGL: WEBDDF (or e-filing\'s own class) APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (Taxpayers trust; the next redeploy can bring the COBOL versions back), or absorb it (cap, more CP).',
   }, { MOBILE: 'EFILE' }),
@@ -69,10 +65,9 @@ const AGENCY_CARDS: EventDef[] = [
   }),
   adapt('MONITOR_CREEP', { affects: ['EFILE', 'ACCOUNT'] }),
   adapt('POWER_CAP', { affects: ['EFILE', 'ACCOUNT'] }),
-  adapt('HSM_RECALL_STORM', { affects: ['ACCOUNT', 'AGENTS', 'EMPLOYER', 'EFILE'], fix: 'HOLD_HSM_RECALLS_REV' }),
+  adapt('HSM_RECALL_STORM', { affects: ['ACCOUNT', 'AGENTS', 'EMPLOYER', 'EFILE'] }),
   adapt('CICS_SOS', {
     affects: ['AGENTS', 'ACCOUNT', 'REFSTAT', 'EMPLOYER'],
-    fix: 'RECYCLE_PROD2_AORS_REV',
     clue: 'SMF 110 / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); CICS region storage shows EDSA in use at EDSALIM and SOS on the PROD2 AORs (DFHSM0133 messages). Fixes: recycle the PROD2 AORs (Agents trust), raise EDSALIM, lower MXT to what storage holds, or route the CICS work (agents, accounts, refund status, employers) to PROD1.',
   }),
 ];

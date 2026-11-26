@@ -67,7 +67,8 @@ Change Desk (`json '{"cmd":"change","req":{"label":"…","commands":[…]}}'`), 
 ```
 
 A change may carry only the change-desk kinds above and their siblings (those with an engineer-hours cost); other
-`Command` kinds, a `fixId`/`hardwareId` combined with commands, and event-only fields are refused at no cost.
+`Command` kinds, a `hardwareId` combined with commands, and event-only fields are refused at no cost.
+A business notice that accepts a response prints its thread reference and cost in `status`. Use `reply THREAD` to send it.
 
 WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Saved policies can be activated directly (`policy-activate <name>`) or loaded into the pending editor (`policy-load <name>`). Goals are
 `{"kind":"AVG","rtSec":0.5}`, `{"kind":"PCT","rtSec":0.5,"pct":90}`, `{"kind":"VEL","velocity":40}` or

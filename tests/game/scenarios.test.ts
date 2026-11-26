@@ -2,7 +2,6 @@ import { BATCH_INCIDENT } from '../../src/game/sla';
 import { PACKS, packOf } from '../../src/content/packs';
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
-import { FIXES } from '../../src/game/catalog';
 import { PREFILL_APP, REVENUE_EVENTS, REVENUE_STORY } from '../../src/content/events/revenue-events';
 import { REVPOL } from '../../src/content/wlm/revpol';
 import { advance, newRun, overallTrust, startDay } from '../../src/game/run';
@@ -23,6 +22,22 @@ describe('scenario packs', () => {
         .filter((w) => w.sla.kind !== 'NONE')
         .map((w) => w.stakeholder);
       for (const o of owners) expect(facets, `${p.id}: ${o}`).toContain(o);
+    }
+  });
+
+  it('business replies name valid facets and have a cost in each pack', () => {
+    for (const p of Object.values(PACKS)) {
+      const facets = p.game.facets?.map((f) => f.id) ?? FACETS;
+      const replies = p.game.events.filter((e) => e.reply);
+      expect(replies.map((e) => e.id).sort()).toEqual(
+        [p.id === 'revenue' ? 'TAXDATA_ENCRYPTION' : 'ENCRYPTION_MANDATE', 'SMF_AUDIT', 'VENDOR_PRICE'].sort(),
+      );
+      for (const e of replies) {
+        expect(facets, `${p.id}/${e.id}`).toContain(e.reply!.facet);
+        expect(e.reply!.label.length).toBeGreaterThan(0);
+        expect(e.reply!.hours).toBeGreaterThan(0);
+        expect(e.reply!.trust).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -86,7 +101,6 @@ describe('State Revenue Agency flaws (SPEC §13.4)', () => {
 describe('State Revenue Agency event deck', () => {
   const workloadIds = new Set([...revenue.scenario.workloads.map((w) => w.id), 'PREFILL']);
   const lparIds = new Set(revenue.scenario.world.lpars.map((l) => l.id));
-  const facets = revenue.game.facets!.map((f) => f.id);
 
   it('card ids are unique', () => {
     const ids = REVENUE_EVENTS.map((e) => e.id);
@@ -101,15 +115,6 @@ describe('State Revenue Agency event deck', () => {
         if ('lparId' in c && typeof c.lparId === 'string') expect(lparIds, `${e.id} ${c.kind}`).toContain(c.lparId);
         if (c.kind === 'ADD_ADDRESS_SPACE') expect(lparIds, e.id).toContain(c.addressSpace.lparId);
       }
-    }
-  });
-
-  it('every fix exists and charges a facet of the run', () => {
-    for (const e of REVENUE_EVENTS) {
-      if (!e.fix) continue;
-      const fix = FIXES.find((f) => f.id === e.fix);
-      expect(fix, `${e.id} fix ${e.fix}`).toBeDefined();
-      if (fix!.trustCost) expect(facets, `${e.fix}`).toContain(fix!.trustCost.facet);
     }
   });
 

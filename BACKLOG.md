@@ -68,19 +68,8 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-54 · Cards end on effect, not on a fix id
-`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
-
-Source: PT-20 (docs/pt-20-design.md §4, §5, §7). Give each card an operation ends an `endedBy`
-effect, matched in place of `endEventByFix`, including Harbourline's BOT_ATTACK, RETRY_STORM and ZIIP_LOSS. CICS_SOS
-and HSM_RECALL_STORM are relieved, not ended, with the per-region footprint rule of §5. LOCK_ESCALATION ends by
-cancelling the running settlement job, with its backout lock hold. The four business cards answer through their inbox thread. Delete `FIXES`, `visibleFixIds`,
-`armableEvents`, each card's `fix`, COMMIT_SETTLEMENT_OFTEN and the `NO_TARGET`/`ARMED` lines. Bots' `ON_SIGHT_FIXES`
-map a card to its operation and target, still from truth. Migrate old saves (§7). Rewrite SPEC §9 and §10. Done when:
-no card ends by fix id, goldens are regenerated, and a three-scenario sweep shows each band move is one §7 lists.
-
 ### PT-55 · Bots choose operation targets from report data
-`list: playtest-fixes · status: blocked: after PT-54 · priority: low · size: M · area: tooling`
+`list: playtest-fixes · status: ready · priority: low · size: M · area: tooling`
 
 Source: PT-20 (docs/pt-20-design.md §7). Bots pick targets from what a player can read (the Monitor III top consumer,
 DISPLAY THREAD, the Change board, the regions short on storage, the channel with the arrival surge), not from

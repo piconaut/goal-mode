@@ -252,7 +252,7 @@ export function basketAfterFailure(before: RunState, after: RunState, basket: re
   const was = new Map(before.changes.map((c) => [c.id, c.status]));
   const back = after.changes
     .filter((c) => c.status === 'FAILED' && was.get(c.id) !== 'FAILED')
-    .filter((c) => !c.endsEvent && c.capex === 0 && c.opexPerDay === 0 && c.revertDay === null && !c.commands.some((x) => x.kind === 'ACTIVATE_POLICY'))
+    .filter((c) => !c.backoutChangeId && !c.migratedEventId && c.capex === 0 && c.opexPerDay === 0 && c.revertDay === null && !c.commands.some((x) => x.kind === 'ACTIVATE_POLICY'))
     .flatMap((c) => c.commands);
   return back.length > 0 ? addToBasket(back, basket) : null;
 }

@@ -1,6 +1,7 @@
 // Card footprints at run time (RT-14, docs/rca-design.md §4.4(1)): a running card's reach resolved to the images (and
 // CICS regions) its resource is loaded on, from the sim's effective routing and address spaces. Pure.
 
+import { CICS_STORAGE } from '../content/subsys';
 import type { FootprintReach } from '../content/footprint';
 import type { SimState } from '../sim/core/types';
 import type { AddressSpaceDef, WorkloadDef } from '../sim/workload/types';
@@ -52,4 +53,12 @@ export function resolveReach(reach: FootprintReach, world: ReachWorld, capacityC
  * just what it reaches now in a new hour. */
 export function hourUnion(prev: readonly string[] | undefined, sameHour: boolean, now: readonly string[]): string[] {
   return sameHour && prev ? [...new Set([...prev, ...now])] : [...now];
+}
+
+/** The storage report's per-region EDSA reading against the game's SOS cushion. */
+export function cicsStorageReach(regions: readonly string[], images: SimState['last']['lpars']): string[] {
+  const cushionMb = CICS_STORAGE.minTasks * CICS_STORAGE.perTaskMb;
+  return images.flatMap((image) => (image.cicsStorage ?? [])
+    .filter((storage) => regions.includes(storage.region) && storage.limitMb - storage.inUseMb < cushionMb)
+    .map((storage) => regionKey(storage.region, image.lparId)));
 }

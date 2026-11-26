@@ -5,6 +5,16 @@ import type { GameHandle } from './useGame';
 import { AskAround } from './AskAround';
 import { Empty } from './Empty';
 
+export function InboxReply({ message, game }: { message: ViewModel['inbox'][number]; game: GameHandle }) {
+  const { reply, replyToEventUid } = message;
+  if (!reply || !replyToEventUid) return null;
+  return (
+    <button disabled={!reply.affordable} onClick={() => game.send({ type: 'EVENT_REPLY', eventUid: replyToEventUid })}>
+      {reply.label} · {reply.hours}h
+    </button>
+  );
+}
+
 export function Inbox({ v, game }: { v: ViewModel; game: GameHandle }) {
   return (
     <div className="panel">
@@ -20,6 +30,7 @@ export function Inbox({ v, game }: { v: ViewModel; game: GameHandle }) {
             </span>
           </div>
           <div>{m.body}</div>
+          <InboxReply message={m} game={game} />
         </div>
       ))}
     </div>

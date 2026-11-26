@@ -1,9 +1,10 @@
+import { migrateRunState } from '../../src/game/run/migrate';
+import { requestOperation } from '../../src/game/operations';
 import { PACKS } from '../../src/content/packs';
 import { cardMechanisms } from '../../src/content/footprint';
 import { STC_AUTOMATION } from '../../src/content/entities';
-import { advance, newRun, requestChange, startDay } from '../../src/game/run';
+import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
-import { applyCommands } from '../../src/sim/core/commands';
 import { TICK_SEC } from '../../src/sim/core/units';
 
 const packs = Object.values(PACKS).filter((p) => p.game.events.some((e) => e.id === 'XLOG_LOOP'));
@@ -44,10 +45,10 @@ describe('looping log archiver lifecycle', () => {
     r = advance(r, pack.scenario, content, 1);
     expect(r.events[1]!.started).toBe(true);
     expect(loopCpu(r)).toBeCloseTo(firstCpu, 2);
-    const cancelled = requestChange(r, content, { label: 'Cancel archiver', fixId: def.fix! });
+    const cancelled = requestOperation(r, pack.scenario, content, { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' });
     expect(cancelled.ok).toBe(true);
+    expect(cancelled.run.events[1]!.ended).toBe(true);
     r = advance(cancelled.run, pack.scenario, content, 1);
-    expect(r.events[1]!.ended).toBe(true);
     expect(down(r)).toBe(true);
     expect(r.sim.mods.asCpu.CICSXLOG).toBeUndefined();
     r = advance(r, pack.scenario, content, restartTicks + 1);
@@ -56,12 +57,10 @@ describe('looping log archiver lifecycle', () => {
   });
 
   it.each(packs)('drops a stale extra copy from an older save before looping in $id', (pack) => {
-    const def = pack.game.events.find((e) => e.id === 'XLOG_LOOP')!;
-    const s0 = newRun(pack.scenario, { ...pack.game, events: [] }, 7).sim;
+    const run = newRun(pack.scenario, { ...pack.game, events: [] }, 7);
     const stale = { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC' as const, baseEnginesRef: 0.9, ziipFrac: 0 };
-    const s = { ...s0, extraAddressSpaces: [stale, stale], mods: { ...s0.mods, asCpu: { CICSXLOG: 0 } } };
-    const on = applyCommands(s, def.begin);
-    expect(on.extraAddressSpaces).toEqual([]);
-    expect(on.mods.asCpu.CICSXLOG).toBeGreaterThan(100);
+    const migrated = migrateRunState({ ...run, sim: { ...run.sim, extraAddressSpaces: [stale, stale] } });
+    expect(migrated.sim.extraAddressSpaces).toEqual([]);
+    expect(pack.scenario.addressSpaces.filter((a) => a.jobname === 'CICSXLOG' && a.lparId === 'PROD1')).toHaveLength(1);
   });
 });

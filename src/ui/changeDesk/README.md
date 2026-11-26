@@ -10,7 +10,7 @@ The basket remains owned by `useGame` so it survives leaving the Change Desk.
 - `Wlm.tsx`: service classes, classification, and policy scheduling.
 - `Subsystems.tsx`: system, CF, DASD, Db2, MQ, and CICS controls.
 - `Routing.tsx`: workload routing and job classes.
-- `Operations.tsx`: projects and operational fixes.
+- `Operations.tsx`: projects and operator commands.
 
 Area modules receive the existing Desk or GameHandle explicitly. Keep shared
 controls independent of area modules and the Actions shell to avoid import cycles.

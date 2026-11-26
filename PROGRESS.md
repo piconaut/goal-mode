@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-26: PT-54 moves card resolution to operator effects, linked rollouts and inbox replies, retains the CICS/HSM relief footprints, models settlement backout, and migrates legacy saves. PT-55 is ready.
 - 2026-11-26: PT-53 adds other teams’ rollouts and backouts to the Change board. Paired rollouts share a title and get distinct references. Routine rollouts save CPU while live. All three review sweeps passed. PT-54 is ready. [PR #500](https://github.com/piconaut/goal-mode/pull/500)
 - 2026-11-26: PT-57 filed (backlog only; ready now that PT-56 merged): operator commands in the play CLI so player agents can use PT-56's operations.
 - 2026-11-26: PT-56 adds targeted operator commands, live Db2 thread and utility views, and gateway and DFSMShsm status in Change Desk → Operations. PT-53 is unblocked for change backout on the board; PT-54 will connect these operations to card endings. Db2 lock release on rollback is verified for PT-54. The three-scenario comparison against `dev` with the PT-52 refactor is identical.

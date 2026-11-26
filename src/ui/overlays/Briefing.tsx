@@ -3,6 +3,7 @@
 import type { ViewModel } from '../../game/view';
 import type { GameHandle } from '../useGame';
 import { FirstDayDifficulty, StartingPerk } from '../newRun';
+import { InboxReply } from '../Inbox';
 import { DaySummary } from './DaySummary';
 
 export function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () => void }) {
@@ -18,6 +19,7 @@ export function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hi
         <div key={i} className="panel" style={{ marginBottom: 8 }}>
           <b>{m.subject}</b> <span className="muted">({m.from})</span>
           <div>{m.body}</div>
+          <InboxReply message={m} game={game} />
         </div>
       ))}
       {v.lastReport && <DaySummary v={v} />}
