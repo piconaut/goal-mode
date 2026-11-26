@@ -1,5 +1,6 @@
 import type { Mechanism, Trigger } from './types';
 import { CPU_CAPACITY } from './incidents';
+import { PEER_SLOW_RATIO } from './sla';
 
 /** How a pinned value relates to the incident it is filed against (RT-12, docs/rca-design.md §4.6). A pin can only be
  * evidence for the relation its metric accepts: the hurt work's own delay is not another class's delay, and another
@@ -29,6 +30,9 @@ export type EvidenceMetric =
   | 'CPU_VS_BASE'
   | 'CPU_PER_TXN'
   | 'LOCK_WAIT'
+  | 'DB2_HOLDER'
+  | 'DB2_DRAIN_LOCK'
+  | 'DB2_CLAIM_RELEASE'
   | 'SYNC_IO'
   | 'CF_WAIT'
   | 'CF_SYNC'
@@ -119,6 +123,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   // offload costs more CP per transaction (RMF Report Analysis p.530 END/S, p.534 APPL%). FICTIONAL line.
   CPU_PER_TXN: { label: 'CP ms/txn', unit: 'ms', mechanisms: [], triggers: ['CHANGE_REGRESSION'], notableAt: 0, notableMultiple: 1.3, weight: 1, relations: OWN_OR_COMPETITOR },
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
+  // FICTIONAL: one second is below the youngest modeled cohort, so any live conflicting holder qualifies.
+  DB2_HOLDER: { label: 'holder cohort age', unit: 's', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 1, weight: 1, relations: ['competitor', 'self'] },
+  DB2_DRAIN_LOCK: { label: 'drain-lock wait ms/txn', unit: 'ms', mechanisms: [], triggers: [], notableAt: 0, weight: 1, relations: OWN },
+  DB2_CLAIM_RELEASE: { label: 'utility claim-release wait', unit: 's', mechanisms: [], triggers: [], notableAt: 0, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   CF_WAIT: { label: 'CF ms/txn', unit: 'ms', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   // CF Activity and DASD Activity (RT-10, A11): the resource the work waits on, so `server` clues. The CF row's own
@@ -208,7 +216,9 @@ export type PinTest =
   /** value ≥ frac of the pinned image's online logical CPs (APPL% and EAppl %: 100 = one engine) */
   | { kind: 'shareOfImage'; frac: number }
   /** a Workload Activity or SMF row with no earlier report rows, pinned after the report had them for other rows */
-  | { kind: 'noHistory' };
+  | { kind: 'noHistory' }
+  /** value ≥ ratio × the peer reading frozen on the pin (RT-35): the best CF, or the all-LCU median */
+  | { kind: 'peerSlow'; ratio: number };
 
 export interface PredicateOption {
   metric: EvidenceMetric;
@@ -223,6 +233,11 @@ export interface PredicateOption {
   /** The pin must read the same row (image and class, or workload) as a pin meeting the recipe's first predicate: the
    * two halves of a surge or a regression describe one piece of work. */
   sameWork?: true;
+  /** The symptoms this ruling-out option rules out (RT-34). A predicate with tied options is met only when every
+   * symptom the first predicate showed, on that same incident, has a matching option: a CICS slot queue needs the QR
+   * wait, a DBAT queue its own cost, an initiator wait the jobs' CPU wait. A normal cost per transaction therefore
+   * does not rule out QR saturation. */
+  rulesOut?: EvidenceMetric[];
 }
 
 export interface ProofPredicate {
@@ -265,6 +280,9 @@ export const PROOF = {
 const at = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'atLeast', value } });
 const below = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'below', value } });
 const notable = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'notable' } });
+/** A resource far slower than its peers (RT-35): the pin's own-history normal may say nothing, but its frozen peer
+ *  reading (the best CF, or the all-LCU median) is far below it. */
+const peer = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'peerSlow', ratio: PEER_SLOW_RATIO } });
 const normal = (metric: EvidenceMetric, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'normal', band: PROOF.normalBand }, ...(reading ? { reading } : {}) });
 /** The same work as the first predicate showed (see `sameWork`). */
 const same = (o: PredicateOption): PredicateOption => ({ ...o, sameWork: true });
@@ -342,13 +360,16 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
   LOCK_CONTENTION: { predicates: [{
     label: 'lock waits on the hurt work: Db2 lock wait ≥ 2 ms/txn (Db2 101), LOCK state ≥ 35 % (WLMGL), or the jobs\' lock wait ≥ 25 % (SMF 30)',
     options: [notable('LOCK_WAIT', SELF), notable('WM_LOCK', SELF), notable('JOB_LOCK', SELF)],
-  }, OWN_CPU_LOW] },
+  }, {
+    label: 'the hurt work has normal CPU, or the shared object has an identified holder',
+    options: [...OWN_CPU_LOW.options, notable('DB2_HOLDER', ['competitor'])],
+  }] },
   CF_SERVICE: { predicates: [{
     label: 'CF time per transaction ≥ 5 ms or past its normal band (Db2 101)',
     options: [notable('CF_WAIT', SELF), ratio('CF_WAIT', PROOF.waitRiseRatio, SELF)],
   }, {
-    label: 'the CF itself slow: sync service time or async conversion past twice its normal (CF Activity)',
-    options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server'])],
+    label: `the CF itself slow: sync service time or async conversion past twice its normal, or at least ${PEER_SLOW_RATIO}× the best CF of the sysplex (CF Activity)`,
+    options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server']), peer('CF_SYNC', ['server']), peer('CF_ASYNC_PCT', ['server'])],
   }] },
   QR_TCB: { predicates: [{
     label: 'QR TCB wait ≥ 5 ms/txn (CICS 110), or the READY state past twice its normal (WLMGL)',
@@ -357,12 +378,22 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'little waiting for a slot or on the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
     options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
   }] },
+  // The ruling-out half is tied to the symptom (RT-34): a CICS slot queue's nearest look-alike is QR saturation,
+  // which holds MXT slots longer at an unchanged cost per transaction, so only the QR wait rules it out. A DBAT
+  // queue and an initiator wait keep the cost and job readings. MXT limits concurrent user tasks (CICS Performance
+  // PDF p.89, printed 81) and QRMODDLY is a dispatched task's wait for QR redispatch (CICS Monitoring PDF p.295,
+  // printed 287), so a task waiting on QR still holds its slot.
   THREAD_LIMIT: { predicates: [{
     label: 'queued for a slot: MXT wait ≥ 5 ms/txn or DBAT queue ≥ 5 per hour, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
-    label: 'the work ran no slower: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
-    options: [...COST_NORMAL, below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
+    label: 'the extra wait was the slot, not slower work: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction within ±15 % of normal for a DBAT queue, or the jobs\' CPU wait < 25 % for an initiator wait',
+    options: [
+      { ...normal('CPU_PER_TXN', SELF), rulesOut: ['DBAT_QUEUE'] },
+      { ...normal('CPU_VS_BASE', SELF), rulesOut: ['DBAT_QUEUE'] },
+      { ...below('QR_WAIT', 5, SELF), rulesOut: ['MXT_WAIT', 'SOS_MIN'] },
+      { ...below('JOB_CPU', PROOF.jobWaitPct, SELF), rulesOut: ['JOB_INIT'] },
+    ],
   }] },
   ROUTING: { predicates: [{
     label: 'transactions failed: failed share ≥ 1 % (CICS 110)',
@@ -375,8 +406,8 @@ export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
     label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn or past its normal band (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
     options: [notable('DELAY_IO', SELF), notable('SYNC_IO', SELF), ratio('SYNC_IO', PROOF.waitRiseRatio, SELF), notable('JOB_IO', SELF)],
   }, {
-    label: 'DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes (DASD Activity)',
-    options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server'])],
+    label: `DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes, or DISC or response time at least ${PEER_SLOW_RATIO}× the all-LCU median (DASD Activity)`,
+    options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server']), peer('DASD_DISC', ['server']), peer('DASD_RESP', ['server'])],
   }] },
   STORAGE: { predicates: [{
     label: 'storage waits: storage delay ≥ 5 % (WLMGL), a serving region short on storage (CICS SOS), or the jobs\' swap wait ≥ 25 %',
@@ -465,7 +496,7 @@ export const METRIC_TIER: Record<EvidenceMetric, 0 | 1 | 2> = {
   PI: 0, VELOCITY: 1, APPL: 0, APPL_CP: 0, APPL_IIP: 0, IIPCP: 0, ENDED_RATE: 0, CPU_PER_TXN: 0,
   DELAY_CPU: 0, DELAY_ZIIP: 0, DELAY_IO: 0, DELAY_STO: 0, DELAY_CAP: 0, DELAY_OTHER: 0, WM_LOCK: 0, WM_READY: 0,
   PRSM_DELAY: 1, CAPPED: 1, CPC_BUSY: 1, LPAR_BUSY: 1, CAPACITY_ADJ: 1, JOB_APPL: 1,
-  CPU_VS_BASE: 2, LOCK_WAIT: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
+  CPU_VS_BASE: 2, LOCK_WAIT: 2, DB2_HOLDER: 2, DB2_DRAIN_LOCK: 2, DB2_CLAIM_RELEASE: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
   SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2, ROLLBACK_PCT: 2,
   JOB_CPU: 2, JOB_IO: 2, JOB_LOCK: 2, JOB_DB2: 2, JOB_SWAP: 2, JOB_INIT: 2, JOB_ABEND: 2,
 };

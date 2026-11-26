@@ -42,6 +42,14 @@ export interface DraftOption {
   description: string;
 }
 
+/** The team's own response goal for internal work (PT-50): the first period's average response time, seconds.
+ *  A game rule, not an SLA: no incident and no trust. While it is missed for the content's sustained window,
+ *  engineer-hours cost more. The scenario's content supplies one; absent, internal work has no goal and no cost. */
+export interface InternalGoal {
+  workloadId: string;
+  avgRtSec: number;
+}
+
 export interface GameContent {
   events: EventDef[];
   story: ScriptedBeat[];
@@ -62,4 +70,8 @@ export interface GameContent {
   /** Facts about this business's calendar anyone in it knows (payday, month end, filing season). Absent = the
    *  CALENDAR contact has no standing facts and says so once the event rumours run out. */
   calendarFacts?: { id: string; text: string }[];
+  /** The team's own response goal (PT-50) for one workload's first period. Not an SLA: no incident and no trust.
+   *  While the newest clock hours miss it for `INTERNAL_SLOW_WINDOW_HOURS` in a row, hands-on engineer-hours cost
+   *  `INTERNAL_SLOW_HOURS_MULT` times as much. Absent = no such rule. */
+  internalGoal?: InternalGoal;
 }

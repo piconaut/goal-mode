@@ -23,7 +23,7 @@ const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https:
 const WLM_SERVICES_SMF99: CodexSource = { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, receivers, donors, net value, priority unbunching (pp. 137–139)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=137' };
 const WLM_GUIDE_PA: CodexSource = { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), §2.3.2 policy adjustment (pp. 59–60)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=59' };
 /** Run milestones that reveal entries (not events or tools). */
-export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL';
+export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL' | 'TSO_SLOW';
 
 const MLC_CAPPING: CodexSource = { label: 'IntelliMagic (John Baker), MLC Capping 101', url: 'https://www.intellimagic.com/?p=7302' };
 const HORNE: CodexSource = {
@@ -422,6 +422,18 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['DB2_ACCT'] },
   },
   {
+    id: 'db2-drains',
+    title: 'Db2 locks, claims and drains',
+    category: 'Subsystems',
+    body: 'A Db2 reader claims a page set or partition on first access and normally keeps that claim until commit. Under cursor stability it may also hold a cursor lock. Repeatable read protects more of the scanned data until commit. Uncommitted read takes few locks but still has a read claim. An all-class REORG drain waits for readers to release claims, while a writers-only drain can let readers continue. In the game, BI that receives too little CPU can hold the settlement partition longer. Use Db2 accounting to see the online lock wait, then Db2 blockers to find the member, object and holder. Use Db2 statistics for the separate utility claim-release and reader drain-lock waits. Restore BI CPU service or move BI toward an image with available capacity.',
+    sources: [
+      { label: 'IBM Db2 13 Managing Performance PDF pp.249–250 (printed 229–230)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=249' },
+      { label: 'IBM Db2 13 Managing Performance PDF p.714 (printed 694)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=714' },
+      { label: 'IBM Db2 13 Command Reference PDF pp.216–217 (printed 200–201)', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_comrefbook.pdf#page=216' },
+    ],
+    discover: { tools: ['DB2_ACCT'] },
+  },
+  {
     id: 'smf110',
     title: 'CICS monitoring (SMF 110)',
     category: 'Measurement',
@@ -513,6 +525,26 @@ export const CODEX: CodexEntry[] = [
     body: 'A batch job running TSO DSN under IKJEFT01 connects to a Db2 subsystem on the z/OS image where it runs. A job without system affinity starts wherever an initiator for its class is free, and nothing in that choice checks for Db2. If the image has no Db2, DSN has no subsystem to attach to: the connect fails and makes no more attempts (modelled as DSNE100I ssid NOT OPERATIONAL, RETRY COUNT IS ZERO, the message the book documents for a named ssid that is not active; APPROX, because an image with no Db2 defined may report a slightly different connect error). The job ends without doing its work, its successors stay held, and it needs a rerun. The clue is in the Operations log: which job, on which system. Fix: take that job class\'s initiators off the image without Db2, then restart the job. In an RCA the mechanism is JOB_FAILURE and the trigger POLICY (the initiator setup sent it there).',
     sources: [{ label: 'IBM Db2 13 for z/OS Messages, DSNE100I (p.140)', url: 'https://www.ibm.com/docs/en/db2-for-zos/13?topic=messages-dsne100i' }],
     discover: { flags: ['DB2_CONNECT_FAIL'] },
+  },
+  {
+    id: 'tso-goals',
+    title: 'Why TSO gets a short, important first period',
+    category: 'WLM',
+    body: 'TSO is interactive: someone is waiting at a terminal after every Enter, so response time is felt directly, and a slow screen costs the team the time it spends waiting. IBM\'s sample TSO/E service class shows the usual shape: period 1 aims at 85 % of commands within 0.5 s at importance 1 for 400 service units, period 2 at 80 % within 1 s at importance 3, and period 3 at 60 % within 15 s at importance 4. The short first period keeps short commands under the tight goal; a long edit or compile ages into a looser period instead of competing with them for CPU, and the high importance protects the terminal work when the machine is short. IBM recommends response-time goals for TSO rather than velocity goals because the transactions are short and numerous. In GOAL MODE the team\'s own TSO goal is a game rule in the scenario content, not a customer SLA: while the last two clock hours miss it, hands-on engineer-hours cost 1.5×, and one inbox complaint per episode names the response time. The WLMGL TSO class row shows the response time against its goal.',
+    sources: [
+      { label: 'z/OS 3.1 MVS Planning: Workload Management (SC34-2662), PDF p.71–72 (printed 51–52): example TSO/E service class with three periods', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=71' },
+      { label: 'IBM Redbook SG24-6472-03, System Programmer\'s Guide to: Workload Manager (Mar 2008), PDF p.236–237 (printed 218–219): TSO is interactive; response-time goals recommended', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=236' },
+      { label: 'z/OS 3.1 RMF Report Analysis (SC34-2665), PDF p.523 (printed 483): the WLMGL Service Class Period report prints the goal and the actual response distribution', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=523' },
+    ],
+    discover: { flags: ['TSO_SLOW'] },
+  },
+  {
+    id: 'problem-records',
+    title: 'Problem records: diagnosing what never pages',
+    category: 'Measurement',
+    body: 'An incident is a problem record the game opened when an SLA breach pages. You can open your own on a subject (a workload, a service-class period, an image or a job) and a window of whole closed clock hours, and file the same mechanism, trigger and pins as an RCA. It is for what never pages: a card that quietly raised CPU per transaction while the SLA still met, a coupling facility or LCU far slower than its peers, or a regression you saw in the reports before a user did. The window\'s truth is frozen when you open it: the card whose footprint touched the subject, otherwise the hour\'s delay groups against the clock-hour baseline, otherwise a standing peer-slow resource, otherwise no problem. A filing costs 0.25 engineer-hours; a wholly wrong filing costs 0.5 trust on the subject\'s facet once a day; a record allows three filings a day, one an hour. A correct answer earns what a correct RCA earns, and one §4.5 episode never pays twice (a later day is new). A record unlocks no fix yet: proof-gated fixes are D1\'s separate decision.',
+    sources: [{ label: 'GOAL MODE design: docs/rca-design.md §5.1 (problem records, RT-22)' }],
+    discover: { start: true },
   },
 ];
 

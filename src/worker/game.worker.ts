@@ -10,7 +10,7 @@ import { applyGameCommand, type GameCommand, type GameCommandResult } from '../g
 import { advanceHours } from '../game/advance';
 import type { RunState } from '../game/types';
 import { noteReportOpened, normalizeDefinition, REPORT_FEATURE, hasFeature, SMF_FEATURE } from '../game/tools';
-import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics, smf113 } from '../game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Blockers, db2Statistics, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
 import { policyEditSource, savedPolicy } from '../game/policies';
@@ -506,12 +506,13 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'GET_SMF': {
       const need = SMF_FEATURE[m.kind];
       if (!hasFeature(run, need)) break;
-      if (m.kind !== 'SMF113' && m.kind !== 'BATCH') {
+      if (m.kind !== 'SMF113' && m.kind !== 'BATCH' && m.kind !== 'DB2_BLOCKERS') {
         trace({ cmd: 'reportOpened', key: `SMF:${m.kind}:${m.hour}` });
         run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
       }
       const data: SmfData =
         m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, sc(), m.hour) }
+        : m.kind === 'DB2_BLOCKERS' ? { kind: 'DB2_BLOCKERS', tick: run.sim.tick, view: db2Blockers(run, sc()) }
         : m.kind === 'DB2_STATS' ? { kind: 'DB2_STATS', hour: m.hour, rows: db2Statistics(run, sc(), m.hour) }
         : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour), storage: cicsStorageStats(run, m.hour) }
         : m.kind === 'BATCH' ? { kind: 'BATCH', night: batchNight(run) }
@@ -639,6 +640,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = out.run;
       break;
     }
+    case 'OPEN_PROBLEM':
+      settleGame(command({ kind: 'OPEN_PROBLEM', subject: m.subject, fromTick: m.fromTick, toTick: m.toTick }));
+      break;
+    case 'FILE_PROBLEM':
+      settleGame(command({ kind: 'FILE_PROBLEM', recordId: m.recordId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] }));
+      break;
     case 'PIN': {
       // The Monitor III history a past-range pin resolves against; the CLI passes its side file the same way.
       const out = applyGameCommand(run, pendingPolicy, { kind: 'PIN', req: m.req }, pack().game, sc(), { mon3History: (t) => mon3At(mon3Hist, t) });

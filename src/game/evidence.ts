@@ -11,8 +11,10 @@ import { workManagerStatePct } from '../sim/wlm/reporting';
 import { buildMon3 } from './mon3';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
+import { cfPeer, lcuPeer, type PeerReading } from './peerSlow';
+import { PEER_SLOW_RATIO } from '../content/sla';
 import type { NightSummary } from '../sim/subsys/batch';
-import { cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics } from './smf';
+import { cicsMonitoring, cicsStorageStats, db2Accounting, db2Blockers, db2Statistics, type Db2BlockerRow } from './smf';
 import type { CpuRecord, WlmRecord } from '../sim/measure/rmf';
 import type { Incident, IncidentSubjects, RunState } from './types';
 import { allWorkloads } from './workloads';
@@ -42,6 +44,10 @@ export interface EvidencePin {
   /** A PROCU job's service class, as the row shows it, so a recipe can ask whether the job was displaceable. Absent on
    * pins of any other source. */
   serviceClass?: string;
+  /** The peer reading a CF or LCU pin was judged against (RT-35): the best CF's sync time/async conversion, or the
+   * all-LCU median DISC/response, frozen at pin time like `baseline`. Absent on every other pin. */
+  peer?: PeerReading;
+  db2Blocker?: Db2BlockerRow;
   text: string;
 }
 
@@ -66,6 +72,7 @@ export type PinRequest =
    * `index`, the latest interval. */
   | { source: 'DASD'; lcuId: string; metric: DasdMetric; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
+  | { source: 'DB2_BLOCKERS'; member: string; holderType: Db2BlockerRow['type']; tick?: number }
   /** Db2 statistics (DISPLAY DDF): the cumulative count of DBAT requests that waited for a slot during the hour,
    * subject the Db2 member's LPAR. `hour` is an SMF hour key or `current` for the open hour. */
   | { source: 'DB2_STATS'; hour: string; lparId: string; metric: EvidenceMetric }
@@ -294,7 +301,9 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       };
       const value = req.metric === 'CF_SYNC' ? c.syncUs : c.asyncPct;
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
-      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      // The best CF of the same interval, for a resource far slower than its peers (RT-35).
+      const peer = req.metric === 'CF_SYNC' ? cfPeer(iv.cf, 'syncUs') : cfPeer(iv.cf, 'asyncPct');
+      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}), ...(peer ? { peer } : {}) };
     }
     case 'DASD': {
       const index = req.index ?? sim.rmf.intervals.length - 1;
@@ -311,19 +320,28 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (value === null)
         return req.lcuId === 'ALL' ? 'The ALL VOLUMES row has DISC only: pin an LCU for IOSQ or response time' : 'No such LCU row';
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
-      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      // An LCU's peer is the all-LCU median (RT-35); the ALL VOLUMES row is a summary, not one LCU.
+      const peer = req.lcuId === 'ALL' ? undefined : req.metric === 'DASD_DISC' ? lcuPeer(iv.lcus, 'discMs') : req.metric === 'DASD_RESP' ? lcuPeer(iv.lcus, 'rtMs') : undefined;
+      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, fromTick: iv.startTick, value, ...(baseline !== undefined ? { baseline } : {}), ...(peer ? { peer } : {}) };
     }
     case 'DB2': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = db2Accounting(run, scenario, key).find((x) => x.workloadId === req.workloadId);
-        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec, ROLLBACK_PCT: r.rollbackPct } : null;
+        return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, DB2_DRAIN_LOCK: r.drainLockMs ?? 0, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec, ROLLBACK_PCT: r.rollbackPct } : null;
       };
       return hourlyEvidence(run, req, req.workloadId, read, 'No such package row', 'That metric is not in Db2 accounting', 'Db2 101', true);
+    }
+    case 'DB2_BLOCKERS': {
+      if (req.tick !== undefined && sim.tick !== req.tick) return 'Refresh the live Db2 blocker snapshot before pinning';
+      const r = db2Blockers(run, scenario).rows.find((x) => x.member === req.member && x.type === req.holderType);
+      if (!r) return 'No current Db2 holder of that type on this member';
+      return { source: 'DISPLAY BLOCKERS', metric: 'DB2_HOLDER', subject: r.workloadId, system: r.lparId,
+        tick: sim.tick, value: r.ageSec, db2Blocker: r };
     }
     case 'DB2_STATS': {
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = db2Statistics(run, scenario, key).find((x) => x.lparId === req.lparId);
-        return r ? { DBAT_QUEUE: r.dbatQueued } : null;
+        return r ? { DBAT_QUEUE: r.dbatQueued, DB2_CLAIM_RELEASE: r.contention?.claimReleaseWaitSec ?? null } : null;
       };
       return hourlyEvidence(run, req, req.lparId, read, 'No such Db2 member row', 'That metric is not in Db2 statistics', 'Db2 statistics');
     }
@@ -463,8 +481,16 @@ function pinWhen(p: Located, req: PinRequest): string {
 }
 
 function pinText(p: Located, req: PinRequest): string {
+  const holder = p.db2Blocker;
+  if (holder) return `DISPLAY BLOCKERS ${pinWhen(p, req)} ${holder.workloadId} on ${holder.member} / ${holder.lparId} held ${holder.type} on ${holder.object} (mean age ${fmtValue('DB2_HOLDER', holder.ageSec)}, CPU shortfall ${holder.cpuDelayPct.toFixed(1)}%, CAP ${holder.capPct.toFixed(1)}%)`;
   const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
-  return `${p.source} ${pinWhen(p, req)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
+  // The peer reading the pin was judged against (RT-35), shown only when the row is peer-slow, e.g.
+  // "vs CF01 18.0 µs (76×)". Below 1, two decimals keep the printed multiple honest (0.07 ms, not 0.1 ms).
+  const peerValue = (m: EvidenceMetric, v: number) => v >= 1 ? fmtValue(m, v) : `${v.toFixed(2)}${EVIDENCE_METRICS[m].unit ? ` ${EVIDENCE_METRICS[m].unit}` : ''}`;
+  const peer = p.peer && p.peer.value > 0 && p.value >= PEER_SLOW_RATIO * p.peer.value
+    ? ` vs ${p.peer.of} ${peerValue(p.metric, p.peer.value)} (${(p.value / p.peer.value).toFixed(0)}×)`
+    : '';
+  return `${p.source} ${pinWhen(p, req)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${peer}${rate}`;
 }
 
 /** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */
@@ -472,7 +498,7 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest, histo
   const loc = locate(run, scenario, req, history);
   if (typeof loc === 'string') return { run, ok: false, message: loc };
   const pins = run.pins ?? [];
-  if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
+  if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.db2Blocker?.type === loc.db2Blocker?.type && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
   // fromTick shapes the label only: a pin stores its end tick, as it always has (saves and the UI read `tick`).
   const { fromTick, ...fields } = loc;
   const pin: EvidencePin = { ...fields, id: run.nextId, text: pinText({ ...fields, ...(fromTick !== undefined ? { fromTick } : {}) }, req) };
@@ -516,6 +542,12 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
       return p.metric === 'SOS_MIN'
         ? s.servers.some((a) => a.jobname === p.subject) ? 'server' : null
         : p.subject === inc.workloadId ? 'self' : null;
+    case 'DISPLAY BLOCKERS': {
+      const holder = p.db2Blocker;
+      if (p.subject === inc.workloadId) return s.hosts.includes(p.system) ? 'self' : null;
+      return holder?.affectedWorkloads.includes(inc.workloadId) && s.hosts.some((id) => holder.affectedLpars.includes(id))
+        ? 'competitor' : null;
+    }
     case 'Db2 101':
     case 'SMF 30':
       return p.subject === inc.workloadId ? 'self' : null;
@@ -583,8 +615,11 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
       return result(0, relation === 'competitor' ? "another class's row, not the hurt work's" : `about ${RELATION_TEXT[relation]}, not ${inc.workloadId}'s own work`, 1);
     if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
     // Notable against the metric's line, and against the row's own recent normal where both exist (RT-10): one line
-    // cannot serve rows whose healthy scale differs (CF02's weak ICF engine, one LCU among several).
-    if (Math.abs(p.value) < notableFloor(p.metric, p.baseline)) return result(0, 'value is unremarkable', 3);
+    // cannot serve rows whose healthy scale differs (a weak shared ICF engine against a dedicated one, one LCU among
+    // several). A resource far slower than its peers is remarkable even at its own normal (RT-35): a standing
+    // misconfiguration is a cause.
+    const peerSlow = p.peer !== undefined && p.peer.value > 0 && p.value >= PEER_SLOW_RATIO * p.peer.value;
+    if (!peerSlow && Math.abs(p.value) < notableFloor(p.metric, p.baseline)) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
     return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
   });

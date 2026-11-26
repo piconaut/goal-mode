@@ -11,6 +11,7 @@ import { Inbox } from './Inbox';
 import { Monitor } from './Monitor';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
+import { Problems } from './Problems';
 import { Smf } from './Smf';
 import { Tutorial } from './Tutorial';
 import { useGame } from './useGame';
@@ -63,6 +64,7 @@ export function App() {
             <Reports v={v} game={game} />
             <Smf v={v} game={game} openAnalytics={() => setTab('analytics')} />
             <EvidenceBoard v={v} game={game} />
+            <Problems v={v} game={game} />
           </>
         )}
         {tab === 'changes' && <Actions v={v} game={game} />}

@@ -1,5 +1,6 @@
 import type { ProductDef } from '../../content/pricing';
 import type { CfTunables } from '../cf/cf';
+import type { Db2ContentionProfile } from '../subsys/db2Contention';
 import type { JobDef } from '../subsys/batch';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { ServiceDefinition } from '../wlm/types';
@@ -14,6 +15,7 @@ export interface Scenario {
   addressSpaces: AddressSpaceDef[];
   cfBaseEngines: Record<string, number>;
   cfTunables: CfTunables;
+  db2Contention?: Db2ContentionProfile;
   memory: {
     osBaseGb: Record<string, number>;
     cicsRegionGb: number;

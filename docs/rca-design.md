@@ -1,7 +1,7 @@
 # RCA judging and incident truth: audit, truth model and D1 draft
 
 Status: **proposal for the user** (2026-11-09). Nothing here is implemented. The work it leads to is in
-[BACKLOG.md](../BACKLOG.md) list `rca-truth` (RT-01 … RT-24) and RF-02; entries that need a decision name the section of this
+[BACKLOG.md](../BACKLOG.md) list `rca-truth` (RT-01 … RT-35) and RF-02; entries that need a decision name the section of this
 document to decide on. §7 lists the decisions.
 
 Scope: the whole chain from sim causality → game "truth" (`src/game/sla.ts`, `run/hourly.ts`) → evidence matching
@@ -505,6 +505,7 @@ Sources of accepted answers:
 | Card-declared alternates (`alsoTriggers`, `alsoMechanisms`, content) | XLOG_LOOP: POLICY. HSM: POLICY. SHADOW_IT: RUNAWAY_WORK. RETRY_STORM, SICK_AOR: APPLICATION_ERROR. CICS_SOS: STORAGE |
 | No card, no surge, no player change (§4.4) | both GROWTH and POLICY |
 | Host imbalance (one host of several carries ≥ ⅔ of the delay excess while another had room) | ROUTING |
+| A resource far slower than its peers (RT-35): a CF at ≥ `PEER_SLOW_RATIO` × the best CF's sync service time or async conversion, or an LCU at that × the all-LCU median DISC or response, carrying ≥ ⅓ of the work's response time (the CFs are those its hosts connect to, from Subchannel Activity; the I/O check uses the worst LCU because the hour does not attribute I/O to one; below the share a proven claim earns nothing and the reply names the share) | CF_SERVICE, or IO |
 
 ### 4.2 Choosing the mechanism when groups move together
 
@@ -695,7 +696,9 @@ out) the discriminator. Recipes live in `content/evidence.ts` beside the metrics
 | CPU_CAPACITY | as above | CPC or image busy ≥ 90 %, or a capacity adjustment below 100 |
 | CAPPING | as above, or CAP delay ≥ 10 % (a group cap's delay is CAP, not CPU) | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
 | DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or velocity under goal) | the hurt class's own CPU delay low (< 10 %), or its work-manager state "waiting" |
-| THREAD_LIMIT | MXT wait or queued-DBAT count up | CPU per transaction and QR wait normal (a ruling-out pin) |
+| THREAD_LIMIT | MXT wait, SOS on a region, or queued-DBAT count up; initiator wait for jobs | the symptom's own look-alike ruled out: QR wait < 5 ms/txn for a CICS slot queue, CPU per transaction normal for a DBAT queue, the jobs' CPU wait low for initiators |
+| CF_SERVICE | CF time per transaction ≥ 5 ms or past its normal band (Db2 101) | the CF itself slow: sync time or async conversion past twice its normal, or ≥ `PEER_SLOW_RATIO` × the best CF (CF Activity) |
+| IO | I/O waits on the hurt work (WLMGL, Db2 101, SMF 30) | DASD itself slow: DISC, IOSQ or response past twice normal, or DISC or response at ≥ `PEER_SLOW_RATIO` × the all-LCU median (DASD Activity) |
 | DEMAND_SURGE | ended rate ≥ 1.25 × baseline on the surging workload | its CPU per transaction within ±15 % of baseline |
 | Change regression | CPU per transaction ≥ 1.3 × baseline | its ended rate within ±15 % of baseline |
 | RUNAWAY_WORK | APPL of one class or job up by ≥ half an engine | that work's ended rate flat |
@@ -749,8 +752,14 @@ claim. Where the build differs from the table:
   other/UNK delay up ≥ 10 points over its normal (DDF's wait on a starved Db2 shows there, not as its CPU delay; a
   healthy DDF row already spends 50–75 % there, so the table's fixed line would pass every DDF row), against its own CPU delay
   < 10 % or a CICS class's READY < 5 %. SYSWKM velocity under goal is not an option: the pin does not carry the goal.
-- **THREAD_LIMIT's ruling-out half** and HARDWARE_FAULT's are *or*, not *and*: either normal reading counts, so the
-  recipe stays two pins. HARDWARE_FAULT's second half also accepts the work's own CPU delay low.
+- **THREAD_LIMIT's ruling-out options are tied to the symptom** that met the first predicate (`rulesOut`, RT-34): a
+  CICS slot queue (`MXT_WAIT`, or `SOS_MIN` on a region) needs QR wait < 5 ms/txn on the hurt work, because tasks
+  held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction; a DBAT queue needs CPU
+  per transaction normal, and an initiator wait the jobs' CPU wait < 25 %. Every symptom the first predicate shows
+  needs its own reading on that incident, so a CICS queue beside a DBAT queue needs both; a grouped RCA's rows are
+  pooled, but a tie is per incident. HARDWARE_FAULT's ruling-out half stays
+  *or*: either normal reading counts, so the recipe stays two pins. HARDWARE_FAULT's second half also accepts the
+  work's own CPU delay low.
 - **Cost pins carry their row's rate** (`pin.rate`), so DEMAND_SURGE and a change regression are each provable from
   one Workload Activity, Db2 101 or CICS 110 row. When two pins prove them, the second half must read the **same row**
   as the first (`sameWork`: the same class on the same image, WLMGL or Monitor III, or the same workload's
@@ -768,6 +777,10 @@ claim. Where the build differs from the table:
   sim a CF link fault takes Db2 CF time 3.5 → 4.2 ms/txn and a DASD fault sync I/O 0.9 → 2.1 ms/txn, both under the
   RT-10 lines, while the CF and DASD reports themselves are far past twice normal. Those reports' own lines are
   RT-10's: two hours into a fault the row's six-interval normal holds the fault, so the fault's early rows prove it.
+- **CF_SERVICE and IO also prove a peer-slow resource** (RT-35): a CF at ≥ `PEER_SLOW_RATIO` × the best CF's sync
+  service time or async conversion, or an LCU at that × the all-LCU median DISC or response. A pin carries the peer
+  reading frozen at pin time (`peer`, like `baseline`), so a standing misconfiguration proves without growth; the
+  own-history options stay for faults arriving mid-day.
 - **NEW_WORKLOAD's "no history"** is read from the rows: the row (or the workload's SMF hour) first appears within
   the day before the pin, after the report had held a full day without it. A day, because work with a daily shape
   (the first batch night, a morning peak) first appears hours into the report and is not new; day 1 cannot show new
@@ -825,6 +838,12 @@ rule with the change as the "card".
 
 ## 5. D1 on top of it: fixes unlocked by proof
 
+**Superseded (user, 2026-11-26).** The proof gate is dropped: a button that fixes one exact problem is the
+inauthentic part, and gating it behind proof keeps the button. General operations that aren't tied to one event
+replace it (BACKLOG PT-52 … PT-55; [docs/pt-20-design.md](pt-20-design.md)). Problem records (§5.1 "As built", RT-22) and
+the recipes they are judged by stay. The unlock claims and recipes of §5.1 and §5.2, the costs of §5.4, the unlock
+side of §5.5 and the gating of §5.7 are kept below as the record of what was considered, not as a plan.
+
 A draft for the user. It assumes §4.1, §4.4 and §4.6 are in place.
 
 ### 5.1 What unlocks a fix
@@ -839,6 +858,35 @@ REGRESSION on a roomy day, R-3). D1 therefore needs a diagnosis that does not ha
 record** the player opens on a subject (workload, class, image or job) and a time window, with the same form and
 pins. An incident is a problem record the game opened. Without this, D1 would lock the fix of exactly the cards a
 good analyst catches early.
+
+**Decided (Q8a, 2026-11-23):** problem records are built on their own (RT-22), before and independent of the gating
+(Q8b). Until D1 lands, a correct record earns what a correct RCA earns; its window truth, reward and limits are in
+RT-22.
+
+**As built (RT-22, 2026-11-25).** The player opens a record on a workload, a service-class period, an image or a job
+over whole closed clock hours (`problemHours`, at most `PROBLEM.maxWindowHours`); opening is free and freezes the
+truth. An incident is a record the game opened. A **quiet hour** is a closed hour that met its SLA but still shows a
+problem: `closeHour` stores one per workload when a card's footprint reached it, a delay group grew past the
+response-time floor, or a CF/LCU is at least `PEER_SLOW_RATIO` × its peers and carries a third of the response time
+(RT-35). A record's candidates are the quiet hours and overlapping incidents for its workloads; a card's mechanism,
+trigger and accepted alternates come from the same `judgeWorkloadHour` the incident path uses, with the hour's
+clock-hour baseline. With no candidate the truth is **no problem**. A class maps to the work classified into it (or a
+region class's served transactions), an image to the work routed there, and a job to its batch night or the work on its
+image (APPROX; a batch ABEND with no incident becomes `JOB_FAILURE`). The window truth is the union of its candidates'
+accepted sets, led by the newest hour.
+A filing costs `PROBLEM.hours` (0.25), a wholly wrong filing (no accepted answer) loses `PROBLEM.wrongTrust` on the
+subject's facet once per record per day, and a record allows `PROBLEM.filingsPerDay` filings a day, one an hour (`PROBLEM.refileHours`). Pins
+are judged against the record's window and the candidate hours' recorded subjects, with the same recipes and the same
+points. The correct-answer trust lands on the subject's facet at the RCA's per-facet rate (+1 for a mechanism answer, +0.25 for a trigger-only one; −0.5 for a wholly wrong answer),
+and `creditedEpisode` makes one §4.5 episode pay once: a record filing and an RCA of the same episode earn between
+them, while a later episode of the same cause (a later played day, or a fallback cause more than `GROUP_FOLLOW_HOURS`
+on) is new. A record chains back-to-back quiet hours of one cause into one episode, so a standing fault cannot be
+farmed. A record unlocks no fix: `visibleFixIds` and
+`armableEvents` are unchanged until Q8b. The Reports tab's Problems card and `play problem` share the reply lines.
+Old saves have no quiet hours; records on their old windows see overlapping incidents and a job's own ABEND only, and
+otherwise no problem. Bots file no records, so the balance bands do not move. The §5.4 limits are counted per record:
+the same work reached as a class, image or job can be opened as another record, so a per-work or shared-problem key is
+a design call for the follow-up.
 
 What the player was *told* counts as half a proof. A forewarning ("REBINDs ran overnight") or a perk tip satisfies
 the "what changed" predicate; the player still pins the measurement. Announced cards (CF_LINK, CF_FAILURE,
@@ -899,7 +947,7 @@ retry that commits at Db2 is another unit of work, and per-client identity is SM
 Proof-gating already removes label brute force. What is left to price is pin-and-label fishing:
 
 - Filing a diagnosis costs **0.25 engineer-hours**, right or wrong (writing it up).
-- A filed diagnosis with a wrong mechanism costs trust as a wrong RCA does today (−0.5 on the hurt facet), once per
+- A filed diagnosis with no accepted answer costs trust as a wrong RCA does today (−0.5 on the hurt facet), once per
   problem per day. Re-filing on the same problem is allowed after one simulated hour.
 - At most **three** diagnoses per problem per day. The third wrong one closes the form for that problem until the
   next day (the fix is then reachable only through generic levers that day).
@@ -933,7 +981,8 @@ weights and logical CPs, defined capacity and group caps, On/Off CoD and hardwar
 structure moves, and the generic operations PT-20 proposes. The trade D1 wants is then real: pay hours, money or
 trust for a generic lever now, or spend attention on the proof and get the cheap fix. PT-20's "each event registers a
 general operation that fixes it" must respect the gate: a general operation that ends a card (recycle a region)
-stays open only where a competent operator would do it without knowing the cause.
+stays open only where a competent operator would do it without knowing the cause. (Superseded 2026-11-26: with no
+gate, PT-20's operations are open to everyone and a wrong target pays its own cost.)
 
 ### 5.7 Bots
 
@@ -964,7 +1013,7 @@ cannot pick an entry before its prerequisites are merged.
    is still judged capacity and bots buy CPs on it), then hour-of-day baselines (RT-17); the playtest's findings
    RT-28 … RT-31 follow them. **Still parked until the human playtest (RT-18 … RT-21):** fallback triggers (RT-18),
    server CPU and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
-4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and PT-20's design call.
+4. **D1:** RT-22 (problem records) landed 2026-11-25; the proof gate (RT-24) was dropped for PT-20 (user, 2026-11-26).
 
 D1 depends on RT-05, RT-07, RT-12, RT-13 and RT-14. It does not depend on RT-16 … RT-21, because unlocking is
 judged against accepted sets and recipes, not against the primary label.
@@ -980,6 +1029,8 @@ judged against accepted sets and recipes, not against the primary label.
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
 | Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
 | Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21); build detail and Q7a … Q7e (accepted as recommended, 2026-11-21) in [rt-16-design.md](rt-16-design.md) | RT-16, RT-32, RT-33 |
-| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately; open | RT-22, RT-24 |
+| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately. Q8a: **yes**, independent of Q8b; a record earns what a correct RCA earns until D1 gives it a fix to unlock (2026-11-23); RT-22 built 2026-11-25. Q8b: **no** (2026-11-26): no proof gate; PT-20's general operations replace per-card fixes, and cards no general operation fits keep no targeted fix | RT-22, PT-20 |
 | Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Yes; research settled 2026-11-21: SMF 101 rollback share (`QWACABRT`), commit-only retries out of scope; RT-23 landed 2026-11-23 | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |
+| Q11 | RT-29: accept any mechanism whose complete recipe holds on the incident's rows? Judge CF/DASD "slow" against peers, not only the resource's own history? | No to the first: fix the recipe, since THREAD_LIMIT's *or* ruling-out half passed with QR wait high; yes to the second, as an accepted source, primary unchanged | As recommended (2026-11-23) | RT-34 (landed), RT-35 |
+| Q12 | RT-31: the CPU verdict's time base: the clock-hour average, the worst RMF interval, or the share of ticks over the line? | The clock-hour average: the SLA's own basis, not moved by the player's RMF interval, and readable in reports; RT-32's bands cover the INC6 shape | As recommended (2026-11-23) | RT-31 |

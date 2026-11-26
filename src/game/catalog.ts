@@ -105,6 +105,8 @@ export interface PreviewContext {
   cpcs?: readonly { id: string; capacitySetting: 4 | 5 | 6 | 7; generation: string }[];
   /** Fixes this scenario's event cards call for; other scenarios' fixes are refused. */
   fixIds?: readonly string[];
+  /** The slow-internal-work surcharge in force (PT-50), absent or null when hands-on work costs its base hours. */
+  staffSurcharge?: { mult: number; rtSec: number; goalSec: number; missedHours: number } | null;
 }
 
 export interface ChangePreview {
@@ -116,6 +118,8 @@ export interface ChangePreview {
   /** Trust lost by every stakeholder if this is an emergency change. */
   trustCostEach: number;
   failRisk: number;
+  /** The slow-internal-work multiplier applied to `hours` (1 when none), so the UI can name the surcharge. */
+  staffMult: number;
   ok: boolean;
   reason: string | null;
 }
@@ -143,7 +147,8 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const live = ctx.phase === 'LIVE';
-  const hours = fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks);
+  const staffMult = ctx.staffSurcharge?.mult ?? 1;
+  const hours = (fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks)) * staffMult;
   const capex = hw ? capexFor(hw.id, hw.capex, ctx.perks) : 0;
   const leadDays = leadDaysFor(hw?.leadDays ?? 0, ctx.perks);
   // A lead-time order placed during the live day arrives later, so it is a plan for a future day, not an emergency
@@ -157,6 +162,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
     emergency,
     trustCostEach: emergency && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
     failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
+    staffMult,
     ok: true,
     reason: null,
   };

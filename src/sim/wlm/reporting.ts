@@ -121,7 +121,7 @@ export function tagCicsSlice(t: ScpTick, s: SliceSpec, r: SliceResult, regionKey
   // RMF WAITING FOR states (Report Analysis p.536): Db2 lock waits are LOCK; waits for Db2, MQ or a slow server
   // and Db2's CF requests are PROD; the rest of the response time is MISC. APPROX: the mapping from the sim's
   // response-time parts.
-  const waitingLock = s.rate * (parts?.extra.lock ?? 0);
+  const waitingLock = s.rate * ((parts?.extra.lock ?? 0) + (parts?.extra.ddfLock ?? 0));
   const waitingProd = s.rate * ((parts?.dependency ?? 0) + (parts?.extra.cf ?? 0));
   const waitingMisc = Math.max(0, s.rate * r.rtMeanSec - active - ready - waitingIo - waitingLock - waitingProd);
   const w = t.workManager;

@@ -113,15 +113,10 @@ describe('morning hints in a run', () => {
     const { SCENARIOS } = await import('../../src/content/scenarios');
     const { advance, chooseDraft, newRun, startDay } = await import('../../src/game/run');
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
-    // Each day's hints are dated for the next morning (day index 1 after day 0, 2 after day 1). Checked day by day so
-    // the test doesn't depend on which day of a seed happens to be quiet.
-    // Two full days stay (CL-16): a hint is stamped when the day closes (day + 1), so two consecutive dates need two
-    // day closes, and the first close is the earliest a hint can appear. Seed 11 puts a hint at each close; seed 5's
-    // first day was quiet, which left the day-1 check vacuous. A cached two-day state would only move the same play
-    // into a recipe that every cold CI cache pays again; a cached partial-day start helps only a warm cache (the cache
-    // lives under node_modules/.cache, empty after npm ci), so neither shortens the suite.
+    // A hint is stamped when the day closes (day + 1). Seed 2 gives a hint at each of two closes with
+    // the settlement partition modeled, so both date checks exercise a real message.
     const hintsOf = (r: typeof run) => r.inbox.filter((m) => m.subject === 'A thought for this morning');
-    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 11, 'NORMAL'), MIDWEST_GAME);
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 2, 'NORMAL'), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     const first = hintsOf(run);
     expect(first.length).toBeGreaterThan(0);

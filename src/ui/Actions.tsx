@@ -6,7 +6,7 @@ import { CodexHints } from './CodexHint';
 import { RulesView } from './RulesView';
 import { Hardware, Prsm } from './changeDesk/Hardware';
 import { Ops, Projects } from './changeDesk/Operations';
-import { Board, ChangeRequestBar, PendingBanner, Results } from './changeDesk/Requests';
+import { Board, ChangeRequestBar, PendingBanner, Results, SlowTsoBanner } from './changeDesk/Requests';
 import { JobClasses, Routing } from './changeDesk/Routing';
 import { CicsSection, CouplingFacilities, Dasd, Db2Section, MqSection, Systems } from './changeDesk/Subsystems';
 import { PolicySchedule, Wlm } from './changeDesk/Wlm';
@@ -63,6 +63,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
   return (
     <>
       <div className="desk-banners">
+        <SlowTsoBanner v={v} />
         {game.pending && <PendingBanner v={v} game={game} />}
         <ChangeRequestBar desk={desk} setBasket={setBasket} game={game} />
       </div>

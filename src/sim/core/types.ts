@@ -1,6 +1,7 @@
 // Plain-data world configuration and runtime state. Everything here must be
 // JSON-serialisable and built in a deterministic order (arrays, not Maps).
 
+import type { Db2ContentionState, Db2ContentionCounters } from '../subsys/db2Contention';
 import type { CfConfig, CfStructureConfig, CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdConfig, DasdResult } from '../io/dasd';
 import type { BatchState } from '../subsys/batch';
@@ -252,6 +253,7 @@ export interface EnvState {
   holdByWorkloadLpar?: Record<string, number>;
   /** CF service each connected z/OS system saw last tick (link distance, own async conversion). */
   cfBySystem?: Record<string, CfSystemResult>;
+  db2Contention?: Db2ContentionState;
 }
 
 /** Runtime modifiers set by events and fixes (all multiplicative, default 1). */
@@ -294,7 +296,7 @@ export interface SimState {
   backlog: Record<string, number>;
   /** zIIP-eligible part of backlog per slice key, engine-seconds. */
   ziipBacklog: Record<string, number>;
-  last: { lpars: LparTick[]; workloads: WorkloadTick[] };
+  last: { lpars: LparTick[]; workloads: WorkloadTick[]; db2Contention?: Record<string, Db2ContentionCounters> };
   env: EnvState;
   batch: BatchState;
   capping: {

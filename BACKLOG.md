@@ -34,41 +34,18 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | List | Prefix | What goes in it |
 | --- | --- | --- |
 | `playtest-fixes` | PT | Findings from human and agent playtests: bugs, clue-path gaps, UI and tooling problems |
-| `rca-truth` | RT | RCA judging and incident truth, and D1 (docs/rca-design.md) |
+| `rca-truth` | RT | RCA judging and incident truth (docs/rca-design.md) |
 | `wlm-truth` | WT | WLM policy adjustment against real WLM (docs/wlm-design.md) |
 | `pr-followups` | PR | Non-blocking findings left open by PR reviews |
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
 | `balance` | BL | Balance tuning: bot bands, scenario difficulty, sweep regressions. Main agent only (CLAUDE.md) |
 | `cleanup` | CL | Refactors and tooling tidy-ups with no behaviour change (prove it with `npm run compare`) |
+| `prologue` | PRO | The optional guided prologue, the shadow week (docs/prologue-design.md) |
 
 ## playtest-fixes
 
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
-
-### PT-19 · Inbox change notices are always bad news
-`list: playtest-fixes · status: blocked: design · priority: low · size: M · area: content`
-
-By D26 the player rolls back any announced change on sight (Db2 REBIND, monitoring agent). Add changes that help
-(better access path, cheaper agent) so impact has to be judged. Needs a design call: which changes, how often, and how
-the player tells good from bad (SPEC §9 clue rules). Related: under D1 (RT-24) a rollback needs proof that the change
-made work cost more (docs/rca-design.md §4.6, §5.1), which removes the "roll back on sight" habit; the regression
-recipe is the "tell good from bad" mechanism. Decide with RT-24.
-
-### PT-20 · General-purpose operations instead of per-event ones
-`list: playtest-fixes · status: blocked: design · priority: low · size: L · area: game`
-
-Add operations for common fixes that aren't tied to one event, and generalise event-specific ones (e.g. "Recycle CICS
-AORs" with a choice of regions). Each event registers a general operation that fixes it, so `endEventByFix` matches on
-effect, not on a card-specific fix id. Needs a design call, made together with RT-24 (D1): docs/rca-design.md §5.6
-limits which general operations may end a card.
-
-### PT-21 · Starving "Internal" work is free
-`list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
-
-TSO and ADHOC have stakeholder `Internal` and SLA `NONE`. DEV batch is non-critical with `lockIntensity` 0, so capped or
-discretionary work costs nothing (a lever with no cost). Candidates: an Internal trust facet or inbox escalation when
-TSO/ADHOC degrade; capped work holding Db2 locks or ENQs (enqueue promotion); sysprog TSO during incidents.
 
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
@@ -91,52 +68,96 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
+### PT-52 · The world's entities: rosters, CICSXLOG, utility schedule
+`list: playtest-fixes · status: ready · priority: low · size: L · area: sim`
+
+Source: PT-20, decided 2026-11-26 ([docs/pt-20-design.md](docs/pt-20-design.md) §2 rule 7, §3, §4, §10). Add the
+entities the general operations will target, and move the cards onto them, so every build stays coherent: daily
+DDF-thread and TSO-userid rosters with a heavy-tailed CPU spread; a permanent low-CPU CICSXLOG STC that matches the
+`CICS*` rule; each scenario's nightly utility schedule (REORG, COPY, RUNSTATS on most nights); site automation that
+restarts a cancelled STC after N minutes (FICTIONAL), with cancel of base address spaces in the sim. Re-point the cards
+built from modifiers: RUNAWAY's extra CPU goes on one roster thread, SHADOW_IT's on two or three userids, XLOG_LOOP
+makes the permanent CICSXLOG loop (no more `ADD_ADDRESS_SPACE`), REORG_OVERRUN overruns the night's scheduled REORG.
+Add the clues that come with it: a lock-holder clue naming the settlement job during LOCK_ESCALATION, and SICK_AOR's
+abends reported per region. Cards still end by fix id. Done when: each entity and re-pointed card has a unit or realism
+test, goldens are regenerated with a "Behaviour change" note, and a three-scenario sweep is recorded.
+
+### PT-56 · General operations as real levers
+`list: playtest-fixes · status: blocked: after PT-52 · priority: low · size: M · area: sim`
+
+Source: PT-20 (docs/pt-20-design.md §3). Add the seven general operations to Change Desk › Operations with their real
+effects and wrong-target costs: cancel a job/STC/TSO user, cancel a Db2 thread, terminate a Db2 utility, recycle CICS
+regions (`RECYCLE_CICS`), back out a change (wired to the Change board in PT-53), gateway protection (rate limit,
+backoff, block sources) and the HSM recall hold with its backlog. Add the DISPLAY THREAD and DISPLAY UTILITY views,
+report lines for held recalls and gateway modes, and Codex entries. Check the backout lock hold of a cancelled job
+with zos-docs before PT-54 models it. Cards and fix buttons are unchanged and nothing uses the operations yet.
+Coefficients FICTIONAL in `content/`. Done when: each operation's effect and wrong-target cost has a unit or realism
+test, and `npm run compare` against `dev` shows no sim difference (`--drop` for reporting-only fields).
+
+### PT-53 · Other teams' changes on the Change board
+`list: playtest-fixes · status: blocked: after PT-56 · priority: low · size: M · area: game`
+
+Source: PT-20 (docs/pt-20-design.md §6); absorbs PT-19 (inbox change notices were always bad news, so the player
+rolled back any announced change on sight by D26). Add a section for changes made by application teams, DBAs and
+vendors to the existing Change board (`src/ui/changeDesk/Requests.tsx`), beside the player's own: the changes cards
+bring in (the overnight REBIND, teller release 4.2, the monitoring agent, the external SQL procedures) and harmless
+or helpful entries from each scenario's content that match them in owner, timing and frequency. Helpful changes have a
+real benefit. "Back out a change" targets an entry (a REBIND immediately, a release or deployment through the Change
+Desk); backing out a harmless one costs its benefit or feature and trust. Forewarnings post their entry. Done when:
+every card-introduced change and at least as many harmless ones per scenario appear with their time and owner, a
+back-out of a harmless entry has a tested cost, and goldens are regenerated with a "Behaviour change" note.
+
+### PT-54 · Cards end on effect, not on a fix id
+`list: playtest-fixes · status: blocked: after PT-53 · priority: low · size: M · area: game`
+
+Source: PT-20 (docs/pt-20-design.md §4, §5, §7). Give each card an operation ends an `endedBy`
+effect, matched in place of `endEventByFix`, including Harbourline's BOT_ATTACK, RETRY_STORM and ZIIP_LOSS. CICS_SOS
+and HSM_RECALL_STORM are relieved, not ended, with the per-region footprint rule of §5. LOCK_ESCALATION ends by
+cancelling the running settlement job, with its backout lock hold. The four business cards answer through their inbox thread. Delete `FIXES`, `visibleFixIds`,
+`armableEvents`, each card's `fix`, COMMIT_SETTLEMENT_OFTEN and the `NO_TARGET`/`ARMED` lines. Bots' `ON_SIGHT_FIXES`
+map a card to its operation and target, still from truth. Migrate old saves (§7). Rewrite SPEC §9 and §10. Done when:
+no card ends by fix id, goldens are regenerated, and a three-scenario sweep shows each band move is one §7 lists.
+
+### PT-55 · Bots choose operation targets from report data
+`list: playtest-fixes · status: blocked: after PT-54 · priority: low · size: M · area: tooling`
+
+Source: PT-20 (docs/pt-20-design.md §7). Bots pick targets from what a player can read (the Monitor III top consumer,
+DISPLAY THREAD, the Change board, the regions short on storage, the channel with the arrival surge), not from
+`inc.truth`, and release their toggles (HSM hold, gateway modes) when the reports show the storm over. A target the
+data doesn't single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a
+target, a three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call
+on the main agent).
+
 ## rca-truth
 
-RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating, ending in design
-direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
+RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
 - **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. An agent playtest of four 8-day runs (2026-11-21)
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
-  findings RT-28 … RT-31 follow them. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
-  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
+  findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 (problem records) landed 2026-11-25 and stays; D1's proof gate (RT-24) was dropped (user, 2026-11-26) for PT-20's general operations.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-29 · A complete proof for a mechanism the truth does not accept
-`list: rca-truth · status: blocked: design · priority: high · size: M · area: game`
+### RT-31 · The CPU verdict reads the clock-hour average: test it and say so
+`list: rca-truth · status: ready · priority: low · size: S · area: game`
 
-Source: agent playtest 2026-11-21 (runs not committed). Harbourline seed 37 D4 INC35: both THREAD_LIMIT predicates
-green (CICS 110 MXT wait 6762 ms/txn, CPU per transaction ×1.01), primary `QR_TCB/POLICY`, reply "THREAD_LIMIT proven,
-but it was not the cause, so it earns nothing"; the same MXT-queue symptom was QR_TCB on D3/D4 and CPU_PRIORITY on
-D2/D3, and on D1 one hour gave INC1 QR_TCB and INC2 CPU_PRIORITY. Midwest Hard seed 54 D3 INC22: CF02 sync service
-1367 µs against CF01's 18 µs with 98 % async conversion was "CF itself slow: ✗", apparently because CF02 has always
-been slow (a standing misconfiguration is its own baseline). Part of this was RT-17's (co-dominant groups, since
-merged) and RT-19's (THREAD_LIMIT credited at the baseline hold time, docs/rca-design.md §4.2(3), A6). Re-run the
-two repros now that RT-17 has landed;
-what remains needs a design call: accept a mechanism whose complete recipe (including its ruling-out half) holds on the
-incident's own rows and window, or keep it at zero with a reply that says which number made the primary win; and
-whether "slow" for CF/DASD compares against a peer or a configuration norm rather than the resource's own history.
-Done when: the user decides, both repros are tests, and SPEC §10 and §17 say what was decided.
-
-### RT-31 · The time base of the CPU verdict: the clock-hour average, or the intervals in it
-`list: rca-truth · status: blocked: design · priority: low · size: M · area: game`
-
-Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed). A pin of one 30-minute RMF interval
-(CPC 90.1 % for 13:00–13:30) met "processor full", while `capacityBasis` (`src/game/sla.ts`) chose the truth from the
-clock-hour average of every tick (87.1 %). Every CPU line and every RT-32 band is measured on that average
-(docs/rca-design.md A5, §4.3); no section asks whether it should be. CAPPING already reads a share of the hour (capped
-in ≥ 5 % of its ticks, RT-08), not its average. Design call: keep the hour average (the SLA is judged per clock hour),
-use the worst RMF interval in the hour, or use the share of the hour's ticks over the line, as CAPPING does; and
-whether the evidence predicates move to the same time base, so a pin and the truth read the same number. After RT-32,
-so the choice applies to its bands. The reply wording half is RT-30's (landed: the reply now says the truth reads the
-clock hour). Done when: the user decides, the INC6 shape
-(one interval over the line, the hour below it) is a test, and SPEC §10 and §17 state the time base.
+Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed): a pin of one 30-minute RMF interval
+(CPC 90.1 % for 13:00–13:30) met "processor full" while `capacityBasis` (`src/game/sla.ts`) judged the clock-hour
+average (87.1 %). Decided 2026-11-23 (user): keep the clock-hour average as the truth's time base. The SLA is judged
+per clock hour; the worst RMF interval would let a reporting lever move the verdict (`rmfIntervalMin` is the
+player's, and Midwest starts coarse on purpose, F11); a share of ticks over the line is visible in no report (CAPPING
+can use a share because WLM% capped is one). The evidence predicates keep reading the pinned row. INC6 itself is
+covered by RT-32's bands: a CPU_PRIORITY primary on a host at or above `CPU_BANDS.hostRoomFrac` accepts CPU_CAPACITY
+(`game/rcaTruth.ts`). The residue (an interval ≥ 90 % in an hour under 85 %) is explained by RT-30's reply. Done when:
+a test of INC6's shape (one RMF interval over the 90 % line, the hour average inside the 85–95 % band, CPU_PRIORITY
+primary) shows CPU_CAPACITY accepted and its recipe scoring 3 from the interval pin; SPEC §10 and §17 and
+docs/rca-design.md §4.3 state the time base and why.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
@@ -173,23 +194,6 @@ After RT-14. Cards whose footprint reaches the critical jobs' images or LCUs dur
 JOB_FAILURE only when the ABEND's lost time is the largest cause or the job never finished; co-dominant causes
 accepted; capping by share of the night (A12). Done when: a DASD_DEGRADED at 22:00 that makes the window miss is
 IO/HARDWARE_FAULT.
-
-### RT-22 · Problem records: a diagnosis without an SLA incident
-`list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5.1, Q8a) · priority: low · size: L · area: game`
-
-After RT-13. The player opens a problem on a subject and window and files mechanism, trigger and pins; an incident is
-a problem the game opened. Needed because REORG_OVERRUN, ZIIP_LOSS, SMF_AUDIT and a roomy-day REGRESSION open no
-incident (§5.1). Done when: browser and play CLI can open, file and review one, with tests.
-
-### RT-24 · D1: targeted fixes unlocked by proof
-`list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
-
-After RT-13, RT-14, RT-22 (and PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
-Q8a decides problem records (RT-22), Q8b the gating itself, including whether arming a forewarned fix needs proof. Per-card unlock claims and recipes (§5.2) in content;
-`visibleFixIds`/`armableEvents` require a filed diagnosis with a complete recipe; costs and limits of §5.4; hint
-ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a
-three-scenario sweep and a re-tune call on the main agent. Start with REGRESSION and XLOG_LOOP. Done when: SPEC §9
-and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the bands are restored or re-decided.
 
 ### RT-27 · Strong evidence for the pairs three pins cannot prove
 `list: rca-truth · status: blocked: design · priority: low · size: S · area: game`
@@ -239,6 +243,21 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
+### RF-10 · Utility drains on the settlement partition ignore online writers
+`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
+
+Source: PR #488 review (PT-51, finding N1). A drain prevents new claims in each claim class it drains and waits for
+existing claims in those classes to be released; `DRAIN ALL` and `DRAIN WRITERS` both include the write class
+([Db2 13 Managing Performance PDF pp.249–250 (printed 229–230)](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=249)).
+The PT-51 model (`startDb2Contention`, `readClaims` in `src/sim/subsys/db2Contention.ts`) waits only for, and blocks
+only, the tracked BI readers: the authored writers (`MIDWEST_DB2_CONTENTION.writes`) see no drain wait, and a
+writers-only drain is granted at once and affects nothing. Design call needed: whether the Settlement REORG should
+delay online postings (an SLA cost the player then has to diagnose) and how long writer claims last.
+
+Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims, the writers'
+SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 drops the APPROX note, goldens are
+regenerated with a behaviour note and the three-scenario sweep is recorded.
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
@@ -247,37 +266,25 @@ the strategy bots do (docs/rca-design.md §4.8); tuning before them would be red
 
 ## cleanup
 
-### CL-63 · Reconcile the stale "Fix queued" rows in docs/research.md
+### CL-19 · A guard test for the service-class accumulator fields
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
-Source: M8.7 close-out (2026-11-23). List `realism-fixes` is empty, but six docs/research.md rows still say "Fix
-queued" with an old M8.7 item number and no entry behind them: IIPHONORPRIORITY/offline zIIPs (item 6), MAXDBAT and
-MXT queue wait (item 3, two rows), resource group capping of a server region (item 1), an AOR cap reaching
-transaction CPU (item 2), plus SPEC §17's R4HA row ("not phantom weight … fix queued, M8.7"). The code suggests most
-shipped (SPEC §5 polarity under a soft cap, §5.5 region groups, `src/sim/subsys/slots.ts`, `dispatch.ts`
-`iipcpReported`). Change: for each row, check the sim against the cited page (zos-docs skill) and set its status to
-Matches/Modelled/Approx with what the sim does now, or, where the gap is real, file an RF entry and keep "Fix queued"
-pointing at it; fix the SPEC §17 sentence to match. Docs only, no sim change. Done when: no research.md row says "Fix
-queued" without a BACKLOG entry ID, and SPEC §17 agrees.
-
-### CL-19 · One field table for the service-class accumulators
-`list: cleanup · status: blocked: design · priority: high · size: M · area: sim`
-
-**Design question (2026-11-18):** `addScp` runs once per period per tick. Should the single field-spec table *generate*
-the four accumulator functions as static code at build time (checked by a regeneration test), or should all four use a
-table loop, accepting whatever per-tick cost it adds? The entry itself leaves this open ("generate the code, or measure
-that a table loop stays within budget"). Recommend generating static code: it keeps the exact object key order that
-the golden and bench hashes depend on and leaves the hot path unchanged, at the cost of a generated file in `src/sim/`.
-Waiting on the user or main agent's choice before building.
-
-Source: codebase survey (2026-11-16). The fields of the per-period accumulator are listed by hand in four places,
-each with the same optional-field quirks (`delayQueue`, `usingIoNoVel`, `srvUsing`, `workManager`):
-`addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and `addAccInto`/`sumAcc` in
-`src/sim/wlm/runtime.ts`. A new report field needs four edits in lockstep (PR-21 adds several). Change: drive all four
-from one field-spec table (additive, optional, decayed). `addScp` runs every tick and is written without spreads:
-generate the code, or measure that a table loop stays within budget. No behaviour change; label
-`perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
-difference; per-tick timing before and after (`npm run bench`) in the PR.
+Source: codebase survey (2026-11-16); design decided 2026-11-23 (user). The per-period accumulator fields are
+handled by hand in four places: `addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and
+`addAccInto`/`sumAcc` in `src/sim/wlm/runtime.ts`. The original entry proposed driving all four from one field
+table, either generated or looped. Declined: the four are not one field list in four layouts. They differ in which
+fields they carry (`addScp` has no `srv*`, `demand*`, `rtQueueSumSec`, `ziipEnginesView`), in formulas
+(`cpuEngines` is `cpEngines` in `addScp` but `cpEngines + iipcpEngines` in `decayInto`; `ziipEngines` and `demand*`
+seed at steady state; `srvDelayCap` has a compatibility fallback) and in presence rules and key order, which the
+state hash reads. A table would need a per-field rules language and would put the hashes at risk on the hot path.
+The real risk is a new field that misses one of the four functions, and a test catches that. Change, test-only:
+- A field list typed with `satisfies Record<keyof Required<ScpAcc>, …>` (and the same for `ScpTick`'s fields), so a
+  field added to either interface fails typecheck until it is listed.
+- A unit test that fills a tick (and two accumulators) with a distinct non-zero value in every field, runs `addScp`,
+  `decayInto`, `mergeAcc` and `sumAcc`, and asserts every listed field reaches each output non-zero, except fields a
+  function deliberately omits, each listed with its reason.
+No sim change. Done when: the test passes; removing any one field from any of the four functions makes it fail
+(checked by hand once, noted in the PR); `npm run typecheck` clean.
 
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
@@ -292,3 +299,172 @@ workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE
 strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
+
+## prologue
+
+Source: [docs/prologue-design.md](docs/prologue-design.md) (merged in #490; user decisions in its §14). The prologue
+is the optional scenario `midwest-prologue`, on the Midwest plant as is. Hard rule for every entry: no change to
+goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare -- --base origin/dev` and the Midwest and
+Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
+design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
+
+### PRO-01 · A scenario's calendar can start on another day of the month
+`list: prologue · status: ready · priority: high · size: M · area: sim`
+
+`clockAt` hard-wires a run's first Monday to the 3rd of a 30-day month (`src/sim/core/clock.ts`,
+`dayOfMonth: ((calendarDay + 2) % 30) + 1`).
+- Add `monthDayAtStart?` to the sim `Scenario` (default 3) and pass it to every reader of `dayOfMonth` (arrivals'
+  payday and month-end multipliers, the batch network's month-end volumes, `closeMonth` in `tick/control.ts`, the MLC
+  month fraction, the game layer's callers).
+- Weekday arithmetic is unchanged, so day 0 stays a Monday.
+- This is a sim change with no behaviour change: goldens untouched, no "Behaviour change" note, no sweep. Prove it
+  with `npm run compare` (exit 0) and the bench hashes.
+
+Done when:
+- `npm run compare -- --base origin/dev` reports no difference, and the Midwest and Harbourline bench hashes match the
+  base;
+- a unit test shows that with 26, day 0 is Monday the 26th, day 3 has the month-end multiplier, day 4's night closes
+  the month and writes a bill, and the tick after midnight is Saturday the 1st with the payday multiplier.
+
+### PRO-02 · Prologue engine: scheduled cards, starting state, tutorial state, stop ticks
+`list: prologue · status: ready · priority: high · size: L · area: game`
+
+The game-layer engine from design doc §11.1–§11.3 and §11.6, with no content beyond a two-beat test script.
+- **Content types:**
+  - `GameContent.scheduledCards?` (`{ card, day, at, durationHours?, severity? }`, existing `EventDef`s; a run with
+    it draws nothing from the deck);
+  - `startingCommands?` (applied at run creation like `startingFixes`);
+  - `startingCost?` (a seeded month-to-date `CostState`);
+  - `prologue?`.
+  All are absent on the three scenarios.
+- **Run state and commands:**
+  - `RunState.tutor` (`chapter, beat, step, done, hintsUsed, refiles, notes, undoBase`), absent on normal runs;
+  - the game commands `TUTOR_NOTE { kind, ref }` and `TUTOR_ACK`, with no sim effect.
+- **Steps:**
+  - named predicates in `src/game/tutor/predicates.ts`;
+  - beats as stop ticks in `advance` (speed set to 0 at the beat; speed isn't sim state);
+  - condition beats checked at the existing incident boundaries.
+- **Prologue-only rules**, gated on `content.prologue`: one RCA refile; a trust floor with the loss conditions
+  disabled; a scripted change failure (the first change in a named beat fails, overriding the roll); the back-out list
+  (the end state's configuration against the canonical Day 1 state, one line per difference, fixed order).
+- **Registration:** a `PROLOGUE_SCENARIOS` map, not `SCENARIOS`.
+- **Chapter start states:** replayed from a reference command log in `tests/fixtures/prologue/`, not stored saves
+  (design §6.5, §11.6), so skip, replay and put it back start from them.
+- **Headless:** `play new --scenario midwest-prologue` and `play tutor [ack | note <kind> <ref> | hint]`.
+
+Done when:
+- compare and bench hashes are unchanged;
+- tests cover:
+  - the test script's beats stop at their ticks;
+  - a scheduled card starts at its tick with its footprint and RCA truth as a drawn card would;
+  - `startingCommands` and `startingCost` apply;
+  - each prologue-only rule;
+  - the back-out list (empty for an unchanged run, one line per changed setting);
+  - a chapter start state replays from its command log (the same state hash on two replays);
+  - `SCENARIOS` has no prologue entry, and a Midwest run's state has no `tutor` field;
+- `docs/tools.md` lists the new `play tutor` commands.
+
+### PRO-03 · Prologue UI shell: mentor panel, spotlight, anchors, date, entry point
+`list: prologue · status: blocked: after PRO-02 · priority: high · size: L · area: ui`
+
+Design doc §6 and §11.4.
+- **Panel and spotlight:**
+  - `src/ui/tutor/` with `MentorPanel.tsx` (bottom right; bottom sheet at phone width; Hint, Next, Skip step;
+    minimisable), `Spotlight.tsx` and `anchors.ts`;
+  - the spotlight opens the tab and Change Desk section, scrolls to the target and moves focus to it, and never
+    blocks clicks.
+- **Hints:** the three-rung ladder (nudge, pointer, show me), where show me fills the Change Desk draft without
+  submitting it.
+- **Top bar:** "Mon 26 · Shadow week" in place of "Day N / 40" while the prologue runs.
+- **New-run screen:** "Shadow week with Ruth (recommended, ~70 min)" / "Go straight to Day 1", skip and leave
+  controls, and a chapter list after a first finish or skip.
+- **Accessibility:** the outline is not colour alone, the panel is an ARIA live region, and no new single-key
+  shortcuts.
+- **Put it back:** Ruth's offer after a change that breaks the system badly reloads the chapter's start state (a
+  reload, not an undo of the sim; design §6.4, §11.4).
+- The day-1 corner tutorial (`src/ui/Tutorial.tsx`) stays as it is.
+
+Done when the test script from PRO-02 plays end to end in the browser at desktop and phone width, with no horizontal
+page scroll, and a render test asserts each test step's target anchor is on screen in that step's state.
+
+### PRO-04 · Prologue Mon 26 and Tue 27, with the DDFLIMIT flaw
+`list: prologue · status: blocked: after PRO-01, PRO-03 · priority: high · size: L · area: content`
+
+Design doc §3.4, §5.1, §5.2.
+- **Content:** `src/content/prologue/` (`game-prologue.ts`, `flaw.ts`, `schedule.ts`, `script.ts`, `tuning.ts`), with
+  `monthDayAtStart: 26`.
+- **The flaw:** BASEPOL plus the DDFLIMIT resource group on DDFPRD, its maximum `// FICTIONAL:`, tuned so that
+  Monday's mobile peak runs warm with no SLA breach and Tuesday's scheduled `CAMPAIGN` (11:00) breaks MOBILE while
+  PROD2 has room.
+- **Beats:** M1–M6 and T1–T6, with their predicates (`ddfCapRelieved`, the ride-it-out route carried into Wednesday's
+  briefing) and the draft without the MENTOR perk.
+- **Monday we watch:** on Mon 26 the Change Desk's submit buttons say "Monday we watch" while the draft still works
+  (design §5.1, §6.4).
+- **Codex:** notebook pages for Mon and Tue, and a check that the resource groups entry has its own source.
+- **Mentor text:** RCA #1 is written against the truth engine's actual answer and accepted set, not assumed.
+
+Done when, for the two days, tests show:
+- **do-nothing:** Monday has no incident and DDFPRD is warm with CAP delay; Tuesday's incident opens in T3's window,
+  with the truth and accepted set equal to the script's `expect`;
+- **reference:** every step completes, ≥ 2 engineer-hours are left each day, and the policy equals BASEPOL after the
+  fix;
+- **alternatives:** the cap raised, and ride it out;
+- **coverage and anchors** pass for these beats.
+
+### PRO-05 · Prologue Wed 28 and Thu 29: cooling fault, CICS SOS, undo beats, seeded bill
+`list: prologue · status: blocked: after PRO-04 · priority: high · size: L · area: content`
+
+Design doc §5.3, §5.4, §8.4.
+- **Wednesday:** beats W1–W6 and H1–H5, with `POWER_CAP` at 12:00 and the scripted failure on the first change in
+  W4.
+- **Thursday:** `CICS_SOS` at 10:00 on the PROD2 AORs, and the Ask around reply scripted for ~09:30.
+- **Undo beats:** W5 and H3, each either an emergency change now or a normal change in the next briefing, carried
+  into H1 or F1.
+- **Ruth's cost-centre tools:** `TOOL_TRIAL` with an expiry when the player is short of Insight.
+- **The seeded month-to-date cost state** (`cost.ts`, `// FICTIONAL:`): the 1st–25th with a peak a little below what
+  Tuesday's campaign afternoon produces when the cap is removed early and a little above a quiet week (design §8.4),
+  under the opex budget.
+
+Done when the do-nothing, reference and alternative playthroughs hold for these days:
+- incidents open in their windows, with truth equal to `expect`;
+- every alternative fix reaches its undo beat exactly when it should;
+- RCA #3's planted DASD pin is judged "not about the work";
+- after the reference undos, the LPAR profiles, CICS settings and routing equal their start-of-day values.
+
+### PRO-06 · Prologue Fri 30 and the handover; rewards
+`list: prologue · status: blocked: after PRO-05 · priority: high · size: L · area: content`
+
+Design doc §5.5, §8.2, §8.3, §3.2.
+- **Friday:** `RUNAWAY` at 09:30 (solo, hint ladder, AIOps hypothesis) and `JOB_ABEND` at ~01:40 with Ruth's alert
+  and the automation rule.
+- **Ruth's licences (F1, design §8.2):** Capacity planner, What-if, Alerts, Automation and AIOps on for the day on
+  her cost centre; every tool bought or trialled that week goes at the handover, so Day 1 starts with 15 Insight and
+  nothing bought.
+- **The bill (F6):** read from the bill's own data. The peak is set by the week or held by the seed.
+- **The handover (F7):**
+  - the handover note, with the back-out list and the "never got round to" list naming only F6 and F9 (design §3.2,
+    so Story's Day 1 message stays consistent);
+  - Ruth's notebook in the Codex;
+  - the transition to the new-run screen.
+- **Rewards:** 50 career XP once (`src/content/career.ts`), Ruth's terminal (amber theme in `ThemeToggle` and
+  `styles.css`, passing the existing contrast checks) and Ruth's pager (an alert sound in `sound.ts`). The two
+  cosmetics are viewer preferences unlocked by finishing.
+
+Done when:
+- the full five-day reference playthrough ends with an empty back-out list and a bill;
+- the reference run joins the cross-report invariants (`tests/sim/report-invariants.test.ts`) as an extra fixture
+  (design §11.5);
+- the reference run's bill moves or holds the month's peak as design §8.4 says (§11.5);
+- the §9 coverage test passes for every tab and section;
+- the XP is awarded once;
+- a normal run started afterwards is identical to one started without the prologue (state hash at day 0).
+
+### PRO-07 · Prologue playtests and fixes
+`list: prologue · status: blocked: after PRO-06 · priority: high · size: M · area: tooling`
+
+- Add an intern persona brief: knows JCL and SDSF, never owned a WLM policy, experience of other platforms.
+- Play all five chapters headlessly with it, recording each step where it got lost.
+- Run one human playtest with `docs/playtest-checklist.md`, writing it up in `docs/playtests/`.
+- File findings as `playtest-fixes` entries. Fix the small ones in this PR.
+
+Done when both playtests are written up, and every finding is fixed or filed.

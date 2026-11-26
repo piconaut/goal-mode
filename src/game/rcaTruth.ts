@@ -6,9 +6,11 @@
 // hand-listed answer per incident, and each accepted answer carries the one line the reply shows for it.
 
 import { CPU_BANDS, CPU_CAPACITY } from '../content/incidents';
+import { CO_DOMINANT_SHARE } from '../content/sla';
 import { CPU_FAMILY } from '../content/footprint';
+import { slowCf, slowLcu, type CfPeerRow, type LcuPeerRow } from './peerSlow';
 import type { GameContent } from './run/shared';
-import { activeIn, cappedForHour, fallbackTrigger, footprintRelation, hourWindow, qualifyingCards, type WorkScope } from './sla';
+import { activeIn, cappedForHour, fallbackTrigger, footprintRelation, hourWindow, perTxnParts, qualifyingCards, type WorkScope } from './sla';
 import type { ActiveEvent, CapacityBasis, HourAcc, IncidentTruth, Mechanism, Trigger } from './types';
 
 /** The CPU family (content/footprint.ts): used here for the cause's identity and to scope the capacity-card rule (a
@@ -38,6 +40,15 @@ export interface TruthContext {
   servers?: readonly { jobname: string; lparId: string }[];
   /** Every image in the sysplex, to place a server's host on its CPC. */
   lpars: readonly { id: string; cpcId: string }[];
+  /** The CF and DASD Activity rows of the interval that closed the judged hour, for the peer-slow source (RT-35).
+   *  Absent on old hours, batch nights and fixtures. */
+  peers?: {
+    cf?: readonly CfPeerRow[];
+    lcus?: readonly LcuPeerRow[];
+    /** The CFs the work's hosts connect to (Subchannel Activity): absent means every CF counts (an
+     *  interval without Subchannel Activity rows), empty means none is the work's (`slowCf`). */
+    connectedCf?: readonly string[];
+  };
   content: GameContent;
   isNew: boolean;
 }
@@ -57,10 +68,11 @@ const pct = (x: number) => `${x.toFixed(1)} %`;
  *  - a co-dominant delay group adds its mechanism (RT-17, §4.2(2));
  *  - with no card to blame, GROWTH and POLICY are both accepted.
  */
-export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth, 'accepted'>> & { notes: Record<string, string> } {
+export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth, 'accepted'>> & { notes: Record<string, string>; nearMiss?: Partial<Record<Mechanism, string>> } {
   const mechanisms: Mechanism[] = [ctx.mechanism];
   const triggers: Trigger[] = [ctx.trigger];
   const notes: Record<string, string> = {};
+  const nearMiss: Partial<Record<Mechanism, string>> = {};
   // The first reason offered for an answer is the one shown: the card's, then the band's, then the server's.
   const offerMechanism = (m: Mechanism, why: string) => {
     if (mechanisms.includes(m)) return;
@@ -100,7 +112,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   // it is the other half of the cause (§4.4(3)).
   const lead = ranked.find((q) => q.card.uid === card?.uid);
   if (lead && !lead.direct) {
-    offerTrigger(fallbackTrigger(ctx.mechanism, ctx.hour, ctx.isNew), `${lead.card.name} hit it as a neighbour: the policy or headroom left it exposed`);
+    offerTrigger(fallbackTrigger(ctx.mechanism, ctx.hour, ctx.isNew, ctx.workloadId), `${lead.card.name} hit it as a neighbour: the policy or headroom left it exposed`);
   }
 
   // A card that lowered capacity: the machine, not the policy, decided the hour, whatever the bands say. §4.3 scopes
@@ -131,6 +143,32 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   for (const d of ctx.coDominant ?? []) offerMechanism(d.mechanism, d.why);
   if (ctx.cpu?.overflowBlocked || b?.overflowBlocked) offerTrigger('POLICY', 'zIIP work could not overflow while the host CPs had room');
 
+  // A resource far slower than its peers explains the work's CF or I/O time even when nothing grew (RT-35): the
+  // primary stays the growth-ranked answer, but a standing misconfiguration is a defensible reading. Each part is
+  // judged against the work's own response time, as co-dominance is. A peer-slow resource below the share line is a
+  // near miss: the recipe can prove the claim, so the reply says why it earns nothing.
+  const wh = ctx.hour.workloads[ctx.workloadId];
+  if (ctx.peers && wh) {
+    const parts = perTxnParts(wh);
+    const total = wh.completions > 0 ? wh.rtSumSec / wh.completions : 0;
+    if (total > 0) {
+      const share = (part: number) => `${pct((100 * part) / total)} of ${ctx.workloadId}'s response time`;
+      const line = `${Math.round(CO_DOMINANT_SHARE * 100)} %`;
+      const cf = slowCf(ctx.peers.cf ?? [], ctx.peers.connectedCf);
+      if (cf) {
+        const why = `${cf.row.lparId} at ${cf.ratio.toFixed(0)}× ${cf.peer.of}'s ${cf.metric === 'syncUs' ? 'sync service time' : 'async conversion'}`;
+        if (parts.cf !== undefined && parts.cf >= CO_DOMINANT_SHARE * total) offerMechanism('CF_SERVICE', `${why} (${share(parts.cf)})`);
+        else if (parts.cf !== undefined) nearMiss.CF_SERVICE = `${why}, but CF time was ${share(parts.cf)} (accepted from ${line})`;
+      }
+      const lcu = slowLcu(ctx.peers.lcus ?? []);
+      if (lcu) {
+        const why = `LCU ${lcu.row.id} at ${lcu.ratio.toFixed(0)}× the LCU median ${lcu.metric === 'discMs' ? 'DISC' : 'response'} time`;
+        if (parts.io !== undefined && parts.io >= CO_DOMINANT_SHARE * total) offerMechanism('IO', `${why} (${share(parts.io)})`);
+        else if (parts.io !== undefined) nearMiss.IO = `${why}, but I/O time was ${share(parts.io)} (accepted from ${line})`;
+      }
+    }
+  }
+
   // Server waits: when a transaction class misses its goal, WLM finds the regions serving it through the topology and
   // helps the ones that measured delays (SG24-7621 printed p.81 §3.5, p.126 §3.31; docs/research.md), so a server held
   // back for CPU is the served class's goal problem, not a separate resource. APPROX: the sim keeps no per-server CPU
@@ -159,7 +197,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     offerTrigger('POLICY', why);
   }
 
-  return { accepted: { mechanisms, triggers }, notes };
+  return { accepted: { mechanisms, triggers }, notes, ...(Object.keys(nearMiss).length > 0 ? { nearMiss } : {}) };
 }
 
 /** The prefixes of the causes that are not a card's `uid` (§4.5): new work, the player's own change (§4.7), or what

@@ -4,6 +4,8 @@ import { erlangC } from '../zos/erlang';
 export interface SlotQueueResult {
   /** Transactions still queued for a slot at the end of the tick. */
   queued: number;
+  /** Requests released from the slot queue, including immediate attachments. */
+  admitted: number;
   /** Mean wait for a slot, seconds per transaction. */
   waitSec: number;
   /** Fraction of this tick's arrivals that timed out in the queue. */
@@ -11,6 +13,14 @@ export interface SlotQueueResult {
   /** Arrivals this tick that had to wait for a slot (count). Cumulative over the hour, this is the QUEDBAT figure:
    *  the number of work items that waited for a DBAT (Db2 13 Command Reference p.303). */
   waited: number;
+}
+
+/** A member whose tracked claims occupy every DBAT can attach no new arrivals this tick. */
+export function blockedDbats(prevQueued: number, rate: number, timeoutSec: number, tickSec: number): SlotQueueResult {
+  const arrivals = rate * tickSec;
+  const offered = prevQueued + arrivals;
+  const queued = Math.min(offered, rate * timeoutSec);
+  return { queued, admitted: 0, waitSec: timeoutSec, failFrac: arrivals > 0 ? Math.min(1, (offered - queued) / arrivals) : 0, waited: arrivals };
 }
 
 /**
@@ -21,9 +31,9 @@ export interface SlotQueueResult {
  */
 export function slotQueueStep(prevQueued: number, rate: number, holdSec: number, limit: number, timeoutSec: number, tickSec: number): SlotQueueResult {
   const slots = Math.max(1, Math.floor(limit));
-  if (holdSec <= 0) return { queued: 0, waitSec: 0, failFrac: 0, waited: 0 };
-  const mu = slots / holdSec;
   const arrivals = rate * tickSec;
+  if (holdSec <= 0) return { queued: 0, admitted: prevQueued + arrivals, waitSec: 0, failFrac: 0, waited: 0 };
+  const mu = slots / holdSec;
   let queued = Math.max(0, prevQueued + (rate - mu) * tickSec);
   const a = rate * holdSec;
   let erlangWait = 0;
@@ -45,5 +55,5 @@ export function slotQueueStep(prevQueued: number, rate: number, holdSec: number,
   // Count the arrivals that waited: with a backlog or a saturated pool every arrival waits; below saturation it is
   // the Erlang-C wait probability (mirroring the skip above, where no wait is modelled).
   const waited = arrivals * (prevQueued > 1e-9 || a >= slots ? 1 : waitProb);
-  return { queued, waitSec, failFrac, waited };
+  return { queued, admitted: Math.min(prevQueued + arrivals, mu * tickSec), waitSec, failFrac, waited };
 }

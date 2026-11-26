@@ -9,9 +9,9 @@ import { scenarioFor } from '../src/game/difficulty';
 import { newRun, type ChangeRequest } from '../src/game/run';
 import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
-import type { Mechanism, RunState, Trigger } from '../src/game/types';
+import type { Mechanism, ProblemSubject, RunState, Trigger } from '../src/game/types';
 import { hasFeature, needsText, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
-import { batchNight, cicsMonitoring, db2Accounting, db2Statistics, smf113, smfHourRefs } from '../src/game/smf';
+import { batchNight, cicsMonitoring, db2Accounting, db2Blockers, db2Statistics, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
 import { monthElapsedFrac } from '../src/sim/cost/mlc';
@@ -33,6 +33,7 @@ import type { InquiryKind } from '../src/content/inquiries';
 import type { WlmEdit } from '../src/game/wlmEdit';
 import { plannedPolicy } from '../src/game/policies';
 import { buildView } from '../src/game/view';
+import { problemsView } from '../src/game/problems';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import { rcaGroupOf } from '../src/game/run/rca';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
@@ -55,6 +56,8 @@ export type PlayCommand =
   | { cmd: 'cod-deactivate'; changeId: number }
   | { cmd: 'draft'; optionId: string | null }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { cmd: 'problem-open'; subject: ProblemSubject; fromTick: number; toTick: number }
+  | { cmd: 'problem-file'; recordId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
   | { cmd: 'project'; id: string; hours: number }
   | { cmd: 'restart'; name: string }
@@ -196,6 +199,14 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'RCA', incidentId: c.incidentId, mechanism: c.mechanism, trigger: c.trigger, evidenceIds: c.evidenceIds }, content, sc(run));
       return done(o.run, o.message, o.ok, o.pending);
     }
+    case 'problem-open': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'OPEN_PROBLEM', subject: c.subject, fromTick: c.fromTick, toTick: c.toTick }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
+    case 'problem-file': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'FILE_PROBLEM', recordId: c.recordId, mechanism: c.mechanism, trigger: c.trigger, evidenceIds: c.evidenceIds }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
     case 'ask': {
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'ASK', topic: c.topic, workloadId: c.workloadId ?? null }, content, sc(run));
       return done(o.run, o.message, o.ok, o.pending);
@@ -209,7 +220,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       // Whether the command named an interval at all: the CLI's id, or a position in a `json` command's PinRequest.
       const namedInterval = c.intervalId !== undefined || ((req.source === 'CF' || req.source === 'DASD') && req.index !== undefined);
       // Same gate as the view the browser pins from.
-      const feature = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
+      const feature = req.source === 'DB2' || req.source === 'DB2_STATS' || req.source === 'DB2_BLOCKERS' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
       if (feature && !hasFeature(run, feature)) return fail(needsText(feature, `A ${req.source} pin`));
       const shown = buildView(run, sc(run));
       // An interval pin names the interval by its stable id, as `report` shows it. Resolve that once for every source
@@ -313,6 +324,17 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const need = SMF_FEATURE[c.kind];
       if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
       if (!hasFeature(run, need)) return fail(needsText(need, 'This SMF view'));
+      if (c.kind === 'DB2_BLOCKERS') {
+        const view = db2Blockers(run, sc(run));
+        if (c.json) return done(run, JSON.stringify(view));
+        const lines: string[] = [];
+        if (view.drain) {
+          const d = view.drain;
+          lines.push(`${d.name} ${d.member} ${d.object} · ${d.phase === 'WAITING' ? 'waiting for claim release' : 'drained'} · ${d.pendingReaders.toFixed(1)} readers waiting for a drain lock`);
+        }
+        for (const r of view.rows) lines.push(`${r.member} / ${r.lparId} · ${r.workloadId} (${r.serviceClass}) · ${r.object} · ${r.type} · mean age ${r.ageSec.toFixed(1)} s · CPU shortfall ${r.cpuDelayPct.toFixed(1)}% · CAP ${r.capPct.toFixed(1)}%`);
+        return done(run, lines.join('\n') || 'No current tracked locks or claims');
+      }
       const hourly = c.kind === 'DB2' || c.kind === 'CICS' || c.kind === 'DB2_STATS';
       const hours = smfHourRefs(run);
       const hour = hourly ? smfHourKey(run, c.hour) : undefined;
@@ -328,7 +350,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const head = hourly ? `hour ${label ?? 'none'}\n${list}\n` : '';
       const body = c.json
         ? Array.isArray(rows) ? rows.map((r) => JSON.stringify(r)).join('\n') : JSON.stringify(rows, null, 1)
-        : Array.isArray(rows) ? (rows.length ? table(rows) : '') : rows ? batchText(rows) : '';
+        : Array.isArray(rows) ? (rows.length ? table(rows.map((row) => 'contention' in row ? { ...row, ...row.contention, contention: undefined } : row)) : '') : rows ? batchText(rows) : '';
       const r = hourly ? noteReportOpened(run, `SMF:${c.kind}:${hour}`) : run;
       return done(r, head + (body || 'no data'));
     }
@@ -420,6 +442,8 @@ export function statusText(file: PlayFile): string {
     return ws.length ? ` (same cause, one RCA covers: ${ws.join(', ')})` : '';
   };
   if (open.length) out.push('incidents without RCA: ' + open.map((i) => `${idText('incident', i.id)} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));
+  const problems = v.problems.records;
+  if (problems.length) out.push(`problem records: ${problems.map((p) => `REC${p.id} ${p.subjectLabel} ${p.windowLabel} (${p.filings.length} filing${p.filings.length === 1 ? '' : 's'})`).join('; ')}`);
   if (run.pins.length) out.push('pinned evidence (rca ... --evidence ids):\n' + run.pins.map((p) => `  ${idText('pin', p.id)}: ${p.text}`).join('\n'));
   const asks = inquiriesView(run, sc(run)).pending;
   if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));
@@ -651,6 +675,38 @@ export function policyText(file: PlayFile, pending: boolean): string {
 }
 
 /** What can be ordered or fixed: the Change Desk catalog, the tool tree and the RCA vocabulary. */
+/** `problem` (list) or `problem show REC1`: the records, their filings and the subjects/hours a new record can use. */
+export function problemsText(file: PlayFile, recordId?: number): string {
+  const run = file.run;
+  const v = problemsView(run, sc(run));
+  const records = recordId === undefined ? v.records : v.records.filter((r) => r.id === recordId);
+  if (recordId !== undefined && records.length === 0) return `No problem record ${idText('record', recordId)}; open one with: problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"`;
+  const out: string[] = [];
+  out.push(`problem records · filing costs ${v.costHours} engineer-hours · ${v.filingsPerDay}/day · one an hour · a window may cover ${v.maxWindowHours} clock hours`);
+  if (recordId === undefined) {
+    out.push(`closed hours: ${v.hours.length}${v.hours.length ? ` (${v.hours[0]!.label} … ${v.hours.at(-1)!.label})` : ''}`);
+    out.push('subjects: ' + ['WORKLOAD', 'CLASS', 'IMAGE', 'JOB'].map((k) => `${k.toLowerCase()} ${v.subjects.filter((s) => s.kind === k).length}`).join(', '));
+  }
+  if (records.length === 0) {
+    out.push('no records yet: problem open workload RBANK --from "D2 10:00" --to "D2 12:00"');
+    return out.join('\n');
+  }
+  for (const r of records) {
+    out.push(`REC${r.id} ${r.subjectLabel} · ${r.windowLabel} · ${r.attemptsToday}/${v.filingsPerDay} filed today${r.nextAt ? ` · next after ${r.nextAt}` : ''}`);
+    if (r.filings.length === 0) out.push('  (no filing yet; the window\'s truth stays hidden until one)');
+    for (const f of r.filings) {
+      out.push(`  ${f.mechanism} / ${f.trigger} · ${f.points} points${f.trust ? ` · trust ${f.trust > 0 ? '+' : ''}${f.trust}` : ''}`);
+      for (const line of f.reply.slice(1)) out.push(`    ${line}`);
+    }
+  }
+  if (recordId === undefined) {
+    out.push('open: problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"');
+    out.push('file: problem file REC1 <MECHANISM> <TRIGGER> [--evidence PIN1,PIN2]');
+    out.push(`subjects: ${v.subjects.slice(0, 12).map((s) => s.id).join(' ')}${v.subjects.length > 12 ? ' …' : ''}`);
+  }
+  return out.join('\n');
+}
+
 export function catalogText(file: PlayFile): string {
   const v = buildView(file.run, sc(file.run));
   const out = ['hardware (change {"label":..,"hardwareId":ID}):'];

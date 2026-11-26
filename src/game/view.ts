@@ -2,6 +2,7 @@ import type { DifficultyId } from '../content/difficulty';
 import { packOf } from '../content/packs';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
+import { problemsView } from './problems';
 import { serviceClassGoalIssues, cicsTransactionClasses, type GoalIssue } from './wlmEdit';
 import type { ResourceGroupDef, ServiceClassDef, ServiceDefinition } from '../sim/wlm/types';
 import type { RoutingPolicy } from '../sim/workload/routing';
@@ -208,6 +209,8 @@ export interface ViewModel {
   /** Full service class definitions of the active policy (the editor's starting point). */
   classDefs: ServiceClassDef[];
   inquiries: ReturnType<typeof inquiriesView>;
+  /** Problem records (RT-22): what the player opened, its filings, and the subjects/hours it can open one on. */
+  problems: ReturnType<typeof problemsView>;
   ioPriorityManagement: boolean;
   cicsClasses: string[];
   goalIssues: GoalIssue[];
@@ -381,6 +384,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     resourceGroups: def.resourceGroups,
     classDefs: def.classes,
     inquiries: inquiriesView(run, scenario),
+    problems: problemsView(run, scenario),
     ioPriorityManagement: def.ioPriorityManagement !== false,
     cicsClasses: cicsTransactionClasses(def),
     goalIssues: serviceClassGoalIssues(def),

@@ -7,6 +7,7 @@ import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { COD_DEACTIVATE_HOURS, DASD_REBALANCE } from '../../content/hardware-catalog';
 import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { engineerHoursMult, slowInternalOf } from '../staff';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
 import {
@@ -46,6 +47,9 @@ export function failRisk(run: RunState): number {
 }
 
 export function previewContext(run: RunState, content?: GameContent) {
+  // The team's own work can make hands-on hours dearer (PT-50): the surcharge is derived from the closed hours,
+  // so it disappears as soon as the work meets its goal again.
+  const slow = slowInternalOf(run, content?.internalGoal ?? packOf(run.scenarioId).game.internalGoal);
   return {
     phase: run.phase,
     perks: run.perks,
@@ -57,6 +61,7 @@ export function previewContext(run: RunState, content?: GameContent) {
     blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
     cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
     ...(content ? { fixIds: fixIdsOf(content) } : {}),
+    ...(slow ? { staffSurcharge: { mult: slow.hoursMult, rtSec: slow.rtSec, goalSec: slow.goalSec, missedHours: slow.missedHours } } : {}),
   };
 }
 
@@ -204,11 +209,12 @@ export function deactivateCod(run: RunState, changeId: number): ChangeOutcome {
   const c = run.changes.find((x) => x.id === changeId);
   if (!c || c.status !== 'APPLIED' || c.opexPerDay <= 0 || c.revertDay === null) return { run, ok: false, message: 'No active On/Off CoD order with that id' };
   if (c.revertDay <= run.day + 1) return { run, ok: true, message: 'On/Off CoD already deactivates by tomorrow' };
-  if (run.hoursLeft < COD_DEACTIVATE_HOURS) return { run, ok: false, message: `Needs ${COD_DEACTIVATE_HOURS}h` };
+  const cost = COD_DEACTIVATE_HOURS * engineerHoursMult(run);
+  if (run.hoursLeft < cost) return { run, ok: false, message: `Needs ${cost}h` };
   return {
-    run: spendHours(logLine({ ...run, changes: run.changes.map((x) => (x.id === changeId ? { ...x, revertDay: run.day + 1 } : x)) }, `On/Off CoD: deactivation scheduled for 06:00 tomorrow (APPROX)`), COD_DEACTIVATE_HOURS),
+    run: spendHours(logLine({ ...run, changes: run.changes.map((x) => (x.id === changeId ? { ...x, revertDay: run.day + 1 } : x)) }, `On/Off CoD: deactivation scheduled for 06:00 tomorrow (APPROX)`), cost),
     ok: true,
-    message: `On/Off CoD deactivates at 06:00 tomorrow (${COD_DEACTIVATE_HOURS}h)`,
+    message: `On/Off CoD deactivates at 06:00 tomorrow (${cost}h)`,
   };
 }
 
@@ -238,7 +244,7 @@ export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
   };
 }
 
-function spendHours(run: RunState, hours: number): RunState {
+export function spendHours(run: RunState, hours: number): RunState {
   const left = run.hoursLeft - hours;
   const overtime = Math.max(0, -left) - Math.max(0, -run.hoursLeft);
   return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };

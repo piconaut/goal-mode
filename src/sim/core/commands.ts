@@ -29,6 +29,7 @@ export type Command =
   | { kind: 'SET_CPC_MEMORY'; cpcId: string; memoryGb: number }
   | { kind: 'SET_LPAR_MEMORY'; lparId: string; memoryGb: number }
   | { kind: 'SET_DB2'; ssid: string; bufferPoolGb?: number; maxDbat?: number }
+  | { kind: 'CANCEL_DB2_READERS'; members: readonly string[] }
   | { kind: 'SET_CICS'; name: string; maxTasks?: number; qrFrac?: number; edsaLimitMb?: number; leak?: { startMb: number; mbPerHour: number } | null }
   | { kind: 'ADD_AOR'; lparId: string; name: string; maxTasks: number; qrFrac: number }
   | { kind: 'SET_JOB_CLASS'; jobClass: string; mode?: 'JES' | 'WLM'; initiators?: Record<string, number> }
@@ -339,6 +340,21 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
 
     case 'SET_DASD':
       return ok(withConfig(s, (c) => Object.assign(c.dasd, cmd.changes)), 'DASD configuration updated');
+
+    case 'CANCEL_DB2_READERS': {
+      const db2 = s.env.db2Contention;
+      if (!db2) return ok(s, 'Db2 reader cancellation');
+      let readers: typeof db2.readers | undefined;
+      for (const member of cmd.members) {
+        const reader = db2.readers[member];
+        if (!reader?.count) continue;
+        (readers ??= { ...db2.readers })[member] = {
+          ...reader, count: 0, ageSec: 0, cpRefSec: 0, ziipRefSec: 0, workByPeriod: [],
+          cancelled: reader.count,
+        };
+      }
+      return ok(readers ? { ...s, env: { ...s.env, db2Contention: { ...db2, readers } } } : s, 'Db2 reader cancellation');
+    }
 
     case 'SET_ROUTING_POLICY': {
       const { [cmd.workloadId]: _old, ...rest } = s.routingPolicies ?? {};

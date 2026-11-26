@@ -1,4 +1,5 @@
 import { cardMechanisms } from '../../src/content/footprint';
+import { CO_DOMINANT_SHARE } from '../../src/content/sla';
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
@@ -122,6 +123,50 @@ describe('accepted answer sets (RT-07)', () => {
     const busyCpc = { ...newHour(0), ticks: TICKS_PER_HOUR, cpcBusyById: { CPCA: 0.85 * TICKS_PER_HOUR }, lparBusyById: { PROD2: 0.4 * TICKS_PER_HOUR } };
     const quiet = acceptedAnswers(ctx({ mechanism: 'DEPENDENCY', trigger: 'POLICY', hour: busyCpc, servers: [{ jobname: 'DB2MSTR', lparId: 'PROD2' }] }));
     expect(quiet.accepted.mechanisms).toEqual(['DEPENDENCY']);
+  });
+
+  it('accepts a peer-slow CF or LCU at a third of the response, and names the near miss below it (RT-35)', () => {
+    // oneHour: the work's summed parts; the response time is rtSumSec / completions.
+    const oneHour = (id: string, parts: Record<string, number>, rtSumSec = 200, completions = 1000) => ({
+      ...newHour(0), ticks: TICKS_PER_HOUR,
+      workloads: { [id]: { completions, withinSla: completions, failed: 0, rtSumSec, parts } },
+    });
+    const cfPeers = {
+      cf: [
+        { lparId: 'CF01', reqPerSec: 5000, syncUs: 18, asyncPct: 0 },
+        { lparId: 'CF02', reqPerSec: 2000, syncUs: 1368, asyncPct: 98 },
+      ],
+      connectedCf: ['CF01', 'CF02'],
+    };
+    // INC22's measured hour: CF02 is 76× CF01, but CF time is 3.51 ms of CARDAUTH's 18 ms response (19.5 %).
+    // The claim can be proven from the peer rule, but it is not accepted; the near miss says why.
+    const inc22 = acceptedAnswers(ctx({ workloadId: 'CARDAUTH', mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour('CARDAUTH', { cf: 3.51 }, 18), peers: cfPeers }));
+    expect(inc22.accepted.mechanisms).toEqual(['CPU_PRIORITY']);
+    expect(inc22.nearMiss?.CF_SERVICE).toMatch(/CF02 at 76× CF01's sync service time, but CF time was 19\.5 % of CARDAUTH's response time \(accepted from 33 %\)/);
+    // The FAIL_CF structure-move state (CF 11.38 ms of a 30 ms response, 37.9 %) is accepted.
+    const moved = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour('MOBILE', { cf: 11.38 }, 30), peers: cfPeers }));
+    expect(moved.accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CF_SERVICE']);
+    expect(moved.notes.CF_SERVICE).toMatch(/CF02 at 76× CF01's sync service time/);
+    // Exactly a third counts, by the same arithmetic the source uses.
+    const total = 30 / 1000;
+    const atLine = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour('MOBILE', { cf: CO_DOMINANT_SHARE * total * 1000 }, 30), peers: cfPeers }));
+    expect(atLine.accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CF_SERVICE']);
+    // A slow CF the work does not connect to is not its resource.
+    const unconnected = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour('MOBILE', { cf: 80 }), peers: { ...cfPeers, connectedCf: ['CF01'] } }));
+    expect(unconnected.accepted.mechanisms).toEqual(['CPU_PRIORITY']);
+    expect(unconnected.nearMiss).toBeUndefined();
+    // The DASD equivalent: LCU 30's DISC against the 0.07 ms median of three LCUs; below a third is a near miss.
+    const lcuPeers = { lcus: [
+      { id: '10', iops: 300, discMs: 0.07, rtMs: 0.22 },
+      { id: '21', iops: 500, discMs: 0.07, rtMs: 0.22 },
+      { id: '30', iops: 400, discMs: 0.4, rtMs: 0.22 },
+    ] };
+    const io = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour('MOBILE', { io: 80 }), peers: lcuPeers }));
+    expect(io.accepted.mechanisms).toEqual(['CPU_PRIORITY', 'IO']);
+    expect(io.notes.IO).toMatch(/LCU 30 at 6× the LCU median DISC time/);
+    const ioShort = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', hour: oneHour('MOBILE', { io: 3 }, 30), peers: lcuPeers }));
+    expect(ioShort.accepted.mechanisms).toEqual(['CPU_PRIORITY']);
+    expect(ioShort.nearMiss?.IO).toMatch(/I\/O time was 10\.0 % of MOBILE's response time \(accepted from 33 %\)/);
   });
 
   it('with no card to blame accepts GROWTH and POLICY together, and new work keeps one answer', () => {

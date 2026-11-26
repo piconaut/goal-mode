@@ -27,6 +27,8 @@ export interface RecipeCheck {
   predicates: PredicateCheck[];
   /** Whether the truth accepts the claim: set when the RCA is scored (a bare `judgeProof` result has not been). */
   accepted?: boolean;
+  /** Why a proven claim earns nothing (RT-35's peer rule below the response share), shown beside the verdict. */
+  why?: string;
 }
 
 export interface ProofResult {
@@ -134,6 +136,9 @@ function optionHolds(ctx: ProofContext, p: EvidencePin, relation: PinRelation | 
     }
     case 'noHistory':
       return withoutHistory(run, p);
+    case 'peerSlow':
+      // A resource far slower than its peers (RT-35): the peer reading was frozen on the pin when it was taken.
+      return p.peer !== undefined && p.peer.value > 0 && value >= t.ratio * p.peer.value;
   }
 }
 
@@ -145,21 +150,58 @@ interface Related {
   p: EvidencePin;
   ctx: ProofContext;
   relation: PinRelation | null;
+  /** Index in the judged group: a tied ruling-out option must read the same incident as the symptom it rules out. */
+  incident: number;
 }
 
+type Predicate = ProofRecipe['predicates'][number];
+
 function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, recipe: ProofRecipe, pins: readonly EvidencePin[]): RecipeCheck {
-  const holding = (pred: ProofRecipe['predicates'][number], ok: (o: PredicateOption, p: EvidencePin) => boolean) =>
-    new Set(related.filter(({ p, ctx, relation }) => pred.options.some((o) => ok(o, p) && optionHolds(ctx, p, relation, o))).map(({ p }) => p.id));
+  const meets = (pred: Predicate, e: Related): boolean => pred.options.some((o) => optionHolds(e.ctx, e.p, e.relation, o));
+  const holding = (pred: Predicate, ok: (o: PredicateOption, p: EvidencePin, e: Related) => boolean) =>
+    new Set(related.filter((e) => pred.options.some((o) => ok(o, e.p, e) && optionHolds(e.ctx, e.p, e.relation, o))).map((e) => e.p.id));
   // An option marked `sameWork` must read the same row (image and class, or workload) as a pin meeting the first
   // predicate: a cost rise on one class and a flat rate on another are not one regression. Group pooling is untouched,
   // since the tie is between pins, whichever incident each was judged for.
   const first = holding(recipe.predicates[0], () => true);
   const firstWork = new Set(pins.filter((p) => first.has(p.id)).map(workOf));
+  // Which symptoms met the first predicate, per incident, for a ruling-out option tied to one of them (RT-34): the QR
+  // wait rules out a CICS slot queue, CPU per transaction a DBAT queue. A grouped RCA pools rows from several
+  // incidents, so the tie is per incident: a QR reading on another workload cannot rule out this one's slot queue.
+  const firstMetrics = new Map<number, Set<EvidenceMetric>>();
+  for (const e of related) {
+    if (e.relation === null || !meets(recipe.predicates[0], e)) continue;
+    const s = firstMetrics.get(e.incident) ?? new Set<EvidenceMetric>();
+    s.add(e.p.metric);
+    firstMetrics.set(e.incident, s);
+  }
   const predicates = recipe.predicates.map((pred, k): PredicateCheck => {
-    const ids = k === 0 ? first : holding(pred, (o, p) => !o.sameWork || firstWork.has(workOf(p)));
-    const pinIds = pins.map((p) => p.id).filter((id) => ids.has(id));
-    const failed = pinIds.length > 0 ? undefined : failedReadingOf(pred, related);
-    return { label: pred.label, met: pinIds.length > 0, pinIds, ...(failed ? { failedReading: failed } : {}) };
+    // A predicate without tied options keeps the ordinary any-option rule; a tied one must cover every met symptom
+    // on its own incident, so a CICS slot queue needs its QR reading even when a DBAT queue also shows.
+    if (k === 0 || !pred.options.some((o) => o.rulesOut)) {
+      const ids = k === 0 ? first : holding(pred, (o, p) => !o.sameWork || firstWork.has(workOf(p)));
+      const pinIds = pins.map((p) => p.id).filter((id) => ids.has(id));
+      const failed = pinIds.length > 0 ? undefined : failedReadingOf(pred, related);
+      return { label: pred.label, met: pinIds.length > 0, pinIds, ...(failed ? { failedReading: failed } : {}) };
+    }
+    const uncovered = new Map<number, Set<EvidenceMetric>>();
+    const cover = new Set<number>();
+    for (const [incident, symptoms] of firstMetrics) {
+      for (const m of symptoms) {
+        const entries = related.filter((e) => e.incident === incident && e.relation !== null
+          && pred.options.some((o) => o.rulesOut?.includes(m) && optionHolds(e.ctx, e.p, e.relation, o)
+            && (!o.sameWork || firstWork.has(workOf(e.p)))));
+        if (entries.length === 0) {
+          const u = uncovered.get(incident) ?? new Set<EvidenceMetric>();
+          u.add(m);
+          uncovered.set(incident, u);
+        } else for (const e of entries) cover.add(e.p.id);
+      }
+    }
+    const met = uncovered.size === 0 && firstMetrics.size > 0;
+    const pinIds = pins.map((p) => p.id).filter((id) => cover.has(id));
+    const failed = met ? undefined : failedReadingOf(pred, related, uncovered);
+    return { label: pred.label, met, pinIds, ...(failed ? { failedReading: failed } : {}) };
   });
   return { claim, complete: predicates.every((x) => x.met), predicates };
 }
@@ -167,13 +209,19 @@ function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, re
 /** The largest reading among the related pins that fail a predicate, for the reply's quote. Largest, not closest
  *  to the line: for a ruling-out predicate ("< 25 %") it is the pin furthest over, which is why it failed.
  *  Only a pin the predicate's own relation and option allow is quoted: a wrong-class row must not explain the
- *  failure (RT-30). A rate reading is an ended rate, whatever metric carries the cost. */
-function failedReadingOf(pred: ProofRecipe['predicates'][number], related: readonly Related[]): PredicateCheck['failedReading'] {
+ *  failure (RT-30). A rate reading is an ended rate, whatever metric carries the cost. With `required` (a tied
+ *  predicate), only an option that rules out one of the uncovered symptoms on that pin's incident is quoted. */
+function failedReadingOf(pred: Predicate, related: readonly Related[], required?: ReadonlyMap<number, Set<EvidenceMetric>>): PredicateCheck['failedReading'] {
   let best: PredicateCheck['failedReading'];
-  for (const { p, ctx, relation } of related) {
+  for (const { p, ctx, relation, incident } of related) {
     if (relation === null) continue;
     const o = pred.options.find((x) => x.metric === p.metric && x.relations.includes(relation));
-    if (!o || optionHolds(ctx, p, relation, o)) continue;
+    if (!o) continue;
+    if (required) {
+      const needing = required.get(incident);
+      if (!o.rulesOut || !needing || !o.rulesOut.some((m) => needing.has(m))) continue;
+    }
+    if (optionHolds(ctx, p, relation, o)) continue;
     const value = o.reading === 'rate' ? p.rate?.value : p.value;
     if (value === undefined) continue;
     if (!best || Math.abs(value) > Math.abs(best.value)) best = { pinId: p.id, metric: o.reading === 'rate' ? 'ENDED_RATE' : o.metric, value };
@@ -195,11 +243,11 @@ export function judgeProof(
   pins: readonly EvidencePin[],
 ): ProofResult {
   const batch = new Set(subsystemClasses(run.sim.wlm.definition, 'JES'));
-  const related = group.flatMap((inc): Related[] => {
+  const related = group.flatMap((inc, incident): Related[] => {
     const subjects = inc.subjects;
     const ctx: ProofContext = { run, batch, subjects, scenario, pool: inc.basis?.pool ?? 'CP' };
     const { lo, hi } = incidentWindow(run, inc);
-    return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects) }));
+    return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects), incident }));
   });
   return {
     mechanism: checkRecipe(related, mechanism, MECHANISM_RECIPES[mechanism], pins),
@@ -211,7 +259,7 @@ export function judgeProof(
 export function recipeHeading(c: RecipeCheck, what: 'Mechanism' | 'Trigger'): string {
   const name = what === 'Trigger' ? triggerLabel(c.claim as Trigger) : c.claim;
   const verdict = c.complete ? 'proven' : 'your pins did not prove it';
-  const unearned = c.complete && c.accepted === false ? ', and it earns nothing: it was not the cause' : '';
+  const unearned = c.complete && c.accepted === false ? `, and it earns nothing: it was not the cause${c.why ? ` — ${c.why}` : ''}` : '';
   return `${what} ${name}: ${verdict}${unearned}`;
 }
 

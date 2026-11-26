@@ -1,6 +1,6 @@
-// Incidents, pins, planned changes, alerts, automation rules and inquiries all draw ids from one run counter
+// Incidents, pins, planned changes, alerts, automation rules, inquiries and problem records all draw ids from one run counter
 // (RunState.nextId); a prefix per kind keeps pin 12 from reading like incident 13 (playtest round 2, finding K).
-export const ID_PREFIX = { incident: 'INC', pin: 'PIN', change: 'CHG', alert: 'ALR', automation: 'AUT', inquiry: 'INQ' } as const;
+export const ID_PREFIX = { incident: 'INC', pin: 'PIN', change: 'CHG', alert: 'ALR', automation: 'AUT', inquiry: 'INQ', record: 'REC' } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 
 export const idText = (kind: IdKind, id: number): string => `${ID_PREFIX[kind]}${id}`;

@@ -148,7 +148,7 @@ export const MIDWEST_WORKLOADS: WorkloadDef[] = [
     growthPerDay: 0.005,
     noiseSigma: 0.25,
     noisePhi: 0.9,
-    routing: { PROD2: 1 },
+    routing: { PROD2: 1, PROD1: 0 },
     cpuMsRef: 900,
     cpuSigma: 1.4,
     ziipFrac: 0.6,

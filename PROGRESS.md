@@ -10,7 +10,18 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-23: M8.7 realism closed: audit fixes RF-01 … RF-09 merged (#428–#433, #478, #479) and BACKLOG `realism-fixes` is empty; RF-05 and RF-08 are on `dev`, not yet `main`. Six docs/research.md rows still read "Fix queued (M8.7 item N)" with no entry behind them; reconciling them is BACKLOG CL-63.
+- 2026-11-26: PT-20 decided ([docs/pt-20-design.md](docs/pt-20-design.md); user: Q1–Q7 yes; revised after an adversarial review): seven general operations with real wrong-target costs on entities in always-present rosters, 21 cards end or are relieved through one, 4 business cards through inbox replies; five entries: PT-52 (entities, ready), PT-56 (operations), PT-53, PT-54, PT-55.
+- 2026-11-26: Design call (user): D1's proof gate (RT-24) dropped, Q8b no; PT-20 becomes a design note for general operations, followed by PT-52 … PT-55; PT-19 folds into PT-53.
+- 2026-11-25: Shadow week prologue designed ([docs/prologue-design.md](docs/prologue-design.md), #490) and scoped into BACKLOG list `prologue` (PRO-01 … PRO-07).
+- 2026-11-25: RT-22 problem records: the player can open a record on a workload, service-class period, image or job over whole closed clock hours and file the same mechanism/trigger/pins as an RCA. `closeHour` stores quiet-hour facts for met hours that a card touched, that grew a delay group past the floor, or whose CF/LCU is far slower than its peers; the record freezes the window's truth (card, quiet hour, standing fault or no problem) and prices a filing at 0.25 engineer-hours, three a day one an hour, with −0.5 trust for a wholly wrong filing once a day. A correct answer earns an RCA's reward on the subject's facet, and one §4.5 episode pays once (an incident RCA and a record of the same episode; a later day or a fallback cause more than two hours on is new, and a record chains back-to-back quiet hours). No fix unlocks yet (Q8b). Browser Problems card, `play problem`, Codex and SPEC §10. Compare: no differences with `--drop quietHours`; without the drop Harbourline gains two quiet-hour facts (record-only state) while sim, log, RMF and Monitor III stay the same; goldens unchanged (the field is absent until a quiet hour exists); three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45552813412, 45552819909, 45552828780): Midwest 16.5 / 28 / 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
+- 2026-11-24: PT-50 a slow TSO costs the team engineer-hours: each scenario's content gives TSO's first period an average 0.5 s goal (not an SLA), and when the newest two clock hours miss it every hands-on change, fix, restart, hardware order and CoD deactivation costs 1.5×; the Change Desk banner and cost labels say why, one developer complaint per episode names the response time and the goal (the WLMGL TSO row), and the price returns when the newest hours meet it. Project time and inquiries are planned, not hands-on, and are not surcharged. Coefficients FICTIONAL in `content/staff.ts`; compare: no differences; goldens regenerated for the scripted capped run's complaint and Codex marker; three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45524183792, 45524184079, 45524184330): Midwest 16.5 / 28 / 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
+- 2026-11-24: PT-51 Midwest models CPU-paced DDF reader cohorts on the shared settlement partition. CS/RR readers can delay conflicting online work and all-class drains, UR readers affect drains, and Db2 accounting, statistics and blocker pins expose the separate waits and the holder. [PR #488](https://github.com/piconaut/goal-mode/pull/488)
+- 2026-11-24: PT-51 research verified WLM chronic-contention promotion, Db2 read claims under CS/UR/RR, and accounting, statistics and blocker diagnostics. PT-51 is ready with scoped DDF lock and utility drain models and a holder clue path.
+- 2026-11-23: RT-35 a CF or LCU far slower than its peers is accepted evidence: CF_SERVICE and IO accept a CF at ≥ 4× the work's best CF sync service time or async conversion, or an LCU at ≥ 4× the all-LCU median DISC or response (the pin freezes the peer reading), and the truth adds CF_SERVICE or IO when that resource carries ≥ ⅓ of the work's response time; the primary stays growth-ranked. INC22's standing CF02 flaw now proves from CF Activity but stays unaccepted at its 19.5 % share (the 1/3 line is kept), and the reply says why; the FAIL_CF structure-move state (36–44 %) is accepted. Three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45309639199, 45309638177, 45309636141): Midwest donothing 16.5 / textbook 28 / expert 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
+- 2026-11-23: RT-34 THREAD_LIMIT's ruling-out half is tied to the symptom that met its first predicate (`rulesOut`): a CICS slot queue (`MXT_WAIT`, `SOS_MIN`) needs QR wait < 5 ms/txn on the hurt work, because tasks held on a saturated QR TCB keep their MXT slots longer at an unchanged cost per transaction; a DBAT queue keeps CPU per transaction normal and an initiator wait the jobs' CPU wait. Every met symptom needs its own reading on its incident, so a combined queue needs both. The INC35 shape no longer completes the recipe, a too-low MXT with QR normal still does, and the reply names the QR wait line. The replay's own incident (MXT lowered while QR is saturated) is still blamed on THREAD_LIMIT but proves neither recipe: that low-limit residue stays RT-19's, as the entry says. Proof recipes only: truth labels, goldens and sweeps do not move.
+- 2026-11-23: Backlog design calls (user): RT-29 split into RT-34 (THREAD_LIMIT must rule out QR) and RT-35 (a resource far slower than its peers is accepted); RT-31 keeps the clock-hour average; CL-19 becomes a field guard test; PT-21 split into PT-50 (slow TSO costs engineer-hours) and PT-51 (research); Q8a yes, so RT-22 problem records is ready.
+- 2026-11-23: CL-63 reconciled the stale docs/research.md "Fix queued" rows with the code and the pages: Honor Priority and offline zIIPs (PT-06), unbounded MAXDBAT/MXT queues (realism fix 3), a capped server's dependents (realism fix 1, RF-09) and an AOR group cap reaching transaction CPU (realism fix 2) now read Matches/Approx, and SPEC §17's R4HA row states the modelled phantom-weight polarity instead of a queued fix.
+- 2026-11-23: M8.7 realism closed: audit fixes RF-01 … RF-09 merged (#428–#433, #478, #479) and BACKLOG `realism-fixes` is empty; RF-05 and RF-08 are on `main` via the dev → main milestone PR #481.
 - 2026-11-23: RF-08 a capacity group gives each member its own view of the group's four-hour average (the group's slots since that member joined, zero-filled before), so a member added to an existing group sees more unused capacity and may cap later; Partition Data and the Monitor III CPC header print AVAILABLE and flag the LIMIT with `*` for four hours, a changed group limit restarts the views, and the cap decision reads the member's view, not the group's combined one.
 - 2026-11-23: RF-05 MSU is charged on effective CP dispatch time (physical dispatch less the LPAR management share) instead of total dispatch time, so the header MSU, Partition Data MSU AVG, Monitor III CPC MSU Act, the R4HA, soft capping and the bill read one rate and an image no longer shows two MSU figures at once; R4HA and bills fall by the overhead share (1–3 % on the reference runs), while LPAR BUSY and physical busy keep total dispatch time. Ten-seed three-bot sweeps (Normal, all in band; runs 45111397822, 45115168408, 45115168291): Midwest donothing 17 / textbook 28 / expert 10 of 10, Harbourline 11 / 30.5 / 8, Revenue 21 / 29 / 10.
 - 2026-11-23: RT-23 the retry storm backs out 20 % of its units, so Db2 accounting shows a rollback share (QWACABRT) and the Db2 statistics view shows rollbacks per member (Q3STABRT); APPLICATION_ERROR's recipe accepts the rollback share with the volume, which proves a storm and not a same-rate campaign. Reporting-only: the units still consume their CPU and time.
@@ -106,12 +117,11 @@ Recent work, one line each (details in the PRs and Git history):
 
 ### Design directions (user, 2026-11-05; not scheduled, still being thought through; don't implement)
 
-**D1. Targeted fixes unlocked by a correct RCA.** An event's cheap operations fix (e.g. `MOBILE_BACKOFF` for a Db2
-retry storm) is offered only once the player has pinned proof of the cause; generic levers stay open, and wrong
-guesses cost something. Design, notes and user decisions: [docs/rca-design.md](docs/rca-design.md) §5 (on the truth
-model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; RT-16 and RT-17 unblocked after an agent playtest
-(2026-11-21); RT-18 … RT-21 are parked until a human playtest; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm could not
-be told from a demand surge in any report until RT-23, whose Db2 rollback share now separates them; its fix is still ungated.
+**D1. Targeted fixes unlocked by a correct RCA: dropped (user, 2026-11-26).** The proof gate kept the
+"fix this exact problem" button that felt inauthentic. PT-20 replaces it with general operations (cancel work, recycle
+CICS regions, back out a change, throttle a channel, hold HSM recalls) whose targets the player chooses; cards no
+general operation fits keep no targeted fix. Plan: BACKLOG PT-52, PT-56, PT-53, PT-54, PT-55 ([docs/pt-20-design.md](docs/pt-20-design.md), decided 2026-11-26). Problem records
+(RT-22) and the proof recipes stay as scoring. History: [docs/rca-design.md](docs/rca-design.md) §5 (superseded), §7 Q8b.
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
 
@@ -127,18 +137,12 @@ Cost or trade-off: the estimate tells the player *when* a peak happened, so capp
 night-briefing artefact, not a live gauge, so the player still has to go and find the cause. Validation: reader-bot
 sweeps should show fewer cost-driven losses. That is acceptable if expert results don't move.
 
-**P2. Full-day guided tutorial.** Today's day-1 tutorial (`src/game/tutorial.ts`, `src/ui/Tutorial.tsx`) has 6
-stages and one judged step (F1: Db2 below its clients). Proposal: a separate "Guided day" scenario mode on Midwest seed
-1, with scripted events at fixed times, in the order a non-expert should learn the reports:
-1. 06:00 morning check: SYSINFO → WLMGL (read a PI, find the red class);
-2. 09:30 CPU contention: DELAY → PROCU, then fix it with a classification change through the Change Desk;
-3. 12:00 Db2 dependency (F1, the existing judged step);
-4. 14:00 a CICS short-on-storage message: Ops Console → SMF CICS storage → EDSALIM or MXT;
-5. 17:00 batch window: critical path and initiators;
-6. night: read the bill (ties in with P1).
-Each step is data in `src/content/` (trigger, the report to open, a success predicate over existing state, a hint
-ladder). Steps never auto-fix anything, and every step accepts more than one valid fix. Cost: about 2–3 PRs (content
-and engine, UI, playtests). Risk: the scripted events must not leak into normal runs (a separate scenario flag).
+**P2. Guided prologue (the shadow week).** Superseded on 2026-11-25 by
+[docs/prologue-design.md](docs/prologue-design.md): the real production handover in the last week of the prior month
+(26th–30th, month-end), on the Midwest plant as is (separate optional scenario `midwest-prologue`, no golden or sweep
+impact), five days with a retiring mentor, one prologue-only flaw (a forgotten DDF resource group cap), undo beats for
+temporary fixes, four RCAs with less help each time, the month's bill, then Day 1 as today. Scoped into
+BACKLOG list `prologue` (PRO-01 … PRO-07) on 2026-11-25.
 
 **P3. M9 simplified mode.** Requirements are already listed under M9 below. Suggested order, each step on
 `feature/simplified-mode`:
@@ -166,12 +170,12 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest reference, RF-05 (2026-11-23, model `ae702cb`, #478; remote, Normal, seeds 1–10): do-nothing / textbook
-  median day, expert victories: [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45111397822)
-  17 / 28 / 10, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45115168291) 21 / 29 / 10,
-  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45115168408) 11 / 30.5 / 8. All inside the CI
-  bands; the milestone review's Midwest rerun at `de3b59f` ([run](https://github.com/piconaut/goal-mode/actions/runs/45186335693))
-  gave 16.5 / 28 / 10. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
+- Latest reference, PT-51 (2026-11-24, #488, remote, Normal). Median end day for do-nothing / textbook / expert,
+  then expert wins. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347621450), seeds 1–20,
+  17 / 27 / 40 and 20/20. Seeds 1–5 [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347615358)
+  16 / 27 / 40 and 5/5, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45342988016)
+  21 / 29 / 40 and 5/5, [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45342756292)
+  11 / 29 / 40 and 3/5. All inside the CI bands. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
 - Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
   17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) 10 / 31 / 15 of 20 (expert losses
@@ -290,7 +294,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q8a and Q8b.
 
 ## Known approximations and risks
 

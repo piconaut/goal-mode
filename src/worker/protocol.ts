@@ -16,10 +16,10 @@ import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
-import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Db2StatRow, Smf113Row } from '../game/smf';
+import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Db2BlockerView, Db2StatRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
 import type { GoalIssue, WlmEdit } from '../game/wlmEdit';
-import type { Mechanism, Trigger } from '../game/types';
+import type { Mechanism, ProblemSubject, Trigger } from '../game/types';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
@@ -39,11 +39,12 @@ export interface PendingPolicyView {
   goalIssues: GoalIssue[];
 }
 
-export type SmfKind = 'DB2' | 'DB2_STATS' | 'CICS' | 'BATCH' | 'SMF113';
+export type SmfKind = 'DB2' | 'DB2_STATS' | 'DB2_BLOCKERS' | 'CICS' | 'BATCH' | 'SMF113';
 
 export type SmfData =
   | { kind: 'DB2'; hour: string; rows: Db2AcctRow[] }
   | { kind: 'DB2_STATS'; hour: string; rows: Db2StatRow[] }
+  | { kind: 'DB2_BLOCKERS'; tick: number; view: Db2BlockerView }
   | { kind: 'CICS'; hour: string; rows: CicsTxnRow[]; storage: CicsStorageRow[] }
   | { kind: 'BATCH'; night: BatchNight | null }
   | { kind: 'SMF113'; rows: Smf113Row[] };
@@ -61,6 +62,8 @@ export type ToWorker =
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'DRAFT'; optionId: string | null }
   | { type: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { type: 'OPEN_PROBLEM'; subject: ProblemSubject; fromTick: number; toTick: number }
+  | { type: 'FILE_PROBLEM'; recordId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { type: 'PIN'; req: PinRequest }
   | { type: 'UNPIN'; id: number }
   | { type: 'GET_REPORT'; index: number; kind: ReportKind; scKey?: string; system?: string }
