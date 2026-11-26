@@ -1,3 +1,5 @@
+import { requestBackout } from '../../src/game/run/otherTeamChanges';
+import { requestEventReply } from '../../src/game/run/events';
 import { askAround, inquiriesView } from '../../src/game/inquiries';
 import { buyTool, expireToolTrials, trialTool } from '../../src/game/tools';
 import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/game/catalog';
@@ -6,7 +8,7 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { advance, chooseDraft, continueEndless, drawEvents, failedPolicyToday, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
-import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
@@ -38,7 +40,7 @@ describe('changes', () => {
   it('a policy activation that failed this morning hands its edits back', () => {
     const r = fresh();
     const definition = { ...r.sim.wlm.definition, policyName: 'NEWPOL' };
-    const change = { id: 9, label: 'Activate policy NEWPOL', commands: [{ kind: 'ACTIVATE_POLICY' as const, definition }], hours: 1, capex: 0, opexPerDay: 0, activateDay: r.day, plannedDay: r.day, emergency: false, status: 'FAILED' as const, revertDay: null, revertCommands: [], endsEvent: null };
+    const change = { id: 9, label: 'Activate policy NEWPOL', commands: [{ kind: 'ACTIVATE_POLICY' as const, definition }], hours: 1, capex: 0, opexPerDay: 0, activateDay: r.day, plannedDay: r.day, emergency: false, status: 'FAILED' as const, revertDay: null, revertCommands: [] };
     expect(failedPolicyToday({ ...r, changes: [change] })?.policyName).toBe('NEWPOL');
     expect(failedPolicyToday({ ...r, changes: [{ ...change, activateDay: r.day - 1 }] })).toBeNull();
     expect(failedPolicyToday({ ...r, changes: [{ ...change, status: 'APPLIED' }] })).toBeNull();
@@ -279,172 +281,18 @@ describe('draft', () => {
 });
 
 describe('events', () => {
-  const activeCard = (defId: string): RunState => {
-    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
-    const r = fresh();
-    return {
-      ...r,
-      sim: applyCommands(r.sim, def.begin),
-      events: [{ uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: 0, endTick: 100, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }],
-    };
-  };
-
-  it.each(['REGRESSION', 'ZIIP_LOSS'])('a briefing fix restores %s on the first tick and stays restored past its natural end', (defId) => {
-    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
-    let r = activeCard(defId);
-    const expected = applyCommands(r.sim, def.end).mods;
-    r = requestChange(r, MIDWEST_GAME, { label: 'fix', fixId: def.fix! }).run;
-    // Other pending work and later planned commands must survive the fix, in order.
-    r = { ...r, pendingCommands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] };
-    r = requestChange(r, MIDWEST_GAME, { label: 'weight', commands: [{ kind: 'SET_WEIGHT', lparId: 'PROD1', pool: 'CP', weight: 565 }] }).run;
-    r = startDay(r, MIDWEST_GAME);
-    expect(r.changes.map((c) => c.status)).toEqual(['APPLIED', 'APPLIED']);
-    expect(r.pendingCommands).toEqual([{ kind: 'SET_RMF_INTERVAL', minutes: 15 }, ...def.end, { kind: 'SET_WEIGHT', lparId: 'PROD1', pool: 'CP', weight: 565 }]);
-    expect(r.events[0]!.ended).toBe(true);
-    r = advance(r, MIDWEST, MIDWEST_GAME, 1);
-    expect(r.sim.mods).toEqual(expected);
-    r = advance(r, MIDWEST, MIDWEST_GAME, 101);
-    expect(r.sim.mods).toEqual(expected);
-  });
-
-  it('a failed planned fix leaves the event active and does not restore its modifiers', () => {
-    const r = activeCard('REGRESSION');
-    const label = Array.from({ length: 1000 }, (_, i) => `fix${i}`).find((s) => streamRng(r.seed, 'activate', r.day, s, 0).chance(failRiskFor(r.fatigue, r.perks)))!;
-    const planned = requestChange(r, MIDWEST_GAME, { label, fixId: 'REBIND_REVERT' }).run;
-    const live = startDay(planned, MIDWEST_GAME);
-    expect(live.changes[0]!.status).toBe('FAILED');
-    expect(live.events[0]!.ended).toBe(false);
-    expect(live.pendingCommands).toEqual([]);
-    expect(advance(live, MIDWEST, MIDWEST_GAME, 1).sim.mods.cpu.RBANK).toBe(3);
-  });
-
-  it.each(['BRIEFING', 'LIVE'] as const)('a fix with no active target in %s is charged and reports no effect', (phase) => {
-    const base = activeCard('REGRESSION');
-    for (const event of [undefined, { ...base.events[0]!, ended: true }]) {
-      const r = { ...base, phase, events: event ? [event] : [] };
-      const out = requestChange(r, MIDWEST_GAME, { label: 'fix', fixId: 'REBIND_REVERT' });
-      // Accepted like a matching fix, so the Change Desk cannot be probed for hidden events.
-      expect(out.ok).toBe(true);
-      expect(out.run.hoursLeft).toBeLessThan(r.hoursLeft);
-      const after = phase === 'LIVE' ? out.run : startDay(out.run, MIDWEST_GAME);
-      const change = after.changes.at(-1)!;
-      if (change.status === 'APPLIED') expect(after.log.some((l) => l.includes('no active event matched'))).toBe(true);
-      if (phase === 'LIVE') expect(out.message).toMatch(/no effect/);
-      expect(after.pendingCommands).toEqual([]);
-    }
-  });
-
-  /** A card of `defId` drawn for today but not started yet, starting `hours` into the day. */
-  const pendingCard = (defId: string, r: RunState, hours: number): RunState => {
-    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
-    const startTick = r.day * TICKS_PER_DAY + hours * TICKS_PER_HOUR;
-    return {
-      ...r,
-      events: [{ uid: `${defId}@${r.day}`, defId, name: def.name, startTick, endTick: startTick + TICKS_PER_DAY, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false }],
-    };
-  };
-  /** A label whose 06:00 activation roll passes, so the test sees the arming rather than the failure risk. */
-  const labelThatApplies = (r: RunState): string =>
-    Array.from({ length: 1000 }, (_, i) => `fix${i}`).find((s) => !streamRng(r.seed, 'activate', r.day, s, 0).chance(failRiskFor(r.fatigue, r.perks)))!;
-
-  it('a planned fix arms against its forewarned card and ends it when it starts', () => {
-    const def = MIDWEST_GAME.events.find((e) => e.id === 'ZIIP_LOSS')!;
-    const r0 = pendingCard('ZIIP_LOSS', fresh(), 2);
-    const restored = applyCommands(r0.sim, def.end).mods;
-    let r = requestChange(r0, MIDWEST_GAME, { label: labelThatApplies(r0), fixId: 'NATIVE_SQL_PROCS' }).run;
-    r = startDay(r, MIDWEST_GAME);
-    const change = r.changes.at(-1)!;
-    expect(change.status).toBe('APPLIED');
-    expect(change.armedEvents).toEqual([`ZIIP_LOSS@${r.day}`]);
-    expect(r.log.some((l) => l.includes('armed against the forewarned change'))).toBe(true);
-    expect(r.events[0]!.ended).toBe(false);
-    // The fix was ready before the card landed: at its start tick the card begins and is backed out at once.
-    r = advance(r, MIDWEST, MIDWEST_GAME, 2 * TICKS_PER_HOUR + 1);
-    expect(r.events[0]).toMatchObject({ started: true, ended: true });
-    expect(r.log.some((l) => l.includes('Armed change'))).toBe(true);
-    expect(r.sim.mods).toEqual(restored);
-    r = advance(r, MIDWEST, MIDWEST_GAME, 6 * TICKS_PER_HOUR);
-    expect(r.events[0]!.ended).toBe(true);
-    expect(r.sim.mods).toEqual(restored);
-  });
-
-  it('a live fix arms against a forewarned card that starts later that day', () => {
-    const r0 = { ...pendingCard('REGRESSION', fresh(), 1), phase: 'LIVE' as const };
-    const out = requestChange(r0, MIDWEST_GAME, { label: 'emergency fix', fixId: 'REBIND_REVERT' });
+  it('backs out a live regression and preserves other pending commands', () => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === 'REGRESSION')!;
+    let r = startDay(fresh(), MIDWEST_GAME);
+    r = { ...r, sim: applyCommands(r.sim, def.begin), pendingCommands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }],
+      events: [{ uid: 'REGRESSION@0', defId: def.id, name: def.name, startTick: 0, endTick: 100, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }] };
+    const out = requestBackout(r, MIDWEST_GAME, 'OT-legacy-1');
     expect(out.ok).toBe(true);
-    expect(out.message).toContain('armed against the forewarned change');
-    expect(out.run.changes.at(-1)!.armedEvents).toEqual([`REGRESSION@${r0.day}`]);
-    const r = advance(out.run, MIDWEST, MIDWEST_GAME, TICKS_PER_HOUR + 1);
-    expect(r.events[0]).toMatchObject({ started: true, ended: true });
-    expect(r.log.some((l) => l.includes('Armed change'))).toBe(true);
-  });
-
-  it('a fix guessed for an unseen card is still charged with no effect (the desk cannot be probed)', () => {
-    // BOT_ATTACK has no forewarning: the player has no legitimate sign of it until it starts.
-    const r0 = pendingCard('BOT_ATTACK', fresh(), 2);
-    let r = requestChange(r0, MIDWEST_GAME, { label: labelThatApplies(r0), fixId: 'BLOCK_BOTS' }).run;
-    r = startDay(r, MIDWEST_GAME);
-    expect(r.changes.at(-1)!.armedEvents).toBeUndefined();
-    expect(r.log.some((l) => l.includes('no active event matched this fix'))).toBe(true);
-  });
-
-  it('a planned fix arms against an unforewarned card once its Ask Around rumour is revealed', () => {
-    // RETRY_STORM has no forewarning: only the revealed rumour lets the player see it coming.
-    const hidden = pendingCard('RETRY_STORM', fresh(), 2);
-    const uid = hidden.events[0]!.uid;
-    const r0 = { ...hidden, inquiries: { pending: [], revealed: [`ev:${uid}`] } };
-    const label = labelThatApplies(r0);
-    let r = startDay(requestChange(r0, MIDWEST_GAME, { label, fixId: 'MOBILE_BACKOFF' }).run, MIDWEST_GAME);
-    expect(r.changes.at(-1)!.armedEvents).toEqual([uid]);
-    r = advance(r, MIDWEST, MIDWEST_GAME, 2 * TICKS_PER_HOUR + 1);
-    expect(r.events[0]).toMatchObject({ started: true, ended: true });
-    // The same plan without the reveal arms nothing.
-    const unseen = startDay(requestChange(hidden, MIDWEST_GAME, { label, fixId: 'MOBILE_BACKOFF' }).run, MIDWEST_GAME);
-    expect(unseen.changes.at(-1)!.armedEvents).toBeUndefined();
-  });
-
-  it('a matching and a non-matching fix are indistinguishable when requested', () => {
-    const r = activeCard('REGRESSION');
-    const fixIds = [...new Set(MIDWEST_GAME.events.flatMap((e) => (e.fix ? [e.fix] : [])))];
-    const outs = fixIds.map((fixId) => requestChange(r, MIDWEST_GAME, { label: 'probe', fixId }));
-    expect(outs.every((o) => o.ok)).toBe(true);
-  });
-
-  it('does not charge twice for the same planned fix', () => {
-    const r = requestChange(activeCard('REGRESSION'), MIDWEST_GAME, { label: 'fix', fixId: 'REBIND_REVERT' }).run;
-    const out = requestChange(r, MIDWEST_GAME, { label: 'fix again', fixId: 'REBIND_REVERT' });
-    expect(out.ok).toBe(false);
-    expect(out.message).toMatch(/already planned/);
-    expect(out.run).toBe(r);
-  });
-
-  it('fixes end persistent events', () => {
-    const withEvents = MIDWEST_GAME;
-    let r = startDay(newRun(MIDWEST, withEvents, 7), withEvents);
-    r = {
-      ...r,
-      events: [
-        {
-          uid: 'RUNAWAY@0',
-          defId: 'RUNAWAY',
-          name: 'Runaway',
-          startTick: 1,
-          endTick: null,
-          trigger: 'RUNAWAY_WORK',
-          affects: ['ADHOC'],
-          mechanisms: [],
-          endCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 1 }],
-          started: false,
-          ended: false,
-        },
-      ],
-    };
-    r = advance(r, MIDWEST, withEvents, 5);
-    expect(r.sim.entityLoads?.map((l) => l.workloadId)).toEqual(['ADHOC']);
-    r = requestChange(r, withEvents, { label: 'cancel', fixId: 'CANCEL_RUNAWAY' }).run;
-    r = advance(r, MIDWEST, withEvents, 2);
-    expect(r.sim.entityLoads).toBeUndefined();
-    expect(r.events[0]!.ended).toBe(true);
+    expect(out.run.events[0]!.ended).toBe(true);
+    expect(out.run.pendingCommands).toEqual(r.pendingCommands);
+    expect(out.run.sim.mods.cpu.RBANK).toBeUndefined();
+    r = advance(out.run, MIDWEST, MIDWEST_GAME, 101);
+    expect(r.sim.mods.cpu.RBANK).toBeUndefined();
   });
 });
 
@@ -493,7 +341,10 @@ describe('event cards resolved at start', () => {
     r = { ...r, events: [{ uid: 'VENDOR_PRICE@0', defId: def.id, name: def.name, startTick: 1, endTick: null, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false }] };
     r = advance(r, sc, game, 5);
     expect(r.sim.cost.priceMult).toBe(1.08);
-    r = requestChange(r, game, { label: 'negotiate', fixId: 'NEGOTIATE_MLC_PRICE' }).run;
+    r = { ...r, inbox: [...r.inbox, { from: 'Finance', subject: 'Price', body: '', day: r.day, replyToEventUid: 'VENDOR_PRICE@0' }] };
+    const reply = requestEventReply(r, game, 'VENDOR_PRICE@0');
+    expect(reply.ok).toBe(true);
+    r = reply.run;
     r = advance(r, sc, game, 2);
     expect(r.sim.cost.priceMult).toBe(1);
     expect(r.events.find((e) => e.defId === 'VENDOR_PRICE')!.ended).toBe(true);

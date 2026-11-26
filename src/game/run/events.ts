@@ -1,3 +1,5 @@
+import { MAX_OVERTIME } from '../catalog';
+import type { Scenario } from '../../sim/core/scenario';
 import { type EventDef } from '../../content/events/midwest-events';
 import { cardMechanisms } from '../../content/footprint';
 import { STORY_BEAT_HINTS } from '../../content/hints';
@@ -12,7 +14,9 @@ import {
   type RunState
 } from '../types';
 import type { GameContent } from './shared';
-import { msg } from './shared';
+import { logLine, loseTrust, msg } from './shared';
+import { previewContext, spendHours, type ChangeOutcome } from './changes';
+import { eventTargets, matchesEventEffect, type CardOperation } from './eventEffects';
 import { announceOtherTeamChange, profileOf } from './otherTeamChanges';
 
 /** A rollout already on the calendar: enough to keep the draw from repeating or stacking a change. */
@@ -90,7 +94,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       r = { ...r, bonusHours: [...r.bonusHours, { hours: def.hoursDelta, untilDay: day + days }], hoursLeft: Math.max(0, r.hoursLeft + def.hoursDelta) };
     }
     if (profile) notices.push({ def: profile, startTick, endTick, uid: ev.uid });
-    else if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
+    else if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day, def.reply ? ev.uid : undefined);
   }
   if (profiles.length) {
     // Sample the same deck and rollout windows with a separate seed stream. This avoids pairing a routine notice
@@ -170,72 +174,54 @@ export function eventEndLog(run: RunState, def: EventDef, uid: string): string |
   return t === null ? null : `EVENT end: ${t.named ? def.name : t.text}`;
 }
 
-/** Context for previewChange from the current run. */
-/** Fixes the scenario's event cards call for: the Change Desk accepts only these (the offered list is a subset). */
-export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort();
-
-/**
- * Fixes the player may see: cards that have started in this run, were forewarned (the inbox names the change),
- * or whose Ask Around rumour has been revealed. Unseen cards stay hidden so the Operations list cannot spoil an
- * event that has not happened yet. Validation keeps using `fixIdsOf`, so a fix id guessed for an unseen card is
- * still accepted and charged (the Change Desk cannot be probed for hidden events).
- */
-export function visibleFixIds(run: RunState, content: GameContent): string[] {
-  const out = new Set<string>();
-  for (const e of run.events) {
-    const def = content.events.find((d) => d.id === e.defId);
-    const rumoured = (run.inquiries?.revealed ?? []).includes(`ev:${e.uid}`);
-    if (def?.fix && (e.started || def.forewarning !== null || rumoured)) out.add(def.fix);
-  }
-  return [...out].sort();
+/** Apply card cleanup for a timely resolution. An intercepted card has no begin effects to undo. */
+export function resolveEvent(run: RunState, event: ActiveEvent, operation?: CardOperation): RunState {
+  if (event.ended) return run;
+  const { endOnRecycleTick: _scheduled, ...resolved } = event;
+  const commands = event.started ? event.endCommands.filter((cmd) =>
+    operation?.kind !== 'CANCEL_ADDRESS_SPACE' || cmd.kind !== 'CANCEL_ADDRESS_SPACE' ||
+    cmd.jobname !== operation.jobname || cmd.lparId !== operation.lparId) : [];
+  return {
+    ...run,
+    events: run.events.map((e) => e.uid === event.uid ? { ...resolved, ended: true, endTick: run.sim.tick } : e),
+    pendingCommands: [...run.pendingCommands, ...commands],
+  };
 }
 
-/** Fixes of other teams' rollouts already on this run's calendar: the Change board offers their backout instead. */
-export function boardFixIdsOf(run: RunState, content: GameContent): Set<string> {
-  const profiles = content.otherTeamChanges;
-  const out = new Set<string>();
-  if (!profiles?.length) return out;
-  for (const e of run.events) {
-    if (!profileOf(profiles, e.defId)) continue;
-    const fix = content.events.find((d) => d.id === e.defId)?.fix;
-    if (fix) out.add(fix);
-  }
-  return out;
-}
-
-export const hasEventForFix = (run: RunState, content: GameContent, fixId: string): boolean =>
-  run.events.some((e) => e.started && !e.ended && content.events.some((d) => d.id === e.defId && d.fix === fixId));
-
-/**
- * Cards of `fixId` that have not started, start on `day`, and that the player can see: the inbox forewarned the
- * change or an Ask Around rumour about it was revealed. A guessed fix on an unseen card stays a no-target charge,
- * so arming never turns the Change Desk into a probe for hidden events.
- */
-export function armableEvents(run: RunState, content: GameContent, fixId: string, day: number): string[] {
-  const from = day * TICKS_PER_DAY;
-  const to = from + TICKS_PER_DAY;
-  return run.events
-    .filter((e) => {
-      if (e.started || e.ended || e.startTick < from || e.startTick >= to) return false;
-      const def = content.events.find((d) => d.id === e.defId);
-      if (!def || def.fix !== fixId) return false;
-      return def.forewarning !== null || (run.inquiries?.revealed ?? []).includes(`ev:${e.uid}`);
-    })
-    .map((e) => e.uid);
-}
-
-export function endEventByFix(run: RunState, content: GameContent, fixId: string): RunState {
-  const tick = run.sim.tick;
-  let r = run;
-  for (const e of r.events) {
-    const def = content.events.find((d) => d.id === e.defId);
-    if (e.started && !e.ended && def?.fix === fixId) {
-      r = {
-        ...r,
-        events: r.events.map((x) => (x.uid === e.uid ? { ...x, ended: true, endTick: tick } : x)),
-        pendingCommands: [...r.pendingCommands, ...e.endCommands],
-      };
+/** Check targets against the pre-command world, while preserving the successful operation's own effects. */
+export function endEventsByOperation(before: RunState, after: RunState, scenario: Scenario, content: GameContent, op: CardOperation): RunState {
+  let run = after;
+  for (const event of before.events) {
+    if (!event.started || event.ended || (event.endTick !== null && event.endTick <= before.sim.tick)) continue;
+    const def = content.events.find((d) => d.id === event.defId);
+    if (def?.endedBy && matchesEventEffect(def.endedBy, op, eventTargets(before, scenario, def, event))) {
+      if (op.kind === 'RECYCLE_CICS' && def.endedBy.kind === 'RECYCLE_CICS') {
+        const { targets } = def.endedBy;
+        const endOnRecycleTick = run.sim.cicsRecycles?.reduce((latest, recycle) =>
+          targets.some((r) => r.name === recycle.name && r.lparId === recycle.lparId) ? Math.max(latest, recycle.startTick) : latest,
+          before.sim.tick) ?? before.sim.tick;
+        run = { ...run, events: run.events.map((e) => e.uid === event.uid ? { ...e, endOnRecycleTick } : e) };
+      } else run = resolveEvent(run, event, op);
     }
   }
-  return r;
+  return run;
+}
+
+export function inboxReply(run: RunState, content: GameContent, uid: string | undefined) {
+  if (!uid || (run.phase !== 'BRIEFING' && run.phase !== 'LIVE')) return undefined;
+  const event = run.events.find((e) => e.uid === uid && !e.ended && (e.endTick === null || e.endTick > run.sim.tick));
+  const reply = event && content.events.find((d) => d.id === event.defId)?.reply;
+  if (!event || !reply) return undefined;
+  const hours = reply.hours * (previewContext(run, content).staffSurcharge?.mult ?? 1);
+  return { event, reply, hours, affordable: hours <= run.hoursLeft + MAX_OVERTIME };
+}
+
+export function requestEventReply(run: RunState, content: GameContent, uid: string): ChangeOutcome {
+  const target = run.inbox.some((m) => m.replyToEventUid === uid) ? inboxReply(run, content, uid) : undefined;
+  if (!target) return { run, ok: false, message: 'This thread no longer needs a reply.' };
+  const { event, reply, hours, affordable } = target;
+  if (!affordable) return { run, ok: false, message: `Needs ${hours}h to reply.` };
+  const next = resolveEvent(loseTrust(spendHours(run, hours), [reply.facet], reply.trust), event);
+  const message = `Reply sent: ${reply.label}`;
+  return { run: logLine(next, message), ok: true, message };
 }

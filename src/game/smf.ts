@@ -170,6 +170,7 @@ export interface Db2LockHolder {
   lparId: string;
   member: string | null;
   object: string;
+  backoutUntilTick?: number;
 }
 
 export interface Db2BlockerView {
@@ -180,10 +181,15 @@ export interface Db2BlockerView {
 
 /** The running job of the stream that holds the lock boost's escalated locks, if the boost is on and one runs. */
 export function db2LockHolder(run: RunState): Db2LockHolder | undefined {
-  const holder = run.sim.mods.lockHolder;
-  const j = lockHolderJob(run.sim.mods, run.sim.batch.jobs);
-  if (!holder || !j?.lparId) return undefined;
-  return { job: j.def.name, lparId: j.lparId, member: run.sim.config.db2.find((m) => m.lparId === j.lparId)?.ssid ?? null, object: holder.object };
+  const { sim } = run;
+  const backingOut = sim.batch.jobs.find((job) => job.lockBackout && job.lockBackout.untilTick > sim.tick);
+  const job = backingOut ?? lockHolderJob(sim.mods, sim.batch.jobs);
+  const object = backingOut?.lockBackout?.object ?? sim.mods.lockHolder?.object;
+  if (!object || !job?.lparId) return undefined;
+  return {
+    job: job.def.name, lparId: job.lparId, member: sim.config.db2.find((m) => m.lparId === job.lparId)?.ssid ?? null, object,
+    ...(backingOut?.lockBackout ? { backoutUntilTick: backingOut.lockBackout.untilTick } : {}),
+  };
 }
 
 /** DISPLAY BLOCKERS DETAIL snapshot. Game cohorts carry average ages and workload IDs. */

@@ -1,9 +1,10 @@
+import { requestOperation } from '../../src/game/operations';
 import { cardMechanisms } from '../../src/content/footprint';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
 import { REVENUE_GAME } from '../../src/content/game-revenue';
 import { MIDWEST } from '../../src/content/scenarios';
-import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
+import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { triggerOf } from '../../src/game/sla';
 import type { ActiveEvent, HourAcc, RunState } from '../../src/game/types';
@@ -41,7 +42,7 @@ function breachAt(tick: number): RunState {
 
 describe('incident trigger history', () => {
   it.each([hourStart + TICKS_PER_HOUR / 4, hourEnd])('retains the storm after MOBILE_BACKOFF at tick %i', (tick) => {
-    const fixed = requestChange(breachAt(tick), MIDWEST_GAME, { label: 'Mobile backoff', fixId: 'MOBILE_BACKOFF' });
+    const fixed = requestOperation(breachAt(tick), MIDWEST, MIDWEST_GAME, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BACKOFF' });
     expect(fixed.ok).toBe(true);
     expect(fixed.run.events[0]).toMatchObject({ ended: true, endTick: tick });
     const closed = closeHour({ ...fixed.run, sim: { ...fixed.run.sim, tick: hourEnd } }, MIDWEST, MIDWEST_GAME);

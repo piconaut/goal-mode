@@ -63,6 +63,7 @@ export type ToWorker =
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'OPERATION'; op: Operation }
   | { type: 'BACKOUT_CHANGE'; changeId: string }
+  | { type: 'EVENT_REPLY'; eventUid: string }
   | { type: 'DRAFT'; optionId: string | null }
   | { type: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { type: 'OPEN_PROBLEM'; subject: ProblemSubject; fromTick: number; toTick: number }

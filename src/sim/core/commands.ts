@@ -478,6 +478,8 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
       const jobs = s.batch.jobs.map((j) => ({ ...j }));
       const j = jobs.find((x) => x.day === cmd.day && x.def.name === cmd.name && x.status === 'ABENDED');
       if (!j) return fail(s, `${cmd.name} is not abended`);
+      if (j.lockBackout && j.lockBackout.untilTick > s.tick) return fail(s, `${cmd.name} is still backing out its Db2 locks`);
+      delete j.lockBackout;
       j.status = 'QUEUED';
       j.progress = j.progress * 0.5; // restart from the last checkpoint
       j.queuedTick = s.tick;

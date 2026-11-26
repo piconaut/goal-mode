@@ -1,5 +1,6 @@
 // FICTIONAL event deck for Midwest Mutual (SPEC §9). Every event has symptoms, clues and fixes.
 
+import type { EventEffect } from './effects';
 import type { Command } from '../../sim/core/commands';
 import type { Mechanism, Trigger } from '../types';
 import type { WorkloadDef } from '../../sim/workload/types';
@@ -42,8 +43,7 @@ export interface EventDef {
   /** Ground truth for an incident its failures alone caused (the hurt workload's response time met its SLA, its
    * error rate didn't): no delay grows, so the card names the mechanism (e.g. ROUTING for a sick region). */
   failureMechanism?: Mechanism;
-  /** Wall-clock start hour range and duration in hours (null = until fixed). Events with a
-   * fix still end on their own eventually; fixing them early limits the damage. */
+  /** Wall-clock start hour range and duration in hours (null = persistent until resolved). */
   startHour: [number, number];
   durationHours: number | null;
   begin: Command[];
@@ -53,8 +53,11 @@ export interface EventDef {
   /** The begin commands are not scaled by difficulty: the card's size is a bound of its mechanism (a loop on one TCB
    *  burns at most one engine), not a severity. */
   fixedSeverity?: true;
-  /** Game fix id that ends this event early (see game/catalog.ts). */
-  fix: string | null;
+  /** A card ends early when this effect reaches its target. */
+  endedBy?: EventEffect;
+  /** A response to the card's forewarning. */
+  reply?: { label: string; hours: number; facet: string; trust: number };
+  relief?: 'CICS_STORAGE' | 'HSM_RECALL';
   /** Inbox hint the day before (null = surprise). */
   forewarning: string | null;
   /** Draw at most once per run (cards that add a workload). */
@@ -158,7 +161,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 2,
     begin: [mod('rate', 'MOBILE', 2.5)],
     end: [mod('rate', 'MOBILE', 1)],
-    fix: null,
     forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo today. Could be big."',
     announcement: null,
     clue: 'DDF END/S jumps ×2–3 on both systems; CPU per transaction unchanged.',
@@ -180,7 +182,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     culprits: { entity: 'DDF_THREAD', workloadId: 'ADHOC', count: 1, cpuMult: 10 },
     // The game represents the runaway request with a fluid cohort. Db2 13 Command Reference PDF p.185 (printed 169).
     end: [{ kind: 'CANCEL_DB2_READERS', members: MIDWEST_DB2_CONTENTION.members }],
-    fix: 'CANCEL_RUNAWAY',
+    endedBy: { kind: 'CANCEL_SESSION' },
     forewarning: null,
     announcement: null,
     clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (Mon III PROCU Time on CP % IIP; no zIIPs there); BI end rate flat. One BI thread holds nearly all of that CPU.',
@@ -199,7 +201,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 30, // someone on the DBA team notices eventually
     begin: [mod('cpu', 'RBANK', 3)],
     end: [mod('cpu', 'RBANK', 1)],
-    fix: 'REBIND_REVERT',
+    endedBy: { kind: 'BACKOUT_CHANGE' },
     forewarning: 'Change board: "Db2 package REBINDs for the retail app ran overnight."',
     announcement: null,
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: 'EXPLAIN diff after last night\'s REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction.' },
@@ -219,7 +221,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 1.5,
     begin: [mod('rate', 'MOBILE', 4), mod('cpu', 'MOBILE', 0.4)],
     end: [mod('rate', 'MOBILE', 1), mod('cpu', 'MOBILE', 1)],
-    fix: 'BLOCK_BOTS',
+    endedBy: { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' },
     forewarning: null,
     announcement: null,
     clue: 'Mobile END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes.',
@@ -246,7 +248,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // rollback share means client retries is the game's inference, not IBM's.
     begin: [mod('rate', 'MOBILE', 2.5), mod('rollbackFrac', 'MOBILE', 0.2)],
     end: [mod('rate', 'MOBILE', 1), mod('rollbackFrac', 'MOBILE', 0)],
-    fix: 'MOBILE_BACKOFF',
+    endedBy: { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BACKOFF' },
     forewarning: null,
     announcement: null,
     clue: 'Mobile END/S x2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: switch on client backoff in the API gateway (Digital trust), or protect mobile and ride it out.',
@@ -267,14 +269,13 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [8, 16],
     durationHours: 6, // the on-call eventually notices and cancels it
     // The archiver runs every day as a small STC (PT-52); the loop multiplies its CPU to ~0.9 reference engines, as a
-    // loop in a single-TCB program burns at most one engine (APPROX: exactly that). The REMOVE drops an extra copy an
-    // older save may still hold (it only touches extras), so the multiplier never lands on it.
-    begin: [{ kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' }, mod('asCpu', 'CICSXLOG', XLOG_LOOP_ENGINES / CICSXLOG_ENGINES)],
+    // loop in a single-TCB program burns at most one engine (APPROX: exactly that).
+    begin: [mod('asCpu', 'CICSXLOG', XLOG_LOOP_ENGINES / CICSXLOG_ENGINES)],
     fixedSeverity: true,
     // The on-call cancels it (z/OS 3.1 MVS System Commands (SA38-0666-60) PDF p.188 (printed 160)) and automation
     // restarts it healthy. APPROX: immediate cleanup.
     end: [mod('asCpu', 'CICSXLOG', 1), { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' }],
-    fix: 'CANCEL_XLOG',
+    endedBy: { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' },
     forewarning: null,
     announcement: null,
     clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG, normally a few percent of an engine, is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay (CICS classes: in the CICS regions\' class, and READY/ACTIVE in their response time breakdown). Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
@@ -297,7 +298,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // FICTIONAL: +6% CPU per transaction on the I/O-heavy online workloads. APPROX: batch and the audit SLA are not modelled.
     begin: [mod('cpu', 'CARDAUTH', 1.06), mod('cpu', 'TELLER', 1.06), mod('cpu', 'PAYMQ', 1.06)],
     end: [mod('cpu', 'CARDAUTH', 1), mod('cpu', 'TELLER', 1), mod('cpu', 'PAYMQ', 1)],
-    fix: 'SCOPE_ENCRYPTION',
+    reply: { label: 'Propose a narrower encryption scope', hours: 2, facet: 'Regulator', trust: 2 },
     forewarning: 'Regulator: "All customer data sets must be encrypted at rest from today. We will check the key labels."',
     announcement: null,
     clue: 'CPU per transaction up ~6% on card auth, teller and payments from one morning (WLMGL: STCHI APPL% up against flat CICS END/S; CICS monitoring per transaction), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
@@ -318,7 +319,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // FICTIONAL magnitude: MLC per-MSU +8% (SPEC §9.4).
     begin: [{ kind: 'SET_MLC_PRICE', mult: 1.08 }],
     end: [{ kind: 'SET_MLC_PRICE', mult: 1 }],
-    fix: 'NEGOTIATE_MLC_PRICE',
+    reply: { label: 'Negotiate a multi-year agreement', hours: 3, facet: 'Finance', trust: 1 },
     forewarning: 'Procurement: "The software vendor has announced an 8% rise in monthly licence charges, effective this month\'s bill."',
     announcement: null,
     clue: 'Finance tab / SCRT report: MLC month-to-date up ~8% with the same product peaks; no performance symptom. Fixes: negotiate a multi-year agreement (Finance trust), cut the peaks (caps, batch moves, tuning), or move to Tailored Fit Pricing (contracted prices).',
@@ -338,7 +339,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     blocksHardware: ['COD_CP'],
     begin: [],
     end: [],
-    fix: null,
     forewarning: 'Facilities: "Green IT target: no On/Off Capacity on Demand for the next seven days. Permanent upgrades are unaffected."',
     announcement: null,
     clue: 'The change desk refuses On/Off CoD (and so does CPM automation). Responses: cap or quiesce DEVT, defer discretionary batch, tune policy, or buy permanent capacity.',
@@ -357,7 +357,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 4,
     begin: [{ kind: 'SET_CF', lparId: 'CF01', degrade: 6 }],
     end: [{ kind: 'SET_CF', lparId: 'CF01', degrade: 1 }],
-    fix: null,
     forewarning: null,
     announcement: 'HMC: "Channel path to CF01 reporting errors; link running degraded."',
     clue: 'CF Activity: CF01 sync service ×6 and async conversion rising; z/OS CPU per Db2 txn up.',
@@ -376,7 +375,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 3,
     begin: [{ kind: 'FAIL_CF', lparId: 'CF01', failed: true }],
     end: [{ kind: 'FAIL_CF', lparId: 'CF01', failed: false }],
-    fix: null,
     forewarning: null,
     announcement: 'HMC: "CF01 has stopped responding. XES is rebuilding its structures."',
     clue: 'CF Activity: CF01 missing; its structures now in CF02 (shared, slow) with high sync service and async conversion. Any structure that could not be rebuilt is lost (console). After CF01 is back, structures stay where they were rebuilt until moved.',
@@ -395,7 +393,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 3,
     begin: [{ kind: 'SET_DASD', changes: { backendDegrade: 5 } }],
     end: [{ kind: 'SET_DASD', changes: { backendDegrade: 1 } }],
-    fix: null,
     forewarning: null,
     announcement: null,
     clue: 'DASD Activity: DISC time ×5; RESP up; IOSQ follows on hot volumes.',
@@ -416,7 +413,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // I/O on LCU 21's hot volumes to exhaust its 21 aliases.
     begin: [{ kind: 'SET_UTILITY_OVERRUN', utility: 'REORG', seqIops: 55_000 }],
     end: [{ kind: 'SET_UTILITY_OVERRUN', utility: 'REORG', seqIops: null }],
-    fix: 'TERM_UTILITY',
+    endedBy: { kind: 'TERM_UTILITY' },
     forewarning: 'DBA team: "Online REORG of the settlement table spaces tonight; it should finish before batch."',
     announcement: null,
     clue: 'DASD Activity LCU summary: LCU 21 IOSQ high with ~0.7 aliases per hot volume while other LCUs are idle; batch elapsed stretches (SMF 30). Fixes: move aliases to LCU 21, or -TERM UTILITY.',
@@ -434,7 +431,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 0,
     begin: [{ kind: 'ABEND_JOB', critical: true }],
     end: [],
-    fix: null,
     forewarning: null,
     announcement: 'Operations: "Critical batch job ABENDed (S0C7). Restart needed."',
     clue: 'Batch Gantt shows a critical job stopped; successors held.',
@@ -453,7 +449,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 48,
     begin: [mod('asCpu', 'MONAGENT', 12)],
     end: [mod('asCpu', 'MONAGENT', 1)],
-    fix: 'ROLLBACK_MONITOR',
+    endedBy: { kind: 'BACKOUT_CHANGE' },
     forewarning: 'Vendor: "New monitoring agent release deployed overnight with richer tracing!"',
     announcement: null,
     clue: 'STCMED APPL% up sharply on every system; MONAGENT is the top CPU consumer in the class.',
@@ -473,10 +469,10 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // The running settlement step holds the escalated locks (PT-52): the boost lasts while a job of the stream runs.
     begin: [{ kind: 'SET_LOCK_BOOST', value: 6, holder: { stream: 'STL', object: 'SETTLE.POSTINGS' } }],
     end: [{ kind: 'SET_LOCK_BOOST', value: 0, holder: null }],
-    fix: 'COMMIT_SETTLEMENT_OFTEN',
+    endedBy: { kind: 'CANCEL_JOB' },
     forewarning: null,
     announcement: null,
-    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running, and the Db2 blockers view names the settlement job holding escalated locks. Fixes: commit more often in the settlement job, or keep online work off the locked tables until its step ends.',
+    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running, and the Db2 blockers view names the settlement job holding escalated locks. Fixes: cancel the settlement job and wait for its backout, or keep online work off the locked tables until its step ends.',
   },
   {
     // A data-science team runs model training from TSO on the test image. DEVT is uncapped (F9), so it steals CPC
@@ -497,7 +493,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     begin: [],
     culprits: { entity: 'TSO_USER', workloadId: 'TSO', lparIds: ['DEVT'], count: [2, 3], cpuMult: 8 },
     end: [],
-    fix: 'STOP_SHADOW_IT',
+    endedBy: { kind: 'CANCEL_SESSION' },
     forewarning: null,
     announcement: null,
     clue: 'Partition Data: DEVT MSU jumps while PROD LPARs lose share; TSO APPL% on DEVT up about ×9 with END/S flat, and two or three userids hold most of it. Capping DEVT or lowering TSO importance also contains it.',
@@ -523,7 +519,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
       { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.6 },
       { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.6 },
     ],
-    fix: 'ROLLBACK_TELLER_RELEASE',
+    endedBy: { kind: 'BACKOUT_CHANGE' },
     forewarning: 'Change board: "Teller front-end release 4.2 went into the PROD1 regions overnight."',
     announcement: null,
     clue: 'CICS report: QR wait per transaction up in CICSAOR1/3 (PROD1) only, CPU delay low; PROD2 regions fine. Routing more work to PROD2 or adding a region also helps.',
@@ -544,7 +540,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     oncePerRun: true,
     begin: [{ kind: 'ADD_WORKLOAD', workload: BOOKING_APP }],
     end: [],
-    fix: null,
     forewarning: 'Retail: "Branch booking goes live this morning, it\'s a small Java service, nothing to worry about."',
     announcement: null,
     clue: 'WLMGL: SYSOTHER service ≠ 0 on PROD1; the new work has no classification rule. Fixes: add a rule into a goal class, or a report class first to measure it.',
@@ -565,7 +560,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     capacityDrop: 1,
     begin: [],
     end: [],
-    fix: null,
     forewarning: null,
     announcement: 'Facilities: "Cooling fault on the raised floor; the CPC is running at reduced capacity until the chiller is fixed."',
     clue: 'CPU Activity: CHANGE REASON=MACHINE on the CPC header; SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
@@ -590,7 +584,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // curve is a cliff just above (75k ≈ 15×), and nightly growth moves the cliff closer, so stay below it.
     begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } }],
     end: [{ kind: 'SET_LCU', lcuId: '30', extraIops: {} }],
-    fix: 'HOLD_HSM_RECALLS',
+    relief: 'HSM_RECALL',
     forewarning: null,
     announcement: null,
     clue: 'DASD Activity: LCU 30 (system + catalogs) IOSQ and RESP up with random I/O ×n while Db2 LCUs are normal; everything that opens data sets slows. Fixes: hold HSM recalls, or move aliases to LCU 30.',
@@ -612,7 +606,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // FICTIONAL magnitude: 70% of the mobile API's zIIP time moves back to general CPs.
     begin: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 0.3 }],
     end: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 1 }],
-    fix: 'NATIVE_SQL_PROCS',
+    endedBy: { kind: 'BACKOUT_CHANGE' },
     forewarning: 'Change board: "Mobile API stored procedures were redeployed overnight (new COBOL versions)."',
     announcement: null,
     clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (the team\'s next redeploy can bring the COBOL versions back), or absorb it (cap, more CP).',
@@ -643,7 +637,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
       { kind: 'SET_CICS', name: 'CICSAOR2', leak: null },
       { kind: 'SET_CICS', name: 'CICSAOR4', leak: null },
     ],
-    fix: 'RECYCLE_PROD2_AORS',
+    relief: 'CICS_STORAGE',
     forewarning: null,
     announcement: null,
     clue: 'SMF 110 / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); CICS region storage shows EDSA in use at EDSALIM and SOS on the PROD2 AORs (DFHSM0133 messages). Fixes: recycle the PROD2 AORs, raise EDSALIM, lower MXT to what storage holds, or route the CICS work (teller, online banking, card authorisation, payments) to PROD1.',
@@ -660,7 +654,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 0.1,
     begin: [{ kind: 'NOTE', text: 'HMC: CP 05 failed; spare PU assigned transparently. No action needed.' }],
     end: [],
-    fix: null,
     forewarning: null,
     announcement: 'Hardware: "HMC reported a CP failure; the spare took over. IBM will replace the part at the next service window."',
     clue: 'HMC message only: no performance impact. A red herring if you are chasing another problem.',
@@ -679,7 +672,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     hoursDelta: -2,
     begin: [],
     end: [],
-    fix: null,
     // A forewarning, not an announcement: hours drop in that morning's briefing, so the reason must be there too.
     forewarning: 'HR: "Contractor budgets are frozen for five days starting today; expect two fewer engineer-hours a day."',
     announcement: null,
@@ -704,7 +696,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // FICTIONAL magnitude: the SMF address space writes ~10x its usual volume on every system.
     begin: [mod('asCpu', 'SMF', 10)],
     end: [mod('asCpu', 'SMF', 1)],
-    fix: 'SCOPE_SMF_AUDIT',
+    reply: { label: 'Propose sampled SMF retention', hours: 1, facet: 'Regulator', trust: 2 },
     forewarning: 'Regulator: "For the next three days keep full SMF 101 and 110 detail on every system. We will sample it."',
     announcement: null,
     clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little; work slows only where a system already runs at its CP share (PROD2 at peak). Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
@@ -724,7 +716,6 @@ export const MIDWEST_EVENTS: EventDef[] = [
     oncePerRun: true,
     begin: [],
     end: [],
-    fix: null,
     forewarning: 'Regulator: "We will audit your workload classification for the next five days. Unclassified work is a finding."',
     announcement: null,
     clue: 'WLMGL: any SYSOTHER service is a finding. Responses: add classification rules (or a catch-all default service class per subsystem) before it starts, report classes to find what is unclassified.',

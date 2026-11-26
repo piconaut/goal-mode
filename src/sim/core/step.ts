@@ -268,7 +268,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
   const cfBySystem = cfServiceForSystems(cf, config.cfStructures, zosLpars, plan.siteKmOf, scenario.cfTunables, sums.cfRequestsBy);
-  const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + lockBoostNow(prev, batch.jobs);
+  const lockIndex = batch.jobs.reduce((sum, job) => {
+    if (job.status === 'RUNNING') return sum + job.def.lockIntensity;
+    if (job.lockBackout && job.lockBackout.untilTick > prev.tick) return sum + job.lockBackout.lockIndex;
+    return sum;
+  }, lockBoostNow(prev, batch.jobs));
 
   // Batch critical-path projection and end-of-night summary.
   if (prev.tick % CRITICAL_PROJECTION_EVERY === 0) {

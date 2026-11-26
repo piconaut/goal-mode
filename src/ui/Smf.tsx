@@ -182,7 +182,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
           {d.view.drain && <p>{d.view.drain.name} · {d.view.drain.member} · {d.view.drain.object} · {
             d.view.drain.phase === 'WAITING' ? 'Waiting for claim release' : 'Drain held'
           } · {f1(d.view.drain.pendingReaders)} readers waiting for a drain lock</p>}
-          {d.view.lockHolder && <p>Table space locks escalated · {d.view.lockHolder.object} · holder {d.view.lockHolder.job} (batch, {d.view.lockHolder.member ?? 'no member'} / {d.view.lockHolder.lparId}) · online work waits for its commit</p>}
+          {d.view.lockHolder && <p>Table space locks escalated · {d.view.lockHolder.object} · holder {d.view.lockHolder.job} (batch, {d.view.lockHolder.member ?? 'no member'} / {d.view.lockHolder.lparId}) · {d.view.lockHolder.backoutUntilTick !== undefined ? "Db2 is backing out the cancelled unit of work" : "online work waits for its commit"}</p>}
           {d.view.rows.length ? (
             <table>
               <thead><tr>

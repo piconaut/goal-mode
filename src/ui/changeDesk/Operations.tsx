@@ -1,6 +1,5 @@
 import { useId, useState } from 'react';
 import { CANCEL_WARNINGS } from '../../content/operations';
-import { FIXES } from '../../game/catalog';
 import { operationHours } from '../../game/operations';
 import type { ViewModel } from '../../game/view';
 import type { Command } from '../../sim/core/commands';
@@ -56,7 +55,6 @@ export function Projects({ v, game }: { v: ViewModel; game: GameHandle }) {
 
 export function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
   const { v } = desk;
-  const incidentOpen = v.previewCtx.incidentOpen;
   return (
     <>
       <OperatorCommands v={v} game={game} />
@@ -71,25 +69,6 @@ export function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
             </span>
             <button disabled={!p.ok} title={p.reason ?? undefined} onClick={() => desk.apply(`Restart ${a.name}`, commands)}>
               Restart · {costText(p)}
-            </button>
-          </div>
-        );
-      })}
-      {FIXES.filter((f) => v.fixIds.includes(f.id)).map((f) => {
-        const p = preview(v, { fixId: f.id });
-        return (
-          <div className="row" key={f.id}>
-            <span>
-              {f.name}
-              <div className="muted" style={{ fontSize: 12 }}>
-                {f.description}
-                {f.trustCost ? ` Costs ${f.trustCost.amount} ${f.trustCost.facet} trust.` : ''}
-                {f.operational ? ' Operator command: no change-board trust cost.' : ''}
-              </div>
-              {!incidentOpen && <div className="muted" style={{ fontSize: 12 }}>No open incident: only worth it if you have diagnosed this cause.</div>}
-            </span>
-            <button disabled={!p.ok} title={p.reason ?? undefined} onClick={() => game.send({ type: 'CHANGE', req: { label: f.name, fixId: f.id } })}>
-              {costText(p)}
             </button>
           </div>
         );

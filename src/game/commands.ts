@@ -32,6 +32,7 @@ import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
 import { buildView } from './view';
 import { requestOperation } from './operations';
+import { requestEventReply } from './run/events';
 import { requestBackout } from './run/otherTeamChanges';
 import { MECHANISMS, TRIGGERS } from './sla';
 import { alsoAcceptedOf, groupAcceptedOf, rcaAnswerText, rcaGroupOf } from './run/rca';
@@ -54,6 +55,7 @@ export type GameCommand =
   | { kind: 'CHANGE'; req: ChangeRequest }
   | { kind: 'OPERATION'; op: Operation }
   | { kind: 'BACKOUT_CHANGE'; changeId: string }
+  | { kind: 'EVENT_REPLY'; eventUid: string }
   | { kind: 'RESTART'; name: string }
   | { kind: 'CANCEL'; changeId: number }
   | { kind: 'COD_DEACTIVATE'; changeId: number }
@@ -123,6 +125,8 @@ export function applyGameCommand(
       return result(requestOperation(run, sc, content, cmd.op));
     case 'BACKOUT_CHANGE':
       return result(requestBackout(run, content, cmd.changeId));
+    case 'EVENT_REPLY':
+      return result(requestEventReply(run, content, cmd.eventUid));
     case 'RESTART': {
       const batch = buildView(run, sc).batch;
       const a = batch.abended.find((x) => x.name === cmd.name.toUpperCase());

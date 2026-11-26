@@ -32,8 +32,8 @@ export const loseTrust = (run: RunState, facets: Iterable<string>, amount: numbe
 };
 
 /** `day` dates the message for a later morning's briefing (default: today). */
-export function msg(run: RunState, from: string, subject: string, body: string, day = run.day): RunState {
-  return { ...run, inbox: [...run.inbox, { day, from, subject, body }] };
+export function msg(run: RunState, from: string, subject: string, body: string, day = run.day, replyToEventUid?: string): RunState {
+  return { ...run, inbox: [...run.inbox, { day, from, subject, body, ...(replyToEventUid ? { replyToEventUid } : {}) }] };
 }
 
 export function logLine(run: RunState, text: string): RunState {
