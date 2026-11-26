@@ -1172,8 +1172,9 @@ one live day, so its fix could otherwise only be bought as an emergency change.
 **Freeze periods** (constraint cards): during freezes only emergency changes are allowed.
 
 **Other teams’ changes (PT-53).** The Change board shows each rollout’s owner, scheduled time and status. The
-inbox uses the same notice format for release regressions and routine rollouts. Each scenario pairs its card
-rollouts with routine changes from the same owner and rollout window. Routine rollouts use a separate seed stream
+inbox uses the same notice format for release regressions and routine rollouts. Paired rollouts share a title,
+owner and rollout window, and every posting has its own board reference. Repeat card rollouts start after any
+previous rollout of that card ends so they do not overwrite each other's effects. Routine rollouts use a separate seed stream
 and the same card weights. One is scheduled at handover, and the board always posts at least as many routine rollouts
 as card rollouts. Routine rollouts reduce the target workload’s
 or started task’s CPU demand by a fictional 5% during the rollout window. A successful backout spends engineer-hours

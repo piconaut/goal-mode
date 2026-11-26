@@ -25,7 +25,7 @@ describe('other teams’ changes', () => {
     expect(run.sim.mods.rolloutCpu?.[profile.benefitTarget]).toBeCloseTo(ROUTINE_CHANGE_CPU_MULT);
     const beforeTrust = run.trust[profile.trustFacet]!;
     const beforeHours = run.hoursLeft;
-    const id = otherTeamChangesView(run, game).find((c) => c.label === profile.routineLabel)!.id;
+    const id = run.otherTeamChanges!.at(-1)!.id;
     const result = requestBackout(run, game, id);
     expect(result.ok, result.message).toBe(true);
     expect(result.run.sim.mods.rolloutCpu?.[profile.benefitTarget] ?? 1).toBeCloseTo(1);
@@ -33,6 +33,41 @@ describe('other teams’ changes', () => {
     expect(result.run.hoursLeft).toBeLessThan(beforeHours);
     expect(otherTeamChangesView(result.run, game).find((c) => c.id === id)!.status).toBe('BACKED_OUT');
     expect(requestBackout(result.run, game, id).ok).toBe(false);
+  });
+
+  it('stacks routine rollouts on the same target and preserves the remaining benefit after a backout', () => {
+    const base = fresh();
+    const first = announceOtherTeamChange(base, profile, 0, null);
+    const both = announceOtherTeamChange(first, profile, 0, null);
+    const run = advance(both, scenario, game, 1);
+    expect(run.sim.mods.rolloutCpu?.[profile.benefitTarget]).toBeCloseTo(ROUTINE_CHANGE_CPU_MULT ** 2);
+    const out = requestBackout(run, game, first.otherTeamChanges!.at(-1)!.id);
+    expect(out.ok, out.message).toBe(true);
+    expect(out.run.sim.mods.rolloutCpu?.[profile.benefitTarget]).toBeCloseTo(ROUTINE_CHANGE_CPU_MULT);
+  });
+
+  it('executes a REBIND during a freeze without CAB risk or emergency trust charges', () => {
+    const base = { ...fresh(), constraints: ['FREEZE'], fatigue: 100 };
+    const run = announceOtherTeamChange(base, profile, 20, null);
+    const id = run.otherTeamChanges!.at(-1)!.id;
+    const row = otherTeamChangesView(run, game).find((c) => c.id === id)!;
+    expect(row.preview).toMatchObject({ ok: true, emergency: false, failRisk: 0, trustCostEach: 0 });
+    const out = requestBackout(run, game, id);
+    expect(out.ok, out.message).toBe(true);
+    expect(out.run.changes).toEqual(run.changes);
+    for (const [facet, trust] of Object.entries(run.trust)) {
+      expect(out.run.trust[facet]).toBe(facet === profile.trustFacet ? trust - BACKOUT_TRUST : trust);
+    }
+  });
+
+  it('uses the same public row and notice regardless of whether the rollout introduces a card', () => {
+    const base = { ...fresh(), inbox: [] };
+    const routine = announceOtherTeamChange(base, profile, 20, null);
+    const card = announceOtherTeamChange(base, profile, 20, null, 'event@test');
+    expect(otherTeamChangesView(routine, game)).toEqual(otherTeamChangesView(card, game));
+    expect(otherTeamChangesView(card, game)[0]!.label).toBe(`${profile.label} · OT1`);
+    expect(card.inbox).toEqual(routine.inbox);
+    expect(card.inbox[0]!.body).toMatch(`${profile.label} · OT1 is scheduled for `);
   });
 
   it('prevents a forewarned change from starting when backed out before landing', () => {
@@ -43,7 +78,7 @@ describe('other teams’ changes', () => {
       trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end,
       started: false, ended: false };
     const announced = announceOtherTeamChange({ ...run, events: [...run.events, event] }, profile, startTick, null, event.uid);
-    const row = otherTeamChangesView(announced, game).find((c) => c.label === profile.label)!;
+    const row = otherTeamChangesView(announced, game).find((c) => c.id === announced.otherTeamChanges!.at(-1)!.id)!;
     expect(row).toMatchObject({ owner: profile.owner, startTick, status: 'SCHEDULED' });
     const result = requestBackout(announced, game, row.id);
     expect(result.ok, result.message).toBe(true);
@@ -56,7 +91,7 @@ describe('other teams’ changes', () => {
   it('allows a cancelled deployment backout to be requested again', () => {
     const deployment = game.otherTeamChanges!.find((p) => p.kind === 'DEPLOYMENT')!;
     const run = announceOtherTeamChange(newRun(scenario, game, 42), deployment, 20, null);
-    const id = otherTeamChangesView(run, game).find((c) => c.label === deployment.routineLabel)!.id;
+    const id = run.otherTeamChanges!.at(-1)!.id;
     const planned = requestBackout(run, game, id);
     expect(planned.ok, planned.message).toBe(true);
     expect(otherTeamChangesView(planned.run, game).find((c) => c.id === id)!.planned).toBe(true);
@@ -94,10 +129,25 @@ describe('other teams’ changes', () => {
         expect(entries.some((c) => c.eventUid)).toBe(true);
         const notices = drawn.inbox.filter((m) => m.from === p.owner && m.subject === 'Change board · Day 1');
         expect(notices).toHaveLength(2);
-        expect(notices.map((m) => m.body.replace(p.label, 'CHANGE').replace(p.routineLabel, 'CHANGE')))
+        expect(notices.map((m) => m.body.replace(`${p.label} · OT1`, 'CHANGE').replace(`${p.label} · OT2`, 'CHANGE')))
           .toEqual(notices.map((m) => expect.stringMatching(/^CHANGE is scheduled for \d\d:\d\d\.$/)));
       }
     }
+  });
+
+  it('does not reveal card origin through reference order when rollout times tie', () => {
+    const def = game.events.find((e) => e.id === profile.eventId)!;
+    const content = { ...game, events: [{ ...def, minDay: 0, startHour: [8, 8] as [number, number] }], otherTeamChanges: [profile] };
+    const orders = new Set<string>();
+    for (let seed = 0; seed < 100; seed++) {
+      const base = { ...newRun(scenario, content, seed), events: [], otherTeamChanges: [], inbox: [] };
+      const changes = drawEvents(base, content, 0).otherTeamChanges!;
+      if (changes.length !== 2) continue;
+      expect(changes[0]!.startTick).toBe(changes[1]!.startTick);
+      expect(changes.map((c) => c.id)).toEqual(['OT1', 'OT2']);
+      orders.add(changes[0]!.eventUid ? 'card-first' : 'routine-first');
+    }
+    expect(orders).toEqual(new Set(['card-first', 'routine-first']));
   });
 
   it('keeps cumulative routine notices at least as numerous as card notices', () => {

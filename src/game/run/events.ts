@@ -116,7 +116,11 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       const startTick = changeTick(day, hour);
       notices.push({ def: profile, startTick, endTick: endTickOf(def, startTick) });
     }
-    for (const notice of notices.sort((a, b) => a.startTick - b.startTick)) {
+    // Tied notices must not reveal which rollout was drawn from the card deck.
+    const order = streamRng(run.seed, 'change-board-order', day);
+    const ordered = notices.map((notice) => ({ ...notice, tieBreak: order.nextU32() }))
+      .sort((a, b) => a.startTick - b.startTick || a.tieBreak - b.tieBreak);
+    for (const notice of ordered) {
       r = announceOtherTeamChange(r, notice.def, notice.startTick, notice.endTick, notice.uid);
     }
   }

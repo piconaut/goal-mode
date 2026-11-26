@@ -27,7 +27,7 @@ export function announceOtherTeamChange(
 }
 
 function labelOf(change: OtherTeamChange, def: OtherTeamChangeDef): string {
-  return change.eventUid ? def.label : def.routineLabel;
+  return `${def.label} · ${change.id}`;
 }
 
 function statusOf(change: OtherTeamChange, event: ActiveEvent | undefined, tick: number): OtherTeamChange['status'] {
