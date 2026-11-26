@@ -100,10 +100,10 @@ export function landRoutineChanges(run: RunState, content: GameContent): RunStat
 export function applyBackout(run: RunState, content: GameContent, changeId: string, immediate = false, chargeOwner = true): RunState {
   const row = rowsOf(run, content).find(({ change }) => change.id === changeId);
   if (!row || !isOpenStatus(row.status)) return run;
-  const { change, def, status } = row;
-  const effect = row.event && content.events.find((card) => card.id === row.event?.defId)?.endedBy;
-  const event = row.event && effect && matchesEventEffect(effect, { kind: 'BACKOUT_CHANGE', changeId }, { changeId: otherTeamChangeId(run, row.event) })
-    ? row.event : undefined;
+  const { change, def, event: linked, status } = row;
+  const effect = linked && content.events.find((card) => card.id === linked.defId)?.endedBy;
+  const event = linked && effect && matchesEventEffect(effect, { kind: 'BACKOUT_CHANGE', changeId }, { changeId: otherTeamChangeId(run, linked) })
+    ? linked : undefined;
   const backedOut = { ...change, status: 'BACKED_OUT' } as const;
   const stored = run.otherTeamChanges ?? [];
   const entries = stored.some((entry) => entry.id === changeId)

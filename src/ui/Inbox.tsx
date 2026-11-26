@@ -10,7 +10,7 @@ export function InboxReply({ message, game }: { message: ViewModel['inbox'][numb
   if (!reply || !replyToEventUid) return null;
   return (
     <button disabled={!reply.affordable} onClick={() => game.send({ type: 'EVENT_REPLY', eventUid: replyToEventUid })}>
-      {reply.label} · {reply.hours}h
+      {reply.label} · {reply.hours}h · {reply.facet} trust −{reply.trust}
     </button>
   );
 }

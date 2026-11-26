@@ -441,7 +441,7 @@ export function statusText(file: PlayFile): string {
     out.push('inbox:');
     for (const m of today) {
       out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
-      if (m.reply) out.push(`    reply ${m.replyToEventUid}: ${m.reply.label} (${m.reply.hours}h)`);
+      if (m.reply) out.push(`    reply ${m.replyToEventUid}: ${m.reply.label} (${m.reply.hours}h, ${m.reply.facet} trust −${m.reply.trust})`);
     }
   }
   const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);

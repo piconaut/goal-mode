@@ -358,7 +358,11 @@ function effectOverlap(e: ActiveEvent, w: { startTick: number; endTick: number }
 }
 
 /** A card was active in the half-open window, including any recall I/O replayed there after the storm. */
-export const activeIn = (e: ActiveEvent, w: { startTick: number; endTick: number }): boolean => e.started && effectOverlap(e, w) > 0;
+export function activeIn(e: ActiveEvent, w: { startTick: number; endTick: number }): boolean {
+  const replay = e.footprintReplay;
+  return e.started && ((e.startTick < w.endTick && (e.endTick === null || e.endTick > w.startTick)) ||
+    (replay !== undefined && replay.startTick < w.endTick && replay.endTick > w.startTick));
+}
 
 /** How a card's footprint (RT-14, docs/rca-design.md §4.4(1)) meets the work: listed (direct), or the work's images or
  * its servers' images or regions are in the card's reach (collateral). */

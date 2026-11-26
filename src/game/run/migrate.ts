@@ -106,5 +106,8 @@ export function migrateDayTrace(trace: DayTrace | null | undefined): DayTrace | 
 export function replayLegacyRequest(run: RunState, scenario: Scenario, content: GameContent, request: { label: string }): RunState | undefined {
   const fixId = (request as { fixId?: string }).fixId;
   const eventId = migratedEventId(run, fixId);
-  return eventId ? applyMigratedRequest(run, scenario, content, eventId) : undefined;
+  if (!eventId || !content.events.some((d) => d.id === eventId)) return undefined;
+  const next = applyMigratedRequest(run, scenario, content, eventId);
+  // The old command took an ordinary change ID. Later actions on the trace still address those IDs.
+  return { ...next, nextId: next.nextId + 1 };
 }

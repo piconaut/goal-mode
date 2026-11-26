@@ -167,7 +167,7 @@ export interface ViewModel {
   batch: BatchView;
   operations: ReturnType<typeof operationsView>;
   incidents: Incident[];
-  inbox: (Message & { reply?: { label: string; hours: number; affordable: boolean } })[];
+  inbox: (Message & { reply?: { label: string; hours: number; facet: string; trust: number; affordable: boolean } })[];
   log: string[];
   wlmLog: string[];
   changes: PlannedChange[];
@@ -340,7 +340,9 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     incidents: run.incidents.slice(-30),
     inbox: run.inbox.slice(-40).map((m) => {
       const target = inboxReply(run, pack.game, m.replyToEventUid);
-      return target ? { ...m, reply: { label: target.reply.label, hours: target.hours, affordable: target.affordable } } : m;
+      if (!target) return m;
+      const { label, facet, trust } = target.reply;
+      return { ...m, reply: { label, facet, trust, hours: target.hours, affordable: target.affordable } };
     }),
     log: run.log.slice(-40),
     // The WLM activity log is live only with Monitor III; otherwise it is readable after the day.

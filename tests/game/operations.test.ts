@@ -1,3 +1,5 @@
+import { newHour } from '../../src/game/run/hourly';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { requestOperation } from '../../src/game/operations';
 import { db2LockHolder } from '../../src/game/smf';
 import { requestBackout } from '../../src/game/run/otherTeamChanges';
@@ -29,6 +31,45 @@ describe('Operations command delivery', () => {
     expect(out.run.events[0]!.ended).toBe(false);
     if (op.kind === 'RECYCLE_CICS') expect(out.run.sim.cicsRecycles).toHaveLength(1);
     else expect(out.run.sim.hsmRecalls?.heldSinceTick).toBe(r.sim.tick);
+  });
+
+  it('drops only the recycled SOS region from the next hour’s footprint', () => {
+    const pack = PACKS.midwest!;
+    const def = pack.game.events.find((e) => e.id === 'CICS_SOS')!;
+    let r = startDay(newRun(pack.scenario, { ...pack.game, events: [] }, 7), pack.game);
+    const leaks = ['CICSAOR2', 'CICSAOR4'].map((name) => ({ kind: 'SET_CICS' as const, name, leak: { startMb: 900, mbPerHour: 40 } }));
+    r = { ...r, sim: applyCommands(r.sim, leaks), events: [{ uid: 'sos', defId: def.id, name: def.name,
+      startTick: 0, endTick: 2000, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }] };
+    r = advance(r, pack.scenario, pack.game, 1);
+    expect(r.events[0]!.reach).toEqual(expect.arrayContaining(['CICSAOR2@PROD2', 'CICSAOR4@PROD2']));
+    const recycled = requestOperation(r, pack.scenario, pack.game, { kind: 'RECYCLE_CICS', targets: [{ name: 'CICSAOR2', lparId: 'PROD2' }] });
+    expect(recycled.ok).toBe(true);
+    r = advance(recycled.run, pack.scenario, pack.game, 1);
+    expect(r.events[0]!.reach).toContain('CICSAOR2@PROD2');
+    r = { ...r, sim: { ...r.sim, tick: TICKS_PER_HOUR }, hour: newHour(TICKS_PER_HOUR) };
+    r = advance(r, pack.scenario, pack.game, 1);
+    expect(r.events[0]!.reach).toEqual(['CICSAOR4@PROD2']);
+    expect(r.events[0]!.ended).toBe(false);
+  });
+
+  it('suppresses the HSM footprint while held and restores sysplex reach during backlog replay', () => {
+    const pack = PACKS.midwest!;
+    const def = pack.game.events.find((e) => e.id === 'HSM_RECALL_STORM')!;
+    let r = startDay(newRun(pack.scenario, { ...pack.game, events: [] }, 7), pack.game);
+    r = { ...r, sim: applyCommands(r.sim, def.begin), events: [{ uid: 'hsm', defId: def.id, name: def.name,
+      startTick: 0, endTick: 5, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }] };
+    const held = requestOperation(r, pack.scenario, pack.game, { kind: 'HOLD_HSM_RECALL', held: true });
+    expect(held.ok).toBe(true);
+    r = advance(held.run, pack.scenario, pack.game, 6);
+    expect(r.events[0]!.ended).toBe(true);
+    expect(r.events[0]!.reach).toEqual([]);
+    expect(r.sim.hsmRecalls!.backlogIo).toBeGreaterThan(0);
+    const released = requestOperation(r, pack.scenario, pack.game, { kind: 'HOLD_HSM_RECALL', held: false });
+    expect(released.ok).toBe(true);
+    r = advance(released.run, pack.scenario, pack.game, 1);
+    expect(r.events[0]!.reach).toEqual(r.sim.config.lpars.map((l) => l.id).sort());
+    expect(r.events[0]!.footprintReplay).toBeDefined();
+    expect(r.events[0]!.ended).toBe(true);
   });
 
   it('ends SICK_AOR when the affected region starts its scheduled recycle', () => {
@@ -66,6 +107,10 @@ describe('Operations command delivery', () => {
     const until = out.run.sim.batch.jobs.find((j) => j.def.name === job.def.name)!.lockBackout!.untilTick;
     expect(until).toBeGreaterThan(r.sim.tick);
     expect(db2LockHolder(out.run)?.backoutUntilTick).toBe(until);
+    const backoutTick = advance(out.run, pack.scenario, pack.game, 1);
+    expect(backoutTick.sim.env.lockIndex).toBeGreaterThan(0);
+    const releasedTick = advance({ ...out.run, sim: { ...out.run.sim, tick: until } }, pack.scenario, pack.game, 1);
+    expect(releasedTick.sim.env.lockIndex).toBe(0);
     const restart = { kind: 'RESTART_JOB' as const, day: job.day, name: job.def.name };
     expect(applyCommands(out.run.sim, [restart]).batch.jobs.find((j) => j.def.name === job.def.name)!.status).toBe('ABENDED');
     const after = { ...out.run.sim, tick: until };
