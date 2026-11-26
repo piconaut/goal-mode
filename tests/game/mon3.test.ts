@@ -1,9 +1,12 @@
 import { MIDWEST } from '../../src/content/scenarios';
+import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { buildMon3, explainWlmLog, type Mon3Row } from '../../src/game/mon3';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { buildView } from '../../src/game/view';
+import { applyCommands } from '../../src/sim/core/commands';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const content = midwestContent;
 let noon: RunState;
@@ -309,6 +312,17 @@ describe('Monitor III PROCU jobs (RMF Report Analysis p.188–189)', () => {
     const sorted = m.procJobs!.map((j) => j.eapplCpEngines);
     expect(sorted).toEqual([...sorted].sort((a, b) => b - a));
   });
+
+  it('attributes an address-space CPU modifier to the named PROCU job', () => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === 'XLOG_LOOP')!;
+    let run = startDay(newRun(MIDWEST, { ...content, events: [] }, 42), { ...content, events: [] });
+    run = { ...run, sim: applyCommands(run.sim, def.begin) };
+    run = advance(run, MIDWEST, { ...content, events: [] }, TICKS_PER_HOUR);
+    const jobs = buildMon3(run, MIDWEST).procJobs!;
+    const xlog = jobs.find((j) => j.system === 'PROD1' && j.jobname === 'CICSXLOG')!;
+    expect(xlog.eapplCpEngines).toBeGreaterThan(0.6);
+    expect(jobs[0]).toMatchObject({ system: 'PROD1', jobname: 'CICSXLOG' });
+  }, 60_000);
 
   it('batch misrouted into the CICS region class shows by name under STCHI (playtest round 1)', () => {
     let run = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);

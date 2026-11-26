@@ -10,7 +10,7 @@ import { chargeHeldRecalls, operationsView, requestOperation } from '../../src/g
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
-import { applyCommand } from '../../src/sim/core/commands';
+import { applyCommand, applyCommands } from '../../src/sim/core/commands';
 import { CANCEL_WARNINGS, OPERATION_TRUST, OPERATIONS } from '../../src/content/operations';
 import { gatewayChannels, operatorRoster, rolloverOperations, type Operation } from '../../src/sim/core/operations';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
@@ -137,6 +137,39 @@ describe('general operator commands', () => {
     const afterCopy = { ...nextNight, tick: nextNight.tick + 60 / TICK_SEC };
     expect(rolloverOperations(afterCopy, site).terminatedUtilities).toBeUndefined();
   });
+  it('keeps offered gateway traffic and recall demand visible while protection masks admitted work', () => {
+    const run = live();
+    const surged = { ...run, sim: applyCommands(run.sim, [
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 2.5 },
+      { kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } },
+    ]) };
+    const control = advance(surged, scenario, content, 1);
+    let guarded = issue(surged, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' }).run;
+    guarded = issue(guarded, { kind: 'HOLD_HSM_RECALL', held: true }).run;
+    guarded = advance(guarded, scenario, content, 1);
+    const view = operationsView(guarded, scenario);
+    const offered = control.sim.last.workloads.find((w) => w.id === 'MOBILE')!.arrivalRate;
+    const admitted = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.arrivalRate;
+    expect(admitted).toBeLessThan(offered);
+    expect(view.gateway.find((g) => g.id === 'MOBILE')).toMatchObject({ offeredRatePerSec: offered });
+    expect(view.recalls.incomingIops).toBe(60_000);
+    const legacy = {
+      ...guarded,
+      sim: {
+        ...guarded.sim,
+        last: {
+          ...guarded.sim.last,
+          workloads: guarded.sim.last.workloads.map((row) => {
+            const copy = { ...row };
+            delete copy.offeredRate;
+            return copy;
+          }),
+        },
+      },
+    };
+    expect(operationsView(legacy, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredRatePerSec).toBe(admitted);
+  });
+
   it('charges each CICS owner once when recycling a region', () => {
     const run = live();
     const { name, lparId } = scenario.world.cics[0]!;

@@ -68,16 +68,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-55 · Bots choose operation targets from report data
-`list: playtest-fixes · status: ready · priority: low · size: M · area: tooling`
-
-Source: PT-20 (docs/pt-20-design.md §7). Bots pick targets from what a player can read (the Monitor III top consumer,
-DISPLAY THREAD, the Change board, the regions short on storage, the channel with the arrival surge), not from
-`inc.truth`, and release their toggles (HSM hold, gateway modes) when the reports show the storm over. A target the
-data doesn't single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a
-target, a three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call
-on the main agent).
-
 ### PT-57 · Operator commands in the play CLI
 `list: playtest-fixes · status: ready · priority: high · size: M · area: tooling`
 

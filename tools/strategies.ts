@@ -2,10 +2,9 @@
 
 import type { GameContent } from '../src/game/run';
 import { chooseDraft, submitRca } from '../src/game/run';
-import { cicsStorageReach, regionKey } from '../src/game/footprint';
 import { requestOperation } from '../src/game/operations';
-import { operationsForEvent } from '../src/game/run/eventEffects';
 import { requestBackout } from '../src/game/run/otherTeamChanges';
+import { operationsForEventReports, protectionReleases } from './botOperations';
 import type { RunState } from '../src/game/types';
 import type { Scenario } from '../src/sim/core/scenario';
 
@@ -40,7 +39,6 @@ export const STRATEGIES: Record<string, Strategy> = { donothing: passive, oracle
 
 import { BASEPOL } from '../src/content/wlm/basepol';
 import { REVPOL } from '../src/content/wlm/revpol';
-import { GATEWAY_TRAFFIC_CARDS } from '../src/content/operations';
 import { HBPOL } from '../src/content/wlm/hbpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
@@ -213,24 +211,11 @@ function textbookDay0(r: RunState, c: GameContent): RunState {
   return run;
 }
 
-/** Operate on the card's known target. PT-55 moves target selection to the reports. */
+/** Operate on targets singled out by the current reports. */
 function remedy(run: RunState, scenario: Scenario, content: GameContent, event: RunState['events'][number]): RunState {
-  const def = content.events.find((d) => d.id === event.defId);
-  if (!def || !event.started || event.ended || (event.endTick !== null && event.endTick <= run.sim.tick)) return run;
-  for (const operation of operationsForEvent(run, scenario, def, event)) {
-    if (operation.kind === 'BACKOUT_CHANGE') {
-      run = requestBackout(run, content, operation.changeId).run;
-      continue;
-    }
-    if (operation.kind === 'HOLD_HSM_RECALL' && run.sim.hsmRecalls?.heldSinceTick != null) continue;
-    if (operation.kind === 'RECYCLE_CICS' && def.relief === 'CICS_STORAGE') {
-      const pressure = cicsStorageReach(operation.targets.map((target) => target.name), run.sim.last.lpars);
-      const targets = operation.targets.filter((target) => pressure.includes(regionKey(target.name, target.lparId)) &&
-        !run.sim.cicsRecycles?.some((r) => r.name === target.name && r.lparId === target.lparId && r.restartTick > run.sim.tick));
-      if (targets.length > 0) run = requestOperation(run, scenario, content, { ...operation, targets }).run;
-      continue;
-    }
-    run = requestOperation(run, scenario, content, operation).run;
+  for (const operation of operationsForEventReports(run, scenario, content, event)) {
+    if (operation.kind === 'BACKOUT_CHANGE') run = requestBackout(run, content, operation.changeId).run;
+    else run = requestOperation(run, scenario, content, operation).run;
   }
   return run;
 }
@@ -241,9 +226,10 @@ function obviousHourly(r: RunState, scenario: Scenario, content: GameContent): R
   for (const j of run.sim.batch.jobs.filter((x) => x.status === 'ABENDED' && x.def.critical)) {
     run = requestChange(run, content, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
   }
-  for (const inc of run.incidents.filter((i) => i.endTick === null)) {
-    const active = run.events.find((e) => e.started && !e.ended && e.trigger === inc.truth.trigger && OBVIOUS_FIX_CARD_IDS.has(e.defId));
-    if (active) run = remedy(run, scenario, content, active);
+  for (const active of run.events.filter((e) => e.started && !e.ended && OBVIOUS_FIX_CARD_IDS.has(e.defId))) {
+    const pointed = run.incidents.some((i) => i.endTick === null &&
+      (active.affects.includes(i.workloadId) || (active.affects.includes('BATCH') && i.workloadId === 'BATCH')));
+    if (pointed) run = remedy(run, scenario, content, active);
   }
   return run;
 }
@@ -258,16 +244,11 @@ const textbook: Strategy = {
 const ON_SIGHT_CARDS = new Set(['REORG_OVERRUN', 'MONITOR_CREEP', 'SHADOW_IT', 'QR_RELEASE', 'HSM_RECALL_STORM', 'CICS_SOS']);
 const HARBOURLINE_ON_SIGHT_CARDS = new Set(['BOT_ATTACK', 'RETRY_STORM', 'ZIIP_LOSS']);
 
-// The bot knows the storm's end from the card. PT-55 will release protection from report data.
+// Protection follows the underlying offered traffic / recall demand shown in Operations, even while the mode
+// itself suppresses that pressure.
 function releaseProtection(run: RunState, scenario: Scenario, content: GameContent): RunState {
-  const active = run.events.filter((e) => e.started && !e.ended && (e.endTick === null || e.endTick > run.sim.tick));
-  if (run.sim.hsmRecalls?.heldSinceTick != null && !active.some((e) => e.defId === 'HSM_RECALL_STORM')) {
-    run = requestOperation(run, scenario, content, { kind: 'HOLD_HSM_RECALL', held: false }).run;
-  }
-  for (const workloadId of Object.keys(run.sim.gatewayModes ?? {})) {
-    const storm = active.some((e) => GATEWAY_TRAFFIC_CARDS[e.defId] &&
-      content.events.some((d) => d.id === e.defId && d.endedBy?.kind === 'SET_GATEWAY' && d.endedBy.workloadId === workloadId));
-    if (!storm) run = requestOperation(run, scenario, content, { kind: 'SET_GATEWAY', workloadId, mode: null }).run;
+  for (const operation of protectionReleases(run, scenario)) {
+    run = requestOperation(run, scenario, content, operation).run;
   }
   return run;
 }

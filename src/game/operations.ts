@@ -1,4 +1,4 @@
-import { GATEWAY_TRAFFIC_CARDS, OPERATION_TRUST, OPERATIONS } from '../content/operations';
+import { GATEWAY_TRAFFIC_CARDS, HSM_RECALL, OPERATION_TRUST, OPERATIONS } from '../content/operations';
 import { STC_AUTOMATION } from '../content/entities';
 import { applyOperation, gatewayChannels, operatorRoster, type Operation } from '../sim/core/operations';
 import type { Scenario } from '../sim/core/scenario';
@@ -142,7 +142,14 @@ function buildOperationsView(run: RunState, scenario: Scenario) {
     regions: sim.config.cics.map(({ name, lparId }) => ({
       name, lparId, recycle: sim.cicsRecycles?.find((r) => r.name === name && r.lparId === lparId && r.restartTick > sim.tick) ?? null,
     })),
-    gateway: gatewayChannels(sim, scenario).map(({ id, name }) => ({ id, name, mode: sim.gatewayModes?.[id] ?? null })),
-    recalls: { held: sim.hsmRecalls?.heldSinceTick != null, backlogIo: sim.hsmRecalls?.backlogIo ?? 0 },
+    gateway: gatewayChannels(sim, scenario).map(({ id, name }) => {
+      const last = sim.last.workloads.find((w) => w.id === id);
+      return { id, name, mode: sim.gatewayModes?.[id] ?? null, offeredRatePerSec: last?.offeredRate ?? last?.arrivalRate ?? 0 };
+    }),
+    recalls: {
+      held: sim.hsmRecalls?.heldSinceTick != null,
+      backlogIo: sim.hsmRecalls?.backlogIo ?? 0,
+      incomingIops: sim.config.dasd.lcus.find((lcu) => lcu.id === HSM_RECALL.lcuId)?.extraIops?.RANDOM ?? 0,
+    },
   };
 }
