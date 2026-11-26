@@ -181,7 +181,8 @@ export function accumulateHour(run: RunState, h = copyHourForAdvance(run)): RunS
     for (const x of lt.cicsStorage ?? []) {
       const cicsStorage = (h.cicsStorage ??= {});
       const a = cicsStorage[x.region];
-      cicsStorage[x.region] = { peakMb: Math.max(a?.peakMb ?? 0, x.inUseMb), limitMb: x.limitMb, sosSec: (a?.sosSec ?? 0) + (x.sos ? TICK_SEC : 0) };
+      const abends = (a?.abends ?? 0) + (lt.cicsAbends?.[x.region] ?? 0);
+      cicsStorage[x.region] = { peakMb: Math.max(a?.peakMb ?? 0, x.inUseMb), limitMb: x.limitMb, sosSec: (a?.sosSec ?? 0) + (x.sos ? TICK_SEC : 0), ...(abends > 0 ? { abends } : {}) };
     }
   }
   const db2 = run.sim.last.db2Contention;

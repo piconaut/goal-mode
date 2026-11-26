@@ -228,6 +228,8 @@ export interface LparTick {
   iipcpReported?: boolean;
   /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
   cicsStorage?: CicsStorageTick[];
+  /** Transactions that abended in a sick region this tick, by region (PT-52); absent when none did. */
+  cicsAbends?: Record<string, number>;
   /** DBAT requests that waited for a slot this tick (reporting: QUEDBAT/IFCID 73). */
   dbatWaited?: number;
   /** `capped`: this role's CPU was withheld by a resource-group or discretionary cap (RF-09); absent on ticks and
@@ -278,9 +280,41 @@ export interface SimModifiers {
   lockBoost: number;
   /** Fraction of a workload's transactions failing fast in one image's regions, keyed `workload@lpar` (sick AOR). */
   regionFailFrac?: Record<string, number>;
+  /** Fraction of a workload's transactions failing fast in one CICS region, keyed `workload@REGION` (a sick AOR,
+   *  PT-52). CICS work is spread evenly over an image's AORs, so the image fails the mean over its regions. */
+  aorFailFrac?: Record<string, number>;
+  /** The batch stream whose running job holds the escalated locks behind `lockBoost` (PT-52): the boost applies only
+   *  while a job of that stream runs, and the Db2 blockers view names that job. Absent: the boost always applies. */
+  lockHolder?: { stream: string; object: string };
   /** Share (0..1) of a workload's completed units of work that end in rollback rather than commit, keyed by workload
    *  (RT-23). Absent or 0 = every unit commits. Reporting only: a rolled-back unit still consumed its CPU and time. */
   rollbackFrac?: Record<string, number>;
+}
+
+/** Extra demand a card put on one roster entity (PT-52): its workload's CPU on that image is multiplied by
+ *  1 + the extraCpuFrac of every load there. `tag` groups the loads one card placed, so its end clears them. */
+export interface EntityLoad {
+  tag: string;
+  kind: 'DDF_THREAD' | 'TSO_USER';
+  /** Thread token or userid (sim/workload/rosters.ts). */
+  id: string;
+  workloadId: string;
+  lparId: string;
+  extraCpuFrac: number;
+}
+
+/** An address space ended by CANCEL (PT-52). A started task comes back when automation restarts it. */
+export interface CancelledAddressSpace {
+  jobname: string;
+  lparId: string;
+  /** Tick at which automation restarts it; null = it stays down. */
+  restartTick: number | null;
+}
+
+/** A scheduled Db2 utility running past its window (REORG_OVERRUN): it stays active at this I/O rate until cleared. */
+export interface UtilityOverrun {
+  kind: 'REORG' | 'COPY' | 'RUNSTATS';
+  seqIops: number;
 }
 
 export interface SimState {
@@ -321,6 +355,12 @@ export interface SimState {
   mqMaxDepth?: Record<string, number>;
   /** Extra address spaces added during the run (e.g. new CICS AORs). */
   extraAddressSpaces: AddressSpaceDef[];
+  /** Address spaces (base or extra) currently ended by CANCEL; absent when none. */
+  cancelledAddressSpaces?: CancelledAddressSpace[];
+  /** Extra demand on roster entities (runaway threads, unapproved TSO work); absent when none. */
+  entityLoads?: EntityLoad[];
+  /** Scheduled utilities overrunning their window; absent when none. */
+  utilityOverruns?: UtilityOverrun[];
   /** Messages from the last applied commands (validation errors, notes). */
   commandLog: string[];
   cost: CostState;

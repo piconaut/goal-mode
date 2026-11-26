@@ -11,7 +11,8 @@ import { LCU_MAX_DEVICES } from '../io/dasd';
 import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { RoutingPolicy } from '../workload/routing';
-import type { PoolType, SimModifiers, SimState, ZosSystemConfig } from './types';
+import { STC_AUTOMATION } from '../../content/entities';
+import type { EntityLoad, PoolType, SimModifiers, SimState, UtilityOverrun, ZosSystemConfig } from './types';
 
 export type Command =
   | { kind: 'ACTIVATE_POLICY'; definition: ServiceDefinition }
@@ -41,8 +42,16 @@ export type Command =
   | { kind: 'SET_LCU'; lcuId: string; aliases?: number; hotSkew?: number; extraIops?: Partial<Record<'RANDOM' | 'SEQ', number>> }
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
   | { kind: 'SET_ROUTING_POLICY'; workloadId: string; policy: RoutingPolicy }
-  | { kind: 'SET_MODIFIER'; mod: keyof Omit<SimModifiers, 'lockBoost'>; key: string; value: number }
-  | { kind: 'SET_LOCK_BOOST'; value: number }
+  | { kind: 'SET_MODIFIER'; mod: keyof Omit<SimModifiers, 'lockBoost' | 'lockHolder'>; key: string; value: number }
+  /** `holder`: the batch stream holding the escalated locks (PT-52); omit it to keep a holder already set. */
+  | { kind: 'SET_LOCK_BOOST'; value: number; holder?: { stream: string; object: string } | null }
+  /** A card's extra demand on a roster entity (PT-52). */
+  | { kind: 'SET_ENTITY_LOAD'; load: EntityLoad }
+  | { kind: 'CLEAR_ENTITY_LOADS'; tag: string }
+  /** CANCEL jobname: ends a base or extra address space on one image; automation restarts a started task. */
+  | { kind: 'CANCEL_ADDRESS_SPACE'; jobname: string; lparId: string }
+  /** A scheduled utility overruns: it stays active at `seqIops` until cleared with null (PT-52). */
+  | { kind: 'SET_UTILITY_OVERRUN'; utility: UtilityOverrun['kind']; seqIops: number | null }
   | { kind: 'ADD_WORKLOAD'; workload: WorkloadDef }
   | { kind: 'ADD_ADDRESS_SPACE'; addressSpace: AddressSpaceDef }
   | { kind: 'REMOVE_ADDRESS_SPACE'; jobname: string; lparId: string }
@@ -68,7 +77,8 @@ function withConfig(s: SimState, f: (c: SimState['config']) => void): SimState {
   return { ...s, config };
 }
 
-export function applyCommand(s: SimState, cmd: Command): CommandResult {
+/** `base`: the scenario's own address spaces, so CANCEL can check its target (omitted, it trusts the command). */
+export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressSpaceDef[]): CommandResult {
   switch (cmd.kind) {
     case 'ACTIVATE_POLICY':
       if (cmd.definition.classes.length === 0) return fail(s, 'Policy has no service classes');
@@ -382,13 +392,51 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     case 'SET_MODIFIER': {
       const table = { ...s.mods[cmd.mod] };
       // Fractions are neutral at 0, multipliers at 1.
-      if (cmd.value === (cmd.mod === 'regionFailFrac' || cmd.mod === 'rollbackFrac' ? 0 : 1)) delete table[cmd.key];
+      if (cmd.value === (cmd.mod === 'regionFailFrac' || cmd.mod === 'rollbackFrac' || cmd.mod === 'aorFailFrac' ? 0 : 1)) delete table[cmd.key];
       else table[cmd.key] = cmd.value;
       return ok({ ...s, mods: { ...s.mods, [cmd.mod]: table } }, `${cmd.mod}[${cmd.key}] = ${cmd.value}`);
     }
 
-    case 'SET_LOCK_BOOST':
-      return ok({ ...s, mods: { ...s.mods, lockBoost: cmd.value } }, `lock boost ${cmd.value}`);
+    case 'SET_LOCK_BOOST': {
+      const { lockHolder, ...rest } = s.mods;
+      const holder = cmd.holder === undefined ? lockHolder : (cmd.holder ?? undefined);
+      return ok({ ...s, mods: { ...rest, lockBoost: cmd.value, ...(holder && cmd.value !== 0 ? { lockHolder: holder } : {}) } }, `lock boost ${cmd.value}`);
+    }
+
+    case 'SET_ENTITY_LOAD': {
+      const l = cmd.load;
+      const loads = (s.entityLoads ?? []).filter((x) => !(x.tag === l.tag && x.kind === l.kind && x.id === l.id && x.workloadId === l.workloadId && x.lparId === l.lparId));
+      return ok({ ...s, entityLoads: [...loads, { ...l }] }, `${l.kind === 'DDF_THREAD' ? 'Thread' : 'User'} ${l.id} on ${l.lparId}: CPU +${Math.round(l.extraCpuFrac * 100)}% of ${l.workloadId}`);
+    }
+
+    case 'CLEAR_ENTITY_LOADS': {
+      const { entityLoads, ...rest } = s;
+      const left = (entityLoads ?? []).filter((x) => x.tag !== cmd.tag);
+      return ok(left.length ? { ...rest, entityLoads: left } : rest, `Entity loads ${cmd.tag} cleared`);
+    }
+
+    case 'CANCEL_ADDRESS_SPACE': {
+      const on = (x: { jobname: string; lparId: string }) => x.jobname === cmd.jobname && x.lparId === cmd.lparId;
+      const a = s.extraAddressSpaces.find(on) ?? base?.find(on);
+      if (STC_AUTOMATION.noCancel.includes(cmd.jobname)) return fail(s, `IEE838I ${cmd.jobname} NON-CANCELABLE - ISSUE FORCE ARM`);
+      if (base && !a) return fail(s, `IEE341I ${cmd.jobname} NOT ACTIVE on ${cmd.lparId}`);
+      // Game rule (PT-20 design §3): subsystem servers others depend on (CICS, Db2, MQ, JES2, VTAM, TCP/IP, RRS) are
+      // stopped through their own operations, not CANCEL.
+      if (a?.role) return fail(s, `${cmd.jobname} is a ${a.role} server: stop it through its subsystem`);
+      if (s.cancelledAddressSpaces?.some(on)) return fail(s, `IEE341I ${cmd.jobname} NOT ACTIVE on ${cmd.lparId}`);
+      const restartTick = (a?.subsystem ?? 'STC') === 'STC' ? s.tick + Math.ceil((STC_AUTOMATION.restartMin * 60) / TICK_SEC) : null;
+      return ok(
+        { ...s, cancelledAddressSpaces: [...(s.cancelledAddressSpaces ?? []), { jobname: cmd.jobname, lparId: cmd.lparId, restartTick }] },
+        `CANCEL ${cmd.jobname}: ended on ${cmd.lparId}${restartTick !== null ? `; automation restarts it in ${STC_AUTOMATION.restartMin} min` : ''}`,
+      );
+    }
+
+    case 'SET_UTILITY_OVERRUN': {
+      const { utilityOverruns, ...rest } = s;
+      const left = (utilityOverruns ?? []).filter((x) => x.kind !== cmd.utility);
+      const next = cmd.seqIops === null ? left : [...left, { kind: cmd.utility, seqIops: cmd.seqIops }];
+      return ok(next.length ? { ...rest, utilityOverruns: next } : rest, cmd.seqIops === null ? `${cmd.utility} back in its window` : `${cmd.utility} overrunning`);
+    }
 
     case 'ADD_WORKLOAD':
       if (s.extraWorkloads.some((w) => w.id === cmd.workload.id)) return fail(s, `Workload ${cmd.workload.id} exists`);
@@ -455,12 +503,12 @@ const duplexSecondaryOf = (c: SimState['config'], x: CfStructureConfig) =>
   );
 
 
-export function applyCommands(s: SimState, cmds: readonly Command[]): SimState {
+export function applyCommands(s: SimState, cmds: readonly Command[], base?: readonly AddressSpaceDef[]): SimState {
   if (cmds.length === 0) return s;
   let st = s;
   const log: string[] = [];
   for (const c of cmds) {
-    const r = applyCommand(st, c);
+    const r = applyCommand(st, c, base);
     st = r.state;
     log.push(`${r.ok ? 'OK ' : 'ERR'} ${r.message}`);
   }

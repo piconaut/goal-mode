@@ -162,9 +162,28 @@ export interface Db2BlockerRow {
   affectedLpars: string[];
 }
 
+/** A batch job holding escalated table space locks (LOCK_ESCALATION, PT-52), as DISPLAY DATABASE LOCKS lists a
+ *  holder: the job's correlation ID, its member and the object. */
+export interface Db2LockHolder {
+  job: string;
+  lparId: string;
+  member: string | null;
+  object: string;
+}
+
 export interface Db2BlockerView {
   rows: Db2BlockerRow[];
   drain?: { name: string; phase: 'WAITING' | 'DRAINED'; startedTick: number; object: string; member: string; pendingReaders: number };
+  lockHolder?: Db2LockHolder;
+}
+
+/** The running job of the stream that holds the lock boost's escalated locks, if the boost is on and one runs. */
+export function db2LockHolder(run: RunState): Db2LockHolder | undefined {
+  const holder = run.sim.mods.lockHolder;
+  if (!holder || !run.sim.mods.lockBoost) return undefined;
+  const j = run.sim.batch.jobs.find((x) => x.status === 'RUNNING' && x.def.stream === holder.stream);
+  if (!j?.lparId) return undefined;
+  return { job: j.def.name, lparId: j.lparId, member: run.sim.config.db2.find((m) => m.lparId === j.lparId)?.ssid ?? null, object: holder.object };
 }
 
 /** DISPLAY BLOCKERS DETAIL snapshot. Game cohorts carry average ages and workload IDs. */
@@ -172,7 +191,8 @@ export function db2Blockers(run: RunState, scenario: Scenario): Db2BlockerView {
   const rows: Db2BlockerRow[] = [];
   const profile = scenario.db2Contention;
   const state = run.sim.env.db2Contention;
-  if (!profile || !state) return { rows };
+  const lockHolder = db2LockHolder(run);
+  if (!profile || !state) return lockHolder ? { rows, lockHolder } : { rows };
   const members = run.sim.config.db2.filter((m) => profile.members.includes(m.ssid));
   const affectedLpars = members.map((m) => m.lparId);
   const workload = allWorkloads(scenario, run).find((w) => w.id === profile.reader);
@@ -195,8 +215,11 @@ export function db2Blockers(run: RunState, scenario: Scenario): Db2BlockerView {
     }
   }
   const drain = state.drain;
-  return drain ? { rows, drain: { name: profile.drain.name, phase: drain.phase, startedTick: drain.startedTick,
-    object: profile.object, member: profile.drain.member, pendingReaders } } : { rows };
+  return {
+    rows,
+    ...(drain ? { drain: { name: profile.drain.name, phase: drain.phase, startedTick: drain.startedTick, object: profile.object, member: profile.drain.member, pendingReaders } } : {}),
+    ...(lockHolder ? { lockHolder } : {}),
+  };
 }
 
 export interface CicsTxnRow {
@@ -251,9 +274,13 @@ export interface CicsStorageRow {
   peakMb: number;
   limitMb: number;
   sosSec: number;
+  /** Transactions that abended in the region during the hour. */
+  abends?: number;
 }
 
-/** CICS storage manager statistics per AOR for an hour (EDSA peak against EDSALIM, time short on storage). */
+/** CICS statistics per AOR for an hour: storage manager (EDSA peak against EDSALIM, time short on storage) and the
+ *  region's transaction abends (Abend Count XMRAENDC, kept per region: CICS TS 6 Statistics Reference PDF p.358
+ *  (printed 348)). */
 export function cicsStorageStats(run: RunState, key: string): CicsStorageRow[] {
   const st = key === 'current' ? run.hour?.cicsStorage : run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key)?.cicsStorage;
   return Object.entries(st ?? {})

@@ -68,22 +68,8 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-52 · The world's entities: rosters, CICSXLOG, utility schedule
-`list: playtest-fixes · status: ready · priority: low · size: L · area: sim`
-
-Source: PT-20, decided 2026-11-26 ([docs/pt-20-design.md](docs/pt-20-design.md) §2 rule 7, §3, §4, §10). Add the
-entities the general operations will target, and move the cards onto them, so every build stays coherent: daily
-DDF-thread and TSO-userid rosters with a heavy-tailed CPU spread; a permanent low-CPU CICSXLOG STC that matches the
-`CICS*` rule; each scenario's nightly utility schedule (REORG, COPY, RUNSTATS on most nights); site automation that
-restarts a cancelled STC after N minutes (FICTIONAL), with cancel of base address spaces in the sim. Re-point the cards
-built from modifiers: RUNAWAY's extra CPU goes on one roster thread, SHADOW_IT's on two or three userids, XLOG_LOOP
-makes the permanent CICSXLOG loop (no more `ADD_ADDRESS_SPACE`), REORG_OVERRUN overruns the night's scheduled REORG.
-Add the clues that come with it: a lock-holder clue naming the settlement job during LOCK_ESCALATION, and SICK_AOR's
-abends reported per region. Cards still end by fix id. Done when: each entity and re-pointed card has a unit or realism
-test, goldens are regenerated with a "Behaviour change" note, and a three-scenario sweep is recorded.
-
 ### PT-56 · General operations as real levers
-`list: playtest-fixes · status: blocked: after PT-52 · priority: low · size: M · area: sim`
+`list: playtest-fixes · status: ready · priority: low · size: M · area: sim`
 
 Source: PT-20 (docs/pt-20-design.md §3). Add the seven general operations to Change Desk › Operations with their real
 effects and wrong-target costs: cancel a job/STC/TSO user, cancel a Db2 thread, terminate a Db2 utility, recycle CICS
@@ -257,6 +243,18 @@ delay online postings (an SLA cost the player then has to diagnose) and how long
 Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims, the writers'
 SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 drops the APPROX note, goldens are
 regenerated with a behaviour note and the three-scenario sweep is recorded.
+
+### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
+`list: realism-fixes · status: blocked: after PT-56 · priority: low · size: M · area: sim`
+
+Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
+CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
+So the excess rises and falls with the image's arrival rate, and routing the workload off the culprit's image removes
+it, though a real runaway thread keeps running where it is. Model a loaded entity as its own constant demand (one
+enclave or address space in the workload's last period, at most its engines), sized so the card's average excess over
+its usual hours stays about the same. Done when: a realism test shows the excess independent of the arrival rate and
+of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
+three-scenario sweep is recorded.
 
 ## balance
 

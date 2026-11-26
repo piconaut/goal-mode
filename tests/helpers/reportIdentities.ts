@@ -989,9 +989,14 @@ export const IDENTITIES: Identity[] = [
           c.close(x.failedPct * (x.failed + x.txnPerSec * 3600), 100 * x.failed, ROUNDING, where(`${x.workloadId} failed %`));
           c.atMost(x.cpuMs + x.qrWaitMs + x.mxtWaitMs + x.dispMinusCpuMs, x.avgRtMs, ROUNDING, where(`${x.workloadId} SMF 110 components above the response time`));
         }
-        for (const s of cicsStorageStats(h.end, key)) {
+        const regions = cicsStorageStats(h.end, key);
+        for (const s of regions) {
           c.ok(s.peakMb >= 0 && s.sosSec >= 0 && s.sosSec <= 3600, where(`${s.region} storage statistics`));
+          c.ok((s.abends ?? 0) >= 0, where(`${s.region} transaction abends non-negative`));
         }
+        // Game rule (PT-52): a sick region's abends (XMRAENDC, kept per region) are transactions the CICS work failed,
+        // so the regions' abends never exceed the failed CICS transactions of the hour.
+        c.atMost(sum(regions.map((s) => s.abends ?? 0)), sum(cics.map((x) => x.failed)), ROUNDING, where('CICS region abends vs failed CICS transactions'));
         for (const s of db2Statistics(h.end, run.scenario, key)) {
           // A new report field joins an identity. QUEDBAT counts the hour's waits, and the run keeps only the last
           // tick's share, so a closed hour can prove the non-negativity and the absent -> 0 fallback.

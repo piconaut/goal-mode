@@ -10,7 +10,7 @@ import { adapt } from './adapt';
 const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 
 const mod = (m: 'rate' | 'cpu', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
-const failFrac = (workloadId: string, lparId: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: `${workloadId}@${lparId}`, value });
+const aorFail = (workloadId: string, region: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: 'aorFailFrac', key: `${workloadId}@${region}`, value });
 
 const ALL_ONLINE = ['MKTORD', 'MKTQRY', 'RETAIL', 'CARDS', 'PAYMENTS', 'MOBILE'];
 const CF_AFFECTED = ['MKTORD', 'MKTQRY', 'RETAIL', 'CARDS', 'PAYMENTS', 'MOBILE'];
@@ -31,13 +31,14 @@ const BANK_CARDS: EventDef[] = [
     failureMechanism: 'ROUTING',
     startHour: [9, 15],
     durationHours: 5,
-    // FICTIONAL: a third of the transactions routed to the sick region abend almost at once.
-    begin: [failFrac('MKTORD', 'PRDC', 0.35), failFrac('CARDS', 'PRDC', 0.35)],
-    end: [failFrac('MKTORD', 'PRDC', 0), failFrac('CARDS', 'PRDC', 0)],
+    // FICTIONAL: 70% of the transactions CICSAOR3 runs abend almost at once; PRDC's other region (CICSAOR7) is
+    // healthy, so a third of the work routed to PRDC fails while both regions run there (PT-52: per region).
+    begin: [aorFail('MKTORD', 'CICSAOR3', 0.7), aorFail('CARDS', 'CICSAOR3', 0.7)],
+    end: [aorFail('MKTORD', 'CICSAOR3', 0), aorFail('CARDS', 'CICSAOR3', 0)],
     fix: 'RECYCLE_SICK_AOR',
     forewarning: null,
     announcement: null,
-    clue: 'CPSM / CICS monitoring: MKTORD and CARDS abends (and the error-rate SLA misses) concentrate on the PRDC region while its response time looks excellent, and PRDC attracts a growing share of the routed work. Without abend compensation the CPSM goal router reads a fast failure as a fast response and sends it more work (the storm drain). Fixes: set ABENDTHRESH/ABENDCRIT on the CPSM routing policy, quiesce the PRDC region, or restart it.',
+    clue: 'CPSM / CICS monitoring: MKTORD and CARDS abends (and the error-rate SLA misses) concentrate on PRDC, all of them in CICSAOR3 (CICS region statistics), while its response time looks excellent, and PRDC attracts a growing share of the routed work. Without abend compensation the CPSM goal router reads a fast failure as a fast response and sends it more work (the storm drain). Fixes: set ABENDTHRESH/ABENDCRIT on the CPSM routing policy, quiesce the PRDC region, or restart it.',
   },
   {
     // The card volume modifier stands in for the burst arrivals, which no command can retune.
@@ -88,8 +89,8 @@ const HB_CARDS: EventDef[] = [
     clue: 'DDF END/S for the mobile channel jumps ×2–3 on all four PRD images; CPU per transaction unchanged.',
   }),
   adapt('RUNAWAY', {
-    end: [mod('cpu', 'ADHOC', 1)],
-    clue: 'DDFPRD period 2 APPL% and zIIP busy soar on PRDC/PRDD with the analytics end rate flat; with the zIIPs busy the work queues for them (Mon III DELAY, Partition Data). Fixes: cancel the thread, or give analytics a goal class of its own.',
+    end: [],
+    clue: 'DDFPRD period 2 APPL% and zIIP busy soar on PRDC or PRDD (whichever runs the runaway thread) with the analytics end rate flat; with the zIIPs busy the work queues for them (Mon III DELAY, Partition Data). Fixes: cancel the thread, or give analytics a goal class of its own.',
   }),
   // FICTIONAL: RETAIL is ~half of Harbourline's online CPU (Midwest's RBANK ~a third of a much smaller estate), so one
   // regressed package of many costs ×1.5 per transaction, not Midwest's ×3 (×3 alone saturated both CPCs in sweeps).
@@ -119,7 +120,10 @@ const HB_CARDS: EventDef[] = [
   adapt('CF_LINK', { affects: CF_AFFECTED }),
   adapt('CF_FAILURE', { affects: CF_AFFECTED }),
   adapt('DASD_DEGRADED', { affects: ALL_ONLINE }),
-  adapt('LOCK_ESCALATION', { affects: ['CARDS', 'RETAIL'] }),
+  adapt('LOCK_ESCALATION', {
+    affects: ['CARDS', 'RETAIL'],
+    begin: [{ kind: 'SET_LOCK_BOOST', value: 6, holder: { stream: 'SET', object: 'SETTLE.POSTINGS' } }],
+  }),
   adapt('MONITOR_CREEP', { affects: ['MOBILE', 'RETAIL'] }),
   adapt('POWER_CAP', {
     affects: ['MKTORD', 'CARDS'],

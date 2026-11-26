@@ -440,10 +440,10 @@ describe('events', () => {
       ],
     };
     r = advance(r, MIDWEST, withEvents, 5);
-    expect(r.sim.mods.cpu.ADHOC).toBe(10);
+    expect(r.sim.entityLoads?.map((l) => l.workloadId)).toEqual(['ADHOC']);
     r = requestChange(r, withEvents, { label: 'cancel', fixId: 'CANCEL_RUNAWAY' }).run;
     r = advance(r, MIDWEST, withEvents, 2);
-    expect(r.sim.mods.cpu.ADHOC).toBeUndefined();
+    expect(r.sim.entityLoads).toBeUndefined();
     expect(r.events[0]!.ended).toBe(true);
   });
 });

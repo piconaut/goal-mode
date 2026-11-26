@@ -43,6 +43,10 @@ describe('Harbourline Bank pack', () => {
           const [w, l] = c.key.split('@');
           expect(workloadIds, `${e.id} ${c.key}`).toContain(w);
           expect(lparIds, `${e.id} ${c.key}`).toContain(l);
+        } else if (c.kind === 'SET_MODIFIER' && c.mod === 'aorFailFrac') {
+          const [w, region] = c.key.split('@');
+          expect(workloadIds, `${e.id} ${c.key}`).toContain(w);
+          expect(pack.scenario.world.cics.map((x) => x.name), `${e.id} ${c.key}`).toContain(region);
         } else if (c.kind === 'SET_MODIFIER' && c.mod !== 'asCpu') expect(workloadIds, `${e.id} ${c.key}`).toContain(c.key);
         if ('lparId' in c && typeof c.lparId === 'string') expect(lparIds, `${e.id} ${c.kind}`).toContain(c.lparId);
       }
@@ -75,10 +79,10 @@ describe('Harbourline Bank pack', () => {
     const card = HARBOURLINE_EVENTS.find((e) => e.id === 'SICK_AOR')!;
     const s0 = initState(7, pack.scenario);
     const on = applyCommands(s0, card.begin);
-    expect(on.mods.regionFailFrac?.['MKTORD@PRDC']).toBeGreaterThan(0);
-    expect(Object.keys(on.mods.regionFailFrac ?? {}).every((k) => k.endsWith('@PRDC'))).toBe(true);
+    expect(on.mods.aorFailFrac?.['MKTORD@CICSAOR3']).toBeGreaterThan(0);
+    expect(Object.keys(on.mods.aorFailFrac ?? {}).every((k) => k.endsWith('@CICSAOR3'))).toBe(true);
     const off = applyCommands(on, card.end);
-    expect(off.mods.regionFailFrac ?? {}).toEqual({});
+    expect(off.mods.aorFailFrac ?? {}).toEqual({});
   });
 });
 

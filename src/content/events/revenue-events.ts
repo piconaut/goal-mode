@@ -23,7 +23,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('RUNAWAY', {
     id: 'RUNAWAY_COMPLIANCE',
     name: 'Runaway compliance query',
-    end: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ANALYTICS', value: 1 }],
+    end: [],
     clue: 'WEBDDF APPL% and zIIP busy soar on PROD2 with the analytics end rate flat; with IIPHONORPRIORITY=NO the zIIP work queues instead of overflowing, so e-filing on PROD2 shows zIIP delay (Mon III DELAY, Partition Data). Fixes: cancel the thread, give e-filing a goal class of its own, or let zIIP work overflow to the CPs.',
   }, { MOBILE: 'EFILE', ADHOC: 'ANALYTICS' }),
   adapt('REGRESSION', {
@@ -64,7 +64,8 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('LOCK_ESCALATION', {
     name: 'Lock escalation in refund batch',
     affects: ['ACCOUNT', 'REFSTAT'],
-    clue: 'Account and refund-status response time up with little READY time; their work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running.',
+    begin: [{ kind: 'SET_LOCK_BOOST', value: 6, holder: { stream: 'REF', object: 'REFUND.LEDGER' } }],
+    clue: 'Account and refund-status response time up with little READY time; their work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running, and the Db2 blockers view names the refund job holding escalated locks.',
   }),
   adapt('MONITOR_CREEP', { affects: ['EFILE', 'ACCOUNT'] }),
   adapt('POWER_CAP', { affects: ['EFILE', 'ACCOUNT'] }),

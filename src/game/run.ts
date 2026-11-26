@@ -48,6 +48,7 @@ import {
 } from './types';
 import { SAVE_VERSION } from './runFile';
 import { allWorkloads } from './workloads';
+import { resolveCulprits } from './culprits';
 import { hourUnion, resolveReach, type ReachWorld } from './footprint';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
 
@@ -218,10 +219,17 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const armedEnded = new Set<string>();
     const resolvedEnd = new Map<string, Command[]>();
     const resolvedCpcs = new Map<string, Set<string>>();
+    const resolvedCulprits = new Map<string, string[]>();
     for (const e of events) {
       const def = defs.get(e.defId);
       if (!e.started && e.startTick <= tick) {
-        cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
+        cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
+        if (def?.culprits) {
+          const c = resolveCulprits(r.sim, allWorkloads(scenario, r), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
+          cmds.push(...c.commands);
+          resolvedEnd.set(e.uid, [...e.endCommands, { kind: 'CLEAR_ENTITY_LOADS', tag: e.uid }]);
+          resolvedCulprits.set(e.uid, c.ids);
+        }
         if (def?.capacityDrop) {
           // A site power cap throttles every CPC on the floor; the end restores each one's setting.
           const restore: Command[] = [];
@@ -302,6 +310,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       started: e.started || e.startTick <= tick,
       ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
       ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
+      ...(resolvedCulprits.has(e.uid) ? { culprits: resolvedCulprits.get(e.uid) } : {}),
       ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));

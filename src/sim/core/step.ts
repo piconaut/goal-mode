@@ -8,6 +8,7 @@ import { cfServiceForSystems, evaluateCf, type CfImageInput } from '../cf/cf';
 import { cpSpeed, ziipSpeed } from '../hw/cpc';
 import type { PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
+import { activeUtilities, utilityIopsByLcu } from '../subsys/utilities';
 import { closeNight, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobRuntime } from '../subsys/batch';
 import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { scKeyOf } from '../workload/slices';
@@ -30,8 +31,25 @@ import { byIdOf, effectiveAddressSpaces, effectiveWorkloads, updateRouting } fro
 export type { Command } from './commands';
 export { swapOut, rgSysplexShares, discretionaryCaps, cicsRegions, cicsHonorPriority, rgMin, resourceGroupCaps } from './tick/helpers';
 
+/** Site automation restarts a cancelled started task once its restart time comes (PT-52). */
+function restartStcs(s: SimState): SimState {
+  const down = s.cancelledAddressSpaces;
+  if (!down?.some((x) => x.restartTick !== null && x.restartTick <= s.tick)) return s;
+  const left = down.filter((x) => x.restartTick === null || x.restartTick > s.tick);
+  const back = down.filter((x) => x.restartTick !== null && x.restartTick <= s.tick).map((x) => `${x.jobname} restarted on ${x.lparId} by automation`);
+  const { cancelledAddressSpaces: _drop, ...rest } = s;
+  return { ...(left.length ? { ...rest, cancelledAddressSpaces: left } : rest), commandLog: [...s.commandLog, ...back.map((m) => `OK  ${m}`)].slice(-50) };
+}
+
+/** The lock boost counts while its holder stream has a job running (always, when the boost names no holder). */
+export function lockBoostNow(s: SimState, jobs: readonly JobRuntime[]): number {
+  const holder = s.mods.lockHolder;
+  if (!s.mods.lockBoost || !holder) return s.mods.lockBoost;
+  return jobs.some((j) => j.status === 'RUNNING' && j.def.stream === holder.stream) ? s.mods.lockBoost : 0;
+}
+
 export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
-  const prev = updateRouting(applyCommands(before, commands), scenario);
+  const prev = restartStcs(updateRouting(applyCommands(before, commands, scenario.addressSpaces), scenario));
   const rng = new Rng(prev.rng);
   const workloads = effectiveWorkloads(scenario, prev);
   const addressSpaces = effectiveAddressSpaces(scenario, prev);
@@ -174,6 +192,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     readerDispatch: undefined,
     dbatWaitedByLpar: {},
     cicsStorageBy: {},
+    cicsAbendsBy: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
   for (const l of zosLpars) planLpar(t, l);
@@ -214,7 +233,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { randomIops, seqIops, cfRequests } = sums;
 
   // I/O subsystem and CF for next tick.
-  const dasd = evaluateDasd(config.dasd, { RANDOM: randomIops, SEQ: seqIops });
+  const dasd = evaluateDasd(config.dasd, { RANDOM: randomIops, SEQ: seqIops }, utilityIopsByLcu(activeUtilities(scenario.utilities, prev.seed, prev.tick, prev.utilityOverruns)));
   const cfImages: CfImageInput[] = config.cfs.flatMap((cfg) => {
     if (cfg.failed) return [];
     const l = plan.lparById[cfg.lparId];
@@ -225,7 +244,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
   const cfBySystem = cfServiceForSystems(cf, config.cfStructures, zosLpars, plan.siteKmOf, scenario.cfTunables, sums.cfRequestsBy);
-  const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + prev.mods.lockBoost;
+  const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + lockBoostNow(prev, batch.jobs);
 
   // Batch critical-path projection and end-of-night summary.
   if (prev.tick % CRITICAL_PROJECTION_EVERY === 0) {

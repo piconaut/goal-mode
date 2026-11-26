@@ -1,3 +1,4 @@
+import type { UtilityDef } from '../../content/entities';
 import type { ProductDef } from '../../content/pricing';
 import type { CfTunables } from '../cf/cf';
 import type { Db2ContentionProfile } from '../subsys/db2Contention';
@@ -27,4 +28,6 @@ export interface Scenario {
   batchNetwork: (seed: number, day: number, dayOfMonth: number) => JobDef[];
   /** Compound daily growth of batch volumes built into `batchNetwork`. */
   batchGrowthPerDay: number;
+  /** The nightly Db2 utility schedule (absent = none). */
+  utilities?: UtilityDef[];
 }

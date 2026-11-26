@@ -1,62 +1,67 @@
 import { PACKS } from '../../src/content/packs';
 import { cardMechanisms } from '../../src/content/footprint';
+import { STC_AUTOMATION } from '../../src/content/entities';
 import { advance, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { applyCommands } from '../../src/sim/core/commands';
+import { TICK_SEC } from '../../src/sim/core/units';
 
 const packs = Object.values(PACKS).filter((p) => p.game.events.some((e) => e.id === 'XLOG_LOOP'));
+const restartTicks = Math.ceil((STC_AUTOMATION.restartMin * 60) / TICK_SEC);
 
+// PT-52: CICSXLOG is a permanent STC; the card makes it loop, and its end (or the fix) cancels it until automation
+// restarts it healthy.
 describe('looping log archiver lifecycle', () => {
-  it.each(packs)('expires, repeats at full CPU, and cancels cleanly in $id', (pack) => {
+  it.each(packs)('loops, is cancelled at the end, restarts healthy, and loops again at full CPU in $id', (pack) => {
     const def = pack.game.events.find((e) => e.id === 'XLOG_LOOP')!;
     const content = { ...pack.game, events: [def] };
     let r = startDay(newRun(pack.scenario, { ...content, events: [] }, 7), content);
+    const second = 4 + restartTicks + 2;
     r = {
       ...r,
-      events: [0, 6].map((startTick, i) => ({
+      events: [0, second].map((startTick, i) => ({
         uid: `XLOG_LOOP@${i}`, defId: def.id, name: def.name, startTick, endTick: startTick + 3,
         trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false,
       })),
     };
-    const count = (run: RunState) => run.sim.extraAddressSpaces.filter((a) => a.jobname === 'CICSXLOG').length;
-    const cpu = (run: RunState) => {
-      const sample = (stop: boolean) => {
-        const next = advance({ ...run, events: [], pendingCommands: stop ? def.end : [] }, pack.scenario, content, 1);
-        return next.sim.last.lpars.find((l) => l.lparId === 'PROD1')!.scps.find((s) => s.scKey === 'STCHI#1')!.cpEngines;
-      };
+    const down = (run: RunState) => (run.sim.cancelledAddressSpaces ?? []).some((a) => a.jobname === 'CICSXLOG');
+    const stchi = (run: RunState) => run.sim.last.lpars.find((l) => l.lparId === 'PROD1')!.scps.find((s) => s.scKey === 'STCHI#1')!.cpEngines;
+    // The loop's CPU: STCHI with the loop against the same tick with its multiplier reset.
+    const loopCpu = (run: RunState) => {
+      const sample = (reset: boolean) => stchi(advance({ ...run, events: [], pendingCommands: reset ? [{ kind: 'SET_MODIFIER', mod: 'asCpu', key: 'CICSXLOG', value: 1 }] : [] }, pack.scenario, content, 1));
       return sample(false) - sample(true);
     };
+    expect(r.sim.extraAddressSpaces.some((a) => a.jobname === 'CICSXLOG')).toBe(false);
     r = advance(r, pack.scenario, content, 1);
-    expect(count(r)).toBe(1);
-    const firstCpu = cpu(r);
+    const firstCpu = loopCpu(r);
     expect(firstCpu).toBeGreaterThan(0.6);
     r = advance(r, pack.scenario, content, 3);
     expect(r.events[0]!.ended).toBe(true);
-    expect(count(r)).toBe(0);
-    expect(cpu(r)).toBe(0);
-    r = advance(r, pack.scenario, content, 3);
-    expect(count(r)).toBe(1);
-    expect(cpu(r)).toBeCloseTo(firstCpu, 2);
+    expect(r.sim.mods.asCpu.CICSXLOG).toBeUndefined();
+    expect(down(r)).toBe(true);
+    r = advance(r, pack.scenario, content, second - r.sim.tick + r.events[0]!.startTick);
+    expect(down(r)).toBe(false);
+    r = advance(r, pack.scenario, content, 1);
+    expect(r.events[1]!.started).toBe(true);
+    expect(loopCpu(r)).toBeCloseTo(firstCpu, 2);
     const cancelled = requestChange(r, content, { label: 'Cancel archiver', fixId: def.fix! });
     expect(cancelled.ok).toBe(true);
     r = advance(cancelled.run, pack.scenario, content, 1);
     expect(r.events[1]!.ended).toBe(true);
-    expect(count(r)).toBe(0);
-    expect(cpu(r)).toBe(0);
-    r = advance(r, pack.scenario, content, 5);
-    expect(count(r)).toBe(0);
+    expect(down(r)).toBe(true);
     expect(r.sim.mods.asCpu.CICSXLOG).toBeUndefined();
+    r = advance(r, pack.scenario, content, restartTicks + 1);
+    expect(down(r)).toBe(false);
+    expect(r.sim.extraAddressSpaces.some((a) => a.jobname === 'CICSXLOG')).toBe(false);
   });
 
-  it.each(packs)('restarts once at full CPU from an older stopped-job save in $id', (pack) => {
+  it.each(packs)('drops a stale extra copy from an older save before looping in $id', (pack) => {
     const def = pack.game.events.find((e) => e.id === 'XLOG_LOOP')!;
-    let s = applyCommands(newRun(pack.scenario, { ...pack.game, events: [] }, 7).sim, def.begin);
-    s = { ...s, extraAddressSpaces: [...s.extraAddressSpaces, ...s.extraAddressSpaces, ...s.extraAddressSpaces], mods: { ...s.mods, asCpu: { CICSXLOG: 0 } } };
-    const restarted = applyCommands(s, def.begin);
-    expect(restarted.extraAddressSpaces.filter((a) => a.jobname === 'CICSXLOG')).toHaveLength(1);
-    expect(restarted.mods.asCpu.CICSXLOG).toBeUndefined();
-    expect(applyCommands(restarted, def.end).extraAddressSpaces).toEqual([]);
-    expect(s.extraAddressSpaces).toHaveLength(3);
-    expect(s.mods.asCpu.CICSXLOG).toBe(0);
+    const s0 = newRun(pack.scenario, { ...pack.game, events: [] }, 7).sim;
+    const stale = { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC' as const, baseEnginesRef: 0.9, ziipFrac: 0 };
+    const s = { ...s0, extraAddressSpaces: [stale, stale], mods: { ...s0.mods, asCpu: { CICSXLOG: 0 } } };
+    const on = applyCommands(s, def.begin);
+    expect(on.extraAddressSpaces).toEqual([]);
+    expect(on.mods.asCpu.CICSXLOG).toBeGreaterThan(100);
   });
 });

@@ -381,6 +381,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   systems.push(srv ? { lparId: l.id, scps, servers: srv.map((x) => ({ ...x })) } : { lparId: l.id, scps });
   const cics = regions?.targets;
   const cicsStorage = t.cicsStorageBy[l.id];
+  const cicsAbends = t.cicsAbendsBy[l.id];
   const dbatWaited = t.dbatWaitedByLpar[l.id];
   lparTicks.push({
     lparId: l.id,
@@ -395,6 +396,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     ...(res.rcs ? { rcs: res.rcs } : {}),
     ...(cics ? { cics } : {}),
     ...(cicsStorage ? { cicsStorage } : {}),
+    ...(cicsAbends ? { cicsAbends } : {}),
     ...(dbatWaited !== undefined && dbatWaited > 1e-9 ? { dbatWaited } : {}),
   });
 }
