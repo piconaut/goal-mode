@@ -175,6 +175,18 @@ describe('general operator commands', () => {
     expect(cpu(missed)).toBeGreaterThan(base * 1.01);
   });
 
+  it('with every gatherer down, Monitor III lists every system as missing and the sysplex rows are empty', () => {
+    let run = advance({ ...live(), tools: ['RMF_MON3', 'ALERTS'] }, scenario, content, TICKS_PER_HOUR);
+    const images = run.sim.config.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id);
+    for (const lparId of images) run = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId }).run;
+    const m = buildView(run, scenario).mon3!;
+    expect(m.missingSystems?.map((x) => x.system)).toEqual([...images].sort());
+    expect(m.rows).toEqual([]);
+    expect(m.systems).toEqual([]);
+    expect(addPin(run, scenario, { source: 'MON3', system: '*PLEX', scKey: 'ONLHI#1', metric: 'PI' }).ok).toBe(false);
+    expect(() => advance(run, scenario, content, 12)).not.toThrow();
+  }, 60_000);
+
   it('charges the Regulator for cancelling the CICS log archiver, and no one for other started tasks', () => {
     const run = live();
     const journal = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: OPERATION_TRUST.journalJobname, lparId: 'PROD1' });
