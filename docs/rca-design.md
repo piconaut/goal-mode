@@ -840,7 +840,7 @@ rule with the change as the "card".
 
 **Superseded (user, 2026-11-26).** The proof gate is dropped: a button that fixes one exact problem is the
 inauthentic part, and gating it behind proof keeps the button. General operations that aren't tied to one event
-replace it (BACKLOG PT-20, PT-52 … PT-55; `docs/pt-20-design.md` once written). Problem records (§5.1 "As built", RT-22) and
+replace it (BACKLOG PT-52 … PT-55; [docs/pt-20-design.md](pt-20-design.md)). Problem records (§5.1 "As built", RT-22) and
 the recipes they are judged by stay. The unlock claims and recipes of §5.1 and §5.2, the costs of §5.4, the unlock
 side of §5.5 and the gating of §5.7 are kept below as the record of what was considered, not as a plan.
 

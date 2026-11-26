@@ -47,30 +47,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-20 · General operations: design note
-`list: playtest-fixes · status: blocked: user (decisions in docs/pt-20-design.md §8) · priority: low · size: S · area: game`
-
-The note is written ([docs/pt-20-design.md](docs/pt-20-design.md)); it waits for the user's calls Q1 … Q7. Source: playtest round 2 ("a button that fixes this exact problem feels inauthentic") and the user's decision of
-2026-11-26: D1's proof gate (RT-24) is dropped in favour of general operations that aren't tied to one event; cards
-that no general operation fits keep no targeted fix and are solved with the levers everyone has. Write
-`docs/pt-20-design.md` for the user's decision, covering:
-- the general operations and their targets (the note splits cancel work into job, thread and utility: seven): **cancel work** (a job, STC, DDF thread, utility or TSO user;
-  finishes SPEC §10's "Cancel job/query, quiesce address space" verb, which exists today only as two card end effects,
-  `CANCEL_DB2_READERS` and `REMOVE_ADDRESS_SPACE`),
-  **recycle CICS regions** (which regions), **back out a change** (an entry on the Change board of PT-53), **throttle a
-  channel at the gateway** (which workload) and **hold DFSMShsm recalls**;
-- a table of the 23 cards with a targeted fix today (the 23 `FIXES` in `src/game/catalog.ts`, 20 once Revenue's three
-  `_REV` copies are folded into their Midwest originals): the operation and target that
-  ends each, what a wrong target costs, and where its decoys come from. SCOPE_ENCRYPTION, NEGOTIATE_MLC_PRICE,
-  SCOPE_SMF_AUDIT and COMMIT_SETTLEMENT_OFTEN are not operator actions and become replies on the inbox thread that
-  announces them;
-- the open calls: whether a recycle ends a storage-leak card or relieves it until the leak rebuilds; that a wrong
-  target costs a real sim effect (lost work, a rerun, shed users), not only trust; which operations are immediate
-  operator commands and which go through the Change Desk; how forewarned cards are prepared for without
-  `armableEvents` (backing out the announced change early);
-- real behaviour of cancel, CICS recycle and HSM HOLD RECALL checked with the zos-docs skill.
-Done when: the user has decided the note's calls, PT-52 … PT-55 are rewritten to match, and PT-52 is `ready`.
-
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
 
@@ -93,45 +69,54 @@ The player doubted it. Check the grade's inputs and caps against sweep results; 
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
 ### PT-52 · General operations as real levers
-`list: playtest-fixes · status: blocked: after PT-20 · priority: low · size: M · area: sim`
+`list: playtest-fixes · status: ready · priority: low · size: L · area: sim`
 
-Source: PT-20 (docs/pt-20-design.md §3). Add the general operations to Change Desk › Operations, each with its own sim effect whatever is
-running: cancel work (reusing `REMOVE_ADDRESS_SPACE` and `CANCEL_DB2_READERS`), a new `RECYCLE_CICS` (in-flight work
-lost, the region briefly down, its leak reset), a gateway arrival cap, and an HSM recall hold. Cards, their fix ids
-and the old fix buttons are unchanged. Codex entries for each operation. Done when: each operation's effect has a unit
-or realism test, and `npm run compare` against `dev` shows no differences (no bot or golden uses the operations yet).
+Source: PT-20, decided 2026-11-26 ([docs/pt-20-design.md](docs/pt-20-design.md) §2, §3, §10). Add the seven general
+operations to Change Desk › Operations with their real effects and wrong-target costs: cancel a job/STC/TSO user,
+cancel a Db2 thread, terminate a Db2 utility, recycle CICS regions (`RECYCLE_CICS`), back out a change (wired to the
+Change board in PT-53), gateway protection (rate limit, backoff, block sources) and the HSM recall hold with its
+backlog. Add what they need: daily DDF-thread and TSO-userid rosters with a heavy-tailed CPU spread, a permanent
+CICSXLOG STC, a nightly utility schedule (REORG, COPY, RUNSTATS), STC restart by automation, cancel of base address
+spaces, the DISPLAY THREAD and DISPLAY UTILITY views, report lines for held recalls and gateway modes, and Codex
+entries. Check the backout lock hold of a cancelled job with zos-docs before PT-54 models it. Cards and fix buttons
+are unchanged. Coefficients FICTIONAL in `content/`. Done when: each operation's effect and wrong-target cost has a
+unit or realism test, goldens are regenerated with a "Behaviour change" note, and a three-scenario sweep is recorded.
 
 ### PT-53 · Other teams' changes on the Change board
 `list: playtest-fixes · status: blocked: after PT-52 · priority: low · size: M · area: game`
 
-Source: PT-20; absorbs PT-19 (inbox change notices were always bad news, so the player rolled back any announced
-change on sight by D26). Add a section for changes made by application teams, DBAs and vendors to the existing Change
-board (`src/ui/changeDesk/Requests.tsx`), beside the player's own changes: the changes cards bring in (the overnight
-REBIND, teller release 4.2, the monitoring agent, the external SQL procedures) and harmless or helpful entries from
-each scenario's content (a better access path, a cheaper agent), so that "back out the only entry" isn't the answer.
-"Back out a change" targets an entry; backing out a harmless one costs its feature and trust. Done when: every
-card-introduced change and at least as many harmless ones per scenario appear with their time and owner, a back-out
-of a harmless entry has a tested cost, and `npm run compare` shows no differences.
+Source: PT-20 (docs/pt-20-design.md §6); absorbs PT-19 (inbox change notices were always bad news, so the player
+rolled back any announced change on sight by D26). Add a section for changes made by application teams, DBAs and
+vendors to the existing Change board (`src/ui/changeDesk/Requests.tsx`), beside the player's own: the changes cards
+bring in (the overnight REBIND, teller release 4.2, the monitoring agent, the external SQL procedures) and harmless
+or helpful entries from each scenario's content that match them in owner, timing and frequency. Helpful changes have a
+real benefit. "Back out a change" targets an entry (a REBIND immediately, a release or deployment through the Change
+Desk); backing out a harmless one costs its benefit or feature and trust. Forewarnings post their entry. Done when:
+every card-introduced change and at least as many harmless ones per scenario appear with their time and owner, a
+back-out of a harmless entry has a tested cost, and goldens are regenerated with a "Behaviour change" note.
 
 ### PT-54 · Cards end on effect, not on a fix id
 `list: playtest-fixes · status: blocked: after PT-53 · priority: low · size: M · area: game`
 
-Source: PT-20. Each card with a fix today declares an `endedBy` effect (e.g. cancel `CICSXLOG`; a recycle covering
-CICSAOR2 and CICSAOR4; a back-out of the REBIND entry), and the operation's effect is matched against it in place of
-`endEventByFix`. Delete `FIXES`, `visibleFixIds`, `armableEvents` and each card's `fix`; the four business cards
-answer through their inbox thread. Bots' `ON_SIGHT_FIXES` map a card to its operation and target, still from truth, so
-the bands barely move. Migrate old saves' fix changes. Rewrite SPEC §9 and §10. Done when: no card ends by fix id,
-goldens are regenerated with a "Behaviour change" note, and a three-scenario sweep shows every bot band where it was
-or the move is explained.
+Source: PT-20 (docs/pt-20-design.md §4, §5, §7). Re-point the cards built from modifiers at their entities (RUNAWAY's
+thread, SHADOW_IT's userids, the looping CICSXLOG, the night's REORG). Give each card an operation ends an `endedBy`
+effect, matched in place of `endEventByFix`, including Harbourline's BOT_ATTACK, RETRY_STORM and ZIIP_LOSS. CICS_SOS
+and HSM_RECALL_STORM are relieved, not ended, with the per-region footprint rule of §5. LOCK_ESCALATION ends by
+cancelling the running settlement job, with its backout lock hold and a lock-holder clue; SICK_AOR's abends are
+reported per region. The four business cards answer through their inbox thread. Delete `FIXES`, `visibleFixIds`,
+`armableEvents`, each card's `fix`, COMMIT_SETTLEMENT_OFTEN and the `NO_TARGET`/`ARMED` lines. Bots' `ON_SIGHT_FIXES`
+map a card to its operation and target, still from truth. Migrate old saves (§7). Rewrite SPEC §9 and §10. Done when:
+no card ends by fix id, goldens are regenerated, and a three-scenario sweep shows each band move is one §7 lists.
 
 ### PT-55 · Bots choose operation targets from report data
 `list: playtest-fixes · status: blocked: after PT-54 · priority: low · size: M · area: tooling`
 
-Source: PT-20. Bots pick targets from what a player can read (the Monitor III top consumer, the Change board, the
-regions short on storage, the workload with the arrival surge), not from `inc.truth`; a target the data doesn't
-single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a target, a
-three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call on the main
-agent).
+Source: PT-20 (docs/pt-20-design.md §7). Bots pick targets from what a player can read (the Monitor III top consumer,
+DISPLAY THREAD, the Change board, the regions short on storage, the channel with the arrival surge), not from
+`inc.truth`, and release their toggles (HSM hold, gateway modes) when the reports show the storm over. A target the
+data doesn't single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a
+target, a three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call
+on the main agent).
 
 ## rca-truth
 

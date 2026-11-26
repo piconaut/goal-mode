@@ -1,88 +1,91 @@
 # PT-20: general operations instead of per-card fixes
 
-Status: **proposal for the user** (2026-11-26). Nothing here is implemented. The calls to make are in §8; the work
-they lead to is BACKLOG.md PT-52 … PT-55, which this note's decisions rewrite.
+Status: **decided** (user, 2026-11-26: Q1–Q7 of §8 as recommended). Revised the same day after an adversarial review
+by a second agent (§11 lists what it changed). The work is BACKLOG.md PT-52 … PT-55.
 
 ## 1. Why
 
 Playtest round 2: a button that fixes one exact problem ("Recycle the PROD2 CICS AORs", "Cancel the looping CICSXLOG
 job") feels inauthentic. The menu gives the diagnosis away, and a lever exists only while the game has a card that
 names it. D1 (proof-gated fixes, docs/rca-design.md §5) kept the button and hid it behind proof. The user dropped it
-on 2026-11-26 for the alternative here: operations a real operator has every day, aimed at a target the player
-chooses. Diagnosis becomes choosing the right target, which is what it is on a real system.
+on 2026-11-26 for this design: operations a real operator has every day, aimed at a target the player chooses.
+Diagnosis becomes choosing the right target, which is what it is on a real system.
 
 Today (`src/game/catalog.ts` `FIXES`, `src/game/run/events.ts`): 22 cards across the three scenarios carry one of 23
 fix ids. `visibleFixIds` shows a card's fix once it has started, been forewarned or been rumoured. `endEventByFix`
 ends every running card whose `fix` equals the applied id and queues the card's `end` commands. The fix itself has
 no sim effect of its own, and applying one with no card running reports "no active event" (`NO_TARGET`), which tells
-the player they guessed wrong.
+the player they guessed wrong. Harbourline adapts BOT_ATTACK, RETRY_STORM and ZIIP_LOSS with `fix: null`.
 
 ## 2. Rules for the design
 
-1. **Every operation does something real whether or not a card is running.** Cancelling a legitimate job loses its
-   work, recycling a healthy region drops its in-flight tasks, throttling sheds real users. Without this, "recycle
-   everything, cancel the top consumer" costs nothing and becomes the dominant play (CLAUDE.md: every lever needs a
-   cost).
-2. **Every target list always holds plausible entries.** The list never appears, grows or shrinks because a card
-   started: the job list is the jobs that run, the change list carries harmless changes (PT-53), the region list is
-   every region.
-3. **No verdict from the operation.** The `NO_TARGET` and `ARMED` log lines go. The player learns whether it worked
-   from the reports, as an operator does.
-4. **Cards no operation fits keep no targeted fix.** About half the deck already has `fix: null` and is solved with
-   the levers everyone has (WLM policy, routing, PR/SM, capacity, job holds and restarts). PT-20 doesn't change that.
-5. **One operation per real command family**, named as the real command, so the Codex can teach it.
+1. **Every operation does something real whether or not a card is running, and every wrong target costs a sim
+   effect, not only hours or trust.** Engineer-hours are in surplus late in a run (PT-22), so hours alone are no
+   cost. Cancelling a legitimate job loses its work, recycling a healthy region fails its in-flight tasks,
+   throttling fails real requests against the SLA (Q1).
+2. **Every target list always holds plausible entries.** No entry appears only while a card runs: the address-space
+   list, the thread and TSO rosters and the utility schedule exist every day, with a heavy-tailed spread so a large
+   top entry is normal on a quiet day; the Change board carries harmless changes (PT-53).
+3. **No verdict from the operation.** The `NO_TARGET` and `ARMED` log lines go (Q7). The player learns whether it
+   worked from the reports.
+4. **Operations are the same in every scenario.** An operation that silently does nothing on one scenario is a lie,
+   so Harbourline's `fix: null` twins get targets too.
+5. **Cards no operation fits keep no targeted fix**, solved with the levers everyone has (WLM policy, routing, PR/SM,
+   capacity, job holds and restarts).
+6. **Toggled state is visible.** A held recall queue or a gateway mode shows in a report ("HSM recalls HELD", the
+   channel's gateway state) and costs every hour it stays on.
+7. **Targets are entities.** A card built from a modifier (RUNAWAY's ×10 ADHOC CPU, SHADOW_IT's ×8 TSO CPU) gets an
+   entity the operation can hit: the card's `begin` marks one roster entry as the culprit and puts the extra demand
+   on it.
 
 ## 3. The operations
 
-| Operation | Real command | Targets (where the player sees them) | Effect, card or not | Default cost | Mode |
+| Operation | Real command | Targets (where the player sees them) | Effect, card or not | Cost of a wrong target | Mode |
 |---|---|---|---|---|---|
-| **Cancel a job, started task or TSO user** | `CANCEL jobname`, `CANCEL U=userid` | Address spaces on an image (Monitor III job list, WLMGL top consumers); TSO users by CPU | The address space ends (`REMOVE_ADDRESS_SPACE`). A batch job ABENDs and needs a restart (`ABEND_JOB`, `RESTART_JOB`); a TSO user loses the session | 0.25 h; the owner's trust; lost or rerun work | Immediate |
-| **Cancel a Db2 thread** | `-CANCEL THREAD(token)` | The top threads by CPU per DDF workload and member (a new `-DISPLAY THREAD` view, PT-52) | The thread's unit of work rolls back and its locks and claims go (`CANCEL_DB2_READERS`); the requester sees a failure | 0.25 h; the owner's trust | Immediate |
-| **Terminate a Db2 utility** | `-TERM UTILITY(id)` | Active utilities (`-DISPLAY UTILITY`; nightly REORG, COPY and RUNSTATS steps from batch content) | The step stops and must be resubmitted as a new job; its housekeeping is undone for the night | 0.5 h; Finance trust | Immediate |
-| **Recycle CICS regions** | Shut down and restart the region(s) | Every region, chosen individually | Each chosen region is down briefly (one at a time), in-flight tasks are backed out, storage use returns to base, a sick state clears | 1 h; the owner's trust; failed in-flight work | Immediate |
-| **Back out a change** | REBIND `SWITCH(PREVIOUS)`/`APREUSE`, back out a release or deployment | Entries on the Change board's other-teams section (PT-53) | The change's effect is reversed: a regression goes, and so does a harmless change's benefit or feature | 1–1.5 h; the owning team's trust | Change Desk (emergency on a live day) |
-| **Gateway protection for a channel** | Edge rate limit, client backoff, block source addresses | Each external channel (mobile, e-filing, refund status, …) and a mode | *Rate limit:* sheds a share of all arrivals. *Backoff:* retries back off and customers see "try later". *Block sources:* drops the attack traffic | 1 h; the channel's facet trust | Immediate, toggled |
-| **Hold DFSMShsm recalls** | `HOLD RECALL` / `RELEASE RECALL` | None | Recall I/O stops while held; non-WAIT recalls stay queued and run on release, but a batch job's WAIT recall of a migrated data set **fails** (§9), so the job ABENDs and needs a restart | 0.5 h; owner trust per hour held; failed batch steps | Immediate, toggled |
+| **Cancel a job, started task or TSO user** | `CANCEL jobname`, `CANCEL U=userid` | Address spaces per image (Monitor III job list, WLMGL top consumers), excluding CICS and Db2 regions and system address spaces (refused with an operator warning); TSO userids by CPU (a daily roster) | The address space ends; site automation restarts a cancelled STC after N minutes (FICTIONAL), so a cancel stops a fault in an STC only until it restarts. A batch job ABENDs and needs a restart (`ABEND_JOB`, `RESTART_JOB`). A cancelled TSO user is logged off | A legitimate job's work is lost and rerun; a legitimate STC's function is missing until restarted (MONAGENT: the tool it feeds has a data gap); developers lose engineer-hours and Digital trust | Immediate, 0.5 h |
+| **Cancel a Db2 thread** | `-CANCEL THREAD(token)` | The top threads by CPU per DDF workload and member (a new `-DISPLAY THREAD` view, a daily roster) | The thread's unit of work rolls back and its claims go; the requester sees a failure | The work reruns, so its CPU is spent twice, and the request fails | Immediate, 0.5 h |
+| **Terminate a Db2 utility** | `-TERM UTILITY(id)` | Active utilities (`-DISPLAY UTILITY`) from each scenario's nightly utility schedule: REORG, COPY and RUNSTATS on most nights | The step stops and must be resubmitted: a terminated REORG reruns from the next night's schedule, and can overrun again no more often than any other night | That night's backup or statistics are lost | Immediate, 0.5 h |
+| **Recycle CICS regions** | Immediate shutdown and restart of the region(s) | Every region, chosen individually | Each chosen region is down for its restart minutes, one at a time: its share of routed work fails (`regionFailFrac`) while down and the rest reroutes (§9); in-flight tasks are backed out; its EDSA use restarts at 0 with any leak still running (`leak {startMb: 0, sinceTick: now}`); a sick state clears | Failed in-flight and routed work, and the owner's trust | Immediate, 1 h |
+| **Back out a change** | `REBIND SWITCH(PREVIOUS)`/`APREUSE`; back out a release or deployment | Entries in the Change board's other-teams section (PT-53) | The change's effect is reversed: a regression goes, and so does a harmless change's benefit or feature | A helpful change's benefit is lost (e.g. a better access path), or a feature and its owner's trust | A REBIND is immediate (a DBA command); a release or deployment goes through the Change Desk (Q3) |
+| **Gateway protection for a channel** | Edge rate limit, client backoff, block source addresses | Each external channel and a mode | *Rate limit:* sheds a share of all arrivals, counted as failed transactions against the SLA. *Backoff:* retries back off and customers see "try later". *Block sources:* drops attack traffic and always sheds a small share of legitimate traffic (shared carrier NAT addresses); with no attack the edge team reports "no unusual source addresses" (Q4) | Failed legitimate requests every hour the mode stays on | Immediate, toggled, 1 h |
+| **Hold DFSMShsm recalls** | `HOLD RECALL` / `RELEASE RECALL` | None | Recall I/O stops while held; non-WAIT recalls queue and run on release, draining at a capped rate (so a release can bring a spike back); batch WAIT recalls fail, so a job that needs a migrated data set ABENDs and needs a restart (§9) | Failed batch steps and owner trust every hour it is held | Immediate, toggled, 0.5 h |
 
-Costs are today's `FIXES` hours and trust, moved onto the operations (FICTIONAL, `content/`). The real-effect parts
-are new sim work: `RECYCLE_CICS`, a gateway arrival cap and an HSM hold are new commands; the rest reuse commands
-that exist (`REMOVE_ADDRESS_SPACE`, `CANCEL_DB2_READERS`, `ABEND_JOB`, `RESTART_JOB`, `SET_CICS`, `SET_MODIFIER`).
-
-Not operations: system address spaces (Db2 MSTR/DBM1, IRLM, SMF, JES, XCF) are refused with an operator warning, as a
-site's automation and procedures would, instead of being listed.
+Hours and trust amounts are today's `FIXES` values moved onto the operations (FICTIONAL, `content/`). New sim work:
+the entity rosters (DDF threads, TSO userids), a permanent CICSXLOG STC on the image it runs on (low CPU, matching the
+`CICS*` rule, so it's in STCHI every day), the nightly utility schedule, STC restart by automation, `RECYCLE_CICS`, a
+gateway arrival cap with modes, and the HSM hold with its backlog. `REMOVE_ADDRESS_SPACE` today filters only
+`extraAddressSpaces` (`src/sim/core/commands.ts`), so cancelling a base address space needs new code.
 
 ## 4. The cards
 
-Every card with a fix today, grouped by the operation that ends it.
+Every card with a fix today, plus Harbourline's three twins, grouped by the operation that ends it.
 
-| Card (scenarios) | Fix today | Ends it under PT-20 | Wrong targets and their cost | Other levers (unchanged) |
-|---|---|---|---|---|
-| RUNAWAY (Midwest, Harbourline), RUNAWAY_COMPLIANCE (Revenue) | CANCEL_RUNAWAY | Cancel the top ADHOC (BI) thread; on Revenue the ANALYTICS thread | Cancelling a mobile or online thread fails a customer request; a normal BI query annoys its analyst | DDF period goals, caps, zIIP overflow |
-| XLOG_LOOP (Midwest, Revenue) | CANCEL_XLOG | Cancel `CICSXLOG` on PROD1 | Cancelling a CICS AOR in the same class is an outage; cancelling MONAGENT blinds monitoring | Classification rule to a low STC class |
-| SHADOW_IT (Midwest) | STOP_SHADOW_IT | Cancel the top TSO users by CPU | Cancelling developers costs engineer-hours and Digital trust | Cap DEVT, lower TSO importance |
-| LOCK_ESCALATION (all) | COMMIT_SETTLEMENT_OFTEN | **Proposed:** cancel the running lock-heavy settlement job (Midwest STL, Harbourline SET, Revenue REF); its locks go with the rollback and it reruns later | The rerun stretches the critical batch window; cancelling the wrong job reruns it for nothing | Keep online work off the tables until the step ends |
-| REORG_OVERRUN (all) | TERM_UTILITY | Terminate the REORG utility | Terminating COPY or RUNSTATS loses that night's backup or statistics | Move aliases to LCU 21 |
-| REGRESSION (Midwest, Harbourline), EFILE_REGRESSION (Revenue) | REBIND_REVERT, EFILE_REBIND_REVERT | Back out the overnight REBIND of RB01 / EF01 | Backing out a helpful REBIND loses its better access path | Absorb with capacity |
-| MONITOR_CREEP (all) | ROLLBACK_MONITOR | Back out the monitoring-agent release | Cancelling MONAGENT also stops the CPU but loses the monitor's data | Cap, absorb |
-| QR_RELEASE (Midwest) | ROLLBACK_TELLER_RELEASE | Back out teller release 4.2 | A recycle does **not** help (the release is still installed): a useful lesson | Route to PROD2, add an AOR |
-| ZIIP_LOSS (Midwest, Revenue) | NATIVE_SQL_PROCS, …_REV | Back out the external stored-procedure deployment | Backing out a harmless deployment loses its feature | Cap, more CP |
-| CICS_SOS (Midwest, Revenue) | RECYCLE_PROD2_AORS, …_REV | Recycle CICSAOR2 and CICSAOR4 (**relieves**, §5) | Recycling a healthy PROD1 region is a short outage for nothing | Raise EDSALIM, lower MXT, route to PROD1 |
-| SICK_AOR (Harbourline) | RECYCLE_SICK_AOR | Recycle the PRDC region (CICSAOR3) | Recycling a healthy region; the abends move nowhere | ABENDTHRESH/ABENDCRIT, quiesce the region |
-| BOT_ATTACK (Midwest), FILING_BOTS (Revenue) | BLOCK_BOTS, BLOCK_FILING_BOTS | Gateway: block sources on mobile / e-filing | A rate limit also sheds real users; backoff does nothing to bots | Protect other work, ride it out |
-| RETRY_STORM (Midwest), REFUND_RETRY_STORM (Revenue) | MOBILE_BACKOFF, REFSTAT_BACKOFF | Gateway: backoff on mobile / refund status | Blocking sources finds no attack; a rate limit sheds real users too | Protect other work, ride it out |
-| HSM_RECALL_STORM (all) | HOLD_HSM_RECALLS, …_REV | Hold HSM recalls | Held with no storm: batch steps that need a migrated data set fail and rerun | Move aliases to LCU 30 |
-| ENCRYPTION_MANDATE (Midwest, Harbourline), TAXDATA_ENCRYPTION (Revenue) | SCOPE_ENCRYPTION | Reply on the announcing inbox thread (negotiate the scope) | — | Absorb with tuning and capacity |
-| VENDOR_PRICE (all) | NEGOTIATE_MLC_PRICE | Reply on the announcing inbox thread | — | Cut the peaks, Tailored Fit Pricing |
-| SMF_AUDIT (all) | SCOPE_SMF_AUDIT | Reply on the announcing inbox thread | — | Absorb the MSU for three days |
+| Card (scenarios) | Fix today | Target entity | Ends it under PT-20 | Wrong targets and their cost | Other levers (unchanged) |
+|---|---|---|---|---|---|
+| RUNAWAY (Midwest, Harbourline), RUNAWAY_COMPLIANCE (Revenue) | CANCEL_RUNAWAY | One BI/analytics thread in the roster, given the card's extra CPU (replaces the ×10 workload modifier) | Cancel that thread | Cancelling another thread fails its request and reruns its CPU | DDF period goals, caps, zIIP overflow |
+| XLOG_LOOP (Midwest, Revenue) | CANCEL_XLOG | The permanent CICSXLOG STC, which loops | Cancel CICSXLOG: the loop stops and automation restarts it healthy | Cancelling another STC loses its function until restart | Classification rule to a low STC class |
+| SHADOW_IT (Midwest) | STOP_SHADOW_IT | Two or three TSO userids in the daily roster, given the extra CPU | Cancel those userids (a game rule: their manager is called, so they don't log back on) | Cancelling other developers costs engineer-hours and Digital trust | Cap DEVT, lower TSO importance |
+| LOCK_ESCALATION (all) | COMMIT_SETTLEMENT_OFTEN | The lock-heavy settlement job running when the card starts (Midwest STL, Harbourline SET, Revenue REF), named by a new lock-holder clue (DISPLAY DATABASE LOCKS style) | Cancel that job: its locks are held while it backs out (APPROX, about as long as it ran; checked with zos-docs in PT-52), then clear; the job reruns and stretches the batch window (Q5) | Cancelling CRD or GLF, also lock-heavy, reruns them for nothing | Keep online work off the tables until the step ends |
+| REORG_OVERRUN (all) | TERM_UTILITY | The night's REORG in the utility schedule; the LCU 21 volumes show which one is overrunning | Terminate it; it reruns from the next night's schedule | Terminating COPY or RUNSTATS loses that night's backup or statistics | Move aliases to LCU 21 |
+| REGRESSION (Midwest, Harbourline), EFILE_REGRESSION (Revenue) | REBIND_REVERT, EFILE_REBIND_REVERT | The overnight REBIND entry on the Change board | Back it out (immediate) | Backing out a helpful REBIND loses its better access path | Absorb with capacity |
+| MONITOR_CREEP (all) | ROLLBACK_MONITOR | The monitoring-agent release entry | Back it out | Cancelling MONAGENT stops the CPU only until automation restarts it, with a data gap in the tool it feeds | Cap, absorb |
+| QR_RELEASE (Midwest) | ROLLBACK_TELLER_RELEASE | Teller release 4.2 entry | Back it out | A recycle does **not** help (the release is still installed) | Route to PROD2, add an AOR |
+| ZIIP_LOSS (all) | NATIVE_SQL_PROCS, …_REV; Harbourline none | The external stored-procedure deployment entry | Back it out | Backing out a harmless deployment loses its feature | Cap, more CP |
+| CICS_SOS (Midwest, Revenue) | RECYCLE_PROD2_AORS, …_REV | CICSAOR2 and CICSAOR4 | **Relieved, not ended** (§5): a recycle restarts the region's EDSA use at 0 and the leak continues | Recycling a healthy region fails its work for nothing | Raise EDSALIM, lower MXT, route to PROD1 |
+| SICK_AOR (Harbourline) | RECYCLE_SICK_AOR | CICSAOR3 on PRDC; the reports must put the abends on AOR3, not on PRDC's other region | Recycle CICSAOR3 | Recycling the other PRDC region, or any healthy one | ABENDTHRESH/ABENDCRIT, quiesce the region |
+| BOT_ATTACK (Midwest, Harbourline), FILING_BOTS (Revenue) | BLOCK_BOTS, BLOCK_FILING_BOTS; Harbourline none | The channel | Gateway: block sources | A rate limit fails real users too; backoff does nothing to bots | Protect other work, ride it out |
+| RETRY_STORM (Midwest, Harbourline), REFUND_RETRY_STORM (Revenue) | MOBILE_BACKOFF, REFSTAT_BACKOFF; Harbourline none | The channel | Gateway: backoff | Blocking sources finds no attack and sheds some real users | Protect other work, ride it out |
+| HSM_RECALL_STORM (all) | HOLD_HSM_RECALLS, …_REV | None | **Relieved, not ended** (§5): a hold stops the storm's I/O and builds a backlog that drains on release | Held with no storm: batch steps that need migrated data fail | Move aliases to LCU 30 |
+| ENCRYPTION_MANDATE (Midwest, Harbourline), TAXDATA_ENCRYPTION (Revenue) | SCOPE_ENCRYPTION | — | Reply on the announcing inbox thread (Q6) | — | Absorb with tuning and capacity |
+| VENDOR_PRICE (all) | NEGOTIATE_MLC_PRICE | — | Reply on the announcing inbox thread | — | Cut the peaks, Tailored Fit Pricing |
+| SMF_AUDIT (all) | SCOPE_SMF_AUDIT | — | Reply on the announcing inbox thread | — | Absorb the MSU for three days |
 
-So 18 of the 22 cards end through a general operation and 4 (one fix id each for the encryption, price and SMF
-audit cards) through a reply on the inbox thread that announced them. Those are business negotiations, already
-forewarned, so a reply gives nothing away. COMMIT_SETTLEMENT_OFTEN goes if LOCK_ESCALATION moves to "cancel the job"
-(Q5); otherwise it stays as a request to the application team.
+So 21 cards end or are relieved through a general operation (the 18 with a fix today and Harbourline's three twins),
+and 4 through a reply on the inbox thread that announced them. COMMIT_SETTLEMENT_OFTEN goes.
 
-## 5. Ending a card: declared effect, with one exception
+## 5. Ending a card, and the two relieved cards
 
-Each card with an operation declares what ends it:
+Each card that an operation ends declares it:
 
 ```ts
 endedBy: { op: 'CANCEL_AS', jobname: 'CICSXLOG', lparId: 'PROD1' }
@@ -90,15 +93,19 @@ endedBy: { op: 'BACKOUT', changeId: 'REBIND_RB01' }
 endedBy: { op: 'GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' }
 ```
 
-When an operation is applied, its own sim effect always happens; if it also matches a running card's `endedBy`, the
-card ends and its `end` commands run, as `endEventByFix` does today. A recycle that covers only some of a card's
-regions doesn't match.
+An operation's own sim effect always happens; if it also matches a running card's `endedBy`, the card ends and its
+`end` commands run, as `endEventByFix` does today. A recycle that covers only some of a card's regions doesn't match.
 
-**The exception is a storage leak.** CICS_SOS is a program that leaks; restarting the region frees the storage but
-the program is still installed, so on a real system the leak resumes. Proposed: a recycle resets the region's EDSA
-use to base and the card runs to its timer. With 40 MB an hour against the headroom under EDSALIM, one recycle
-usually lasts the 4-hour card, so in play it feels like a fix, and it teaches that recycling buys time. No `endedBy`
-for this card (Q2).
+**Relieved cards.** CICS_SOS and HSM_RECALL_STORM have no `endedBy`: the operation removes the symptom and the cause
+keeps running until the card's timer. A recycled region's EDSA use restarts at 0 and the leak continues; with 40 MB an
+hour against the headroom under EDSALIM, one recycle usually lasts the 4-hour card. A held storm builds a backlog that
+replays on release. Both teach that the operation buys time.
+
+**Footprint of a relieved card** (a stated game rule read from sim state each tick, so the RCA can be explained from
+data the player has): CICS_SOS keeps its CICS storage footprint only on regions whose EDSA use is above the SOS
+cushion, the same quantity the CICS report shows, region by region. Recycle only CICSAOR2 and the footprint stays on
+CICSAOR4; if the leak refills a recycled region before the timer, that is a real recurrence and the footprint comes
+back. HSM_RECALL_STORM keeps its LCU 30 footprint while the backlog or the storm's I/O is on the LCU.
 
 ## 6. Forewarned cards and the Change board
 
@@ -106,32 +113,38 @@ Today a forewarned card's fix can be armed before it starts (`armableEvents`). U
 
 - A forewarned change (the overnight REBIND, teller release 4.2, the monitoring agent, the stored procedures) is an
   entry on the Change board's other-teams section from the day it is announced, with its time and owner (PT-53).
-  Backing it out before it lands means asking the owning team to stop it: the same back-out, at the same cost, with no
-  special arming state.
-- The REORG forewarning works the same way through the utility list: the REORG is scheduled and visible; terminating
-  it ahead is possible once it runs.
-- Harmless and helpful changes are announced the same way (this absorbs PT-19), so "back out whatever was announced"
-  stops working.
+  Backing it out before it lands means asking the owning team to stop it: the same back-out, at the same cost.
+- Harmless and helpful changes are announced the same way and match the card entries in owner, timing and frequency
+  (this absorbs PT-19), so "back out whatever was announced" stops working. A helpful change has a real benefit, so
+  landing it moves the goldens.
+- The REORG forewarning works through the utility schedule.
 
-## 7. Bots and balance
+## 7. Bots, saves and balance
 
-Through PT-54, bots' `ON_SIGHT_FIXES` map a card to its operation and target, still from truth, so bands should barely
-move. PT-55 then makes bots choose targets from what a player can read: the top consumer, the Change board, the
-regions short on storage, the channel with the arrival surge. A card whose target the data doesn't single out shows
-in sweeps as a card that is never ended, which makes the sweep a standing check of the clue paths. Expect the
-textbook band to move; that's a balance call after a three-scenario sweep.
+- **PT-54:** bots' `ON_SIGHT_FIXES` map a card to its operation and target, still from truth. Expected band moves,
+  listed in advance: the HSM backlog replay, the CICS_SOS relief, the REORG resubmission, the recycle outage, the
+  rate-limit and block-sources sheds, and Harbourline's three twins becoming fixable.
+- **PT-55:** bots choose targets from what a player can read (the top consumer, the Change board, the regions short on
+  storage, the channel with the arrival surge) and release their toggles (HSM hold, gateway modes) when the reports
+  say the storm is over; a sweep would otherwise measure holds left on forever. A card whose target the data doesn't
+  single out shows in sweeps as never ended, a standing check of the clue paths. Expect the textbook band to move; a
+  balance call after a three-scenario sweep.
+- **Save migration (PT-54):** old saves can hold CICSXLOG in `extraAddressSpaces`, `armedEvents` on changes, and
+  changes carrying fix ids. Migration removes the extra CICSXLOG copy (`REMOVE_ADDRESS_SPACE` must never delete the
+  base one), turns an armed card that hasn't started into "backed out before it landed", and maps fix-id changes to
+  their operation.
 
-## 8. Decisions for the user
+## 8. Decisions (user, 2026-11-26)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
-| Q1 | Do wrong targets cost a real sim effect (lost work, reruns, shed users, a short outage), not just trust? | Yes: without it, blanket use is free |
-| Q2 | Does a CICS recycle *relieve* a storage leak (reset storage, the card runs to its timer) instead of ending the card? | Yes, as §5 |
-| Q3 | Which operations are immediate, and which go through the Change Desk? | Cancel, recycle, gateway and HSM hold immediate (live-day emergency rules: trust, failure risk); back-out through the Change Desk |
-| Q4 | Does "block sources" with no attack running tell the player there was none ("no unusual source addresses")? | Yes: a real edge team would say so, and it costs an hour like an inquiry. Accept it as a paid clue |
-| Q5 | LOCK_ESCALATION: cancel the lock-holding settlement job (locks go with the rollback, the job reruns and stretches the window), instead of COMMIT_SETTLEMENT_OFTEN? | Yes: it's the operator's real move and has a real trade-off |
-| Q6 | The four business cards (encryption ×2, MLC price, SMF audit) as inbox replies instead of operations? | Yes |
-| Q7 | Drop the `NO_TARGET` / `ARMED` verdict lines? | Yes (§2 rule 3) |
+| Q1 | Wrong targets cost a real sim effect, not just trust | Yes |
+| Q2 | A CICS recycle relieves a storage leak instead of ending the card | Yes (the HSM hold relieves too, after review) |
+| Q3 | Cancel, recycle, gateway and HSM hold immediate; back-outs through the Change Desk | Yes (a REBIND back-out is immediate, after review) |
+| Q4 | "Block sources" with no attack says "no unusual source addresses" | Yes (and it always sheds some legitimate traffic, after review) |
+| Q5 | LOCK_ESCALATION ended by cancelling the settlement job | Yes (with the backout lock hold and a lock-holder clue, after review) |
+| Q6 | The four business cards as inbox replies | Yes |
+| Q7 | Drop the `NO_TARGET` / `ARMED` verdict lines | Yes |
 
 ## 9. Real behaviour checked
 
@@ -150,11 +163,25 @@ textbook band to move; that's a balance call after a three-scenario sweep.
 
 ## 10. What the entries become
 
-- **PT-52** (sim): the seven operations of §3 with their real effects, the DISPLAY THREAD and DISPLAY UTILITY target
-  views, Codex entries. Cards and fix buttons unchanged; `npm run compare` clean.
-- **PT-53** (game): the Change board's other-teams section with card-introduced and harmless entries (PT-19's helpful
-  changes), the back-out operation and its costs; forewarnings post their entry. Compare clean.
-- **PT-54** (game): `endedBy` on the 18 cards, the CICS_SOS relief, inbox replies for the 4 business cards, removal of
-  `FIXES`, `visibleFixIds`, `armableEvents` and the verdict lines; save migration; SPEC §9 and §10; goldens and a
-  sweep.
-- **PT-55** (tooling): bots choose targets from report data; sweep and re-tune.
+- **PT-52** (sim, L): the seven operations of §3 with their effects and costs; the entity rosters (DDF threads, TSO
+  userids), a permanent CICSXLOG STC, the nightly utility schedule, STC restart by automation, `RECYCLE_CICS`, the
+  gateway modes and the HSM hold with its backlog; the DISPLAY THREAD and DISPLAY UTILITY views and the report lines
+  for toggled state; Codex entries. Changes baseline behaviour: goldens, a "Behaviour change" note and a sweep. Cards
+  and fix buttons unchanged.
+- **PT-53** (game, M): the Change board's other-teams section with card-introduced and harmless or helpful entries,
+  the back-out operation and its costs; forewarnings post their entry. Moves goldens.
+- **PT-54** (game, M): cards re-pointed at their entities, `endedBy` on the cards an operation ends, the two relieved
+  cards and their footprint rule, the lock-holder clue and per-region SICK_AOR abends, inbox replies for the 4
+  business cards, Harbourline's twins, removal of `FIXES`, `visibleFixIds`, `armableEvents` and the verdict lines;
+  save migration; SPEC §9 and §10; goldens and a sweep against the expected moves of §7.
+- **PT-55** (tooling, M): bots choose targets from report data and release their toggles; sweep and re-tune.
+
+## 11. What the review changed
+
+An adversarial review on 2026-11-26 found: cards built from modifiers had nothing to target (now entities, §2 rule
+7); CICSXLOG and the REORG appeared only while their card ran (now permanent and scheduled); cancelling MONAGENT beat
+backing out its release (now automation restarts STCs); Harbourline's fixless twins would make operations lie there
+(now targeted); the HSM hold postpones a storm rather than ending it (now relieved); cancelling a lock holder doesn't
+free its locks at once (now a backout period and a lock-holder clue); hours are no cost late in a run (now every wrong
+target has a sim effect, and block sources sheds some real traffic); and the compare-clean claims for PT-52 and PT-53
+were wrong.
