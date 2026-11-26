@@ -94,6 +94,7 @@ validation evidence for the distinction between library confirmation and exact P
 | DFSMSdfp Advanced Services | `idas300` | SC23-6861 |
 | DFSMS Using the Interactive Storage Management Facility (ISMF) | `idai500` | SC23-6856 |
 | DFSMSrmm Reporting | `idarr00` | SC23-6875 |
+| DFSMShsm Storage Administration | `arcf000` | SC23-6871 |
 | DFSORT Tuning Guide | `icet100` | SC23-6882 |
 
 ## UNIX System Services and file systems

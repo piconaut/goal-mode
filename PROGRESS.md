@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-26: PT-20 decided ([docs/pt-20-design.md](docs/pt-20-design.md); user: Q1–Q7 yes; revised after an adversarial review): seven general operations with real wrong-target costs on entities in always-present rosters, 21 cards end or are relieved through one, 4 business cards through inbox replies; five entries: PT-52 (entities, ready), PT-56 (operations), PT-53, PT-54, PT-55.
 - 2026-11-26: Design call (user): D1's proof gate (RT-24) dropped, Q8b no; PT-20 becomes a design note for general operations, followed by PT-52 … PT-55; PT-19 folds into PT-53.
 - 2026-11-25: Shadow week prologue designed ([docs/prologue-design.md](docs/prologue-design.md), #490) and scoped into BACKLOG list `prologue` (PRO-01 … PRO-07).
 - 2026-11-25: RT-22 problem records: the player can open a record on a workload, service-class period, image or job over whole closed clock hours and file the same mechanism/trigger/pins as an RCA. `closeHour` stores quiet-hour facts for met hours that a card touched, that grew a delay group past the floor, or whose CF/LCU is far slower than its peers; the record freezes the window's truth (card, quiet hour, standing fault or no problem) and prices a filing at 0.25 engineer-hours, three a day one an hour, with −0.5 trust for a wholly wrong filing once a day. A correct answer earns an RCA's reward on the subject's facet, and one §4.5 episode pays once (an incident RCA and a record of the same episode; a later day or a fallback cause more than two hours on is new, and a record chains back-to-back quiet hours). No fix unlocks yet (Q8b). Browser Problems card, `play problem`, Codex and SPEC §10. Compare: no differences with `--drop quietHours`; without the drop Harbourline gains two quiet-hour facts (record-only state) while sim, log, RMF and Monitor III stay the same; goldens unchanged (the field is absent until a quiet hour exists); three-scenario sweeps (Normal, 10 seeds, all bots in band; runs 45552813412, 45552819909, 45552828780): Midwest 16.5 / 28 / 40 (10/10), Harbourline 10.5 / 30.5 (1) / 40 (8/10), Revenue 20.5 / 29 / 40 (10/10).
@@ -119,7 +120,7 @@ Recent work, one line each (details in the PRs and Git history):
 **D1. Targeted fixes unlocked by a correct RCA: dropped (user, 2026-11-26).** The proof gate kept the
 "fix this exact problem" button that felt inauthentic. PT-20 replaces it with general operations (cancel work, recycle
 CICS regions, back out a change, throttle a channel, hold HSM recalls) whose targets the player chooses; cards no
-general operation fits keep no targeted fix. Plan: BACKLOG PT-20 (design note) then PT-52 … PT-55. Problem records
+general operation fits keep no targeted fix. Plan: BACKLOG PT-52, PT-56, PT-53, PT-54, PT-55 ([docs/pt-20-design.md](docs/pt-20-design.md), decided 2026-11-26). Problem records
 (RT-22) and the proof recipes stay as scoring. History: [docs/rca-design.md](docs/rca-design.md) §5 (superseded), §7 Q8b.
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
@@ -293,7 +294,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: the PT-20 design note's calls, once it is written.
 
 ## Known approximations and risks
 
