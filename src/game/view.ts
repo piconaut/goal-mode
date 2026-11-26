@@ -1,5 +1,6 @@
 import type { DifficultyId } from '../content/difficulty';
 import { packOf } from '../content/packs';
+import { otherTeamChangesView } from './run/otherTeamChanges';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
 import { problemsView } from './problems';
@@ -33,7 +34,7 @@ import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
 import { suPerCpuSecOf } from '../sim/hw/cpc';
-import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run';
+import { allWorkloads, boardFixIdsOf, overallTrust, previewContext, visibleFixIds } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 import { idText } from './ids';
@@ -170,6 +171,7 @@ export interface ViewModel {
   log: string[];
   wlmLog: string[];
   changes: PlannedChange[];
+  otherTeamChanges: ReturnType<typeof otherTeamChangesView>;
   reports: ReportRef[];
   lastReport: DayReport | null;
   draft: DraftOption[] | null;
@@ -221,6 +223,10 @@ export interface ViewModel {
 
 export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const sim = run.sim;
+  const pack = packOf(run.scenarioId);
+  const previewCtx = previewContext(run, pack.game);
+  // The Change board owns its cards' fixes, so the Operations list must not offer them as the player's own.
+  const boardFixes = boardFixIdsOf(run, pack.game);
   const c = clockAt(sim.tick);
   const tickOfDay = sim.tick - run.day * TICKS_PER_DAY;
   const def = sim.wlm.definition;
@@ -308,8 +314,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     seed: run.seed,
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
-    scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
-    fixIds: visibleFixIds(run, packOf(run.scenarioId).game),
+    scenario: { id: pack.id, name: pack.name },
+    fixIds: visibleFixIds(run, pack.game).filter((id) => !boardFixes.has(id)),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,
@@ -339,6 +345,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     // The WLM activity log is live only with Monitor III; otherwise it is readable after the day.
     wlmLog: run.phase === 'LIVE' && !feats.has('WLM_ACTIVITY_LOG') ? [] : sim.wlm.log.slice(-60),
     changes: run.changes.slice(-30),
+    otherTeamChanges: otherTeamChangesView(run, pack.game, previewCtx),
     reports,
     lastReport: run.reports[run.reports.length - 1] ?? null,
     draft: run.draft,
@@ -346,7 +353,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     endReport: run.phase === 'GAMEOVER' || run.phase === 'VICTORY' ? endReport(run, overallTrust(run)) : null,
     policyName: def.policyName,
     plannedPolicy: plannedPolicy(run),
-    previewCtx: previewContext(run, packOf(run.scenarioId).game),
+    previewCtx,
     features: [...feats].sort(),
     mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),

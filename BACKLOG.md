@@ -68,21 +68,8 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-53 · Other teams' changes on the Change board
-`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
-
-Source: PT-20 (docs/pt-20-design.md §6); absorbs PT-19 (inbox change notices were always bad news, so the player
-rolled back any announced change on sight by D26). Add a section for changes made by application teams, DBAs and
-vendors to the existing Change board (`src/ui/changeDesk/Requests.tsx`), beside the player's own: the changes cards
-bring in (the overnight REBIND, teller release 4.2, the monitoring agent, the external SQL procedures) and harmless
-or helpful entries from each scenario's content that match them in owner, timing and frequency. Helpful changes have a
-real benefit. "Back out a change" targets an entry (a REBIND immediately, a release or deployment through the Change
-Desk); backing out a harmless one costs its benefit or feature and trust. Forewarnings post their entry. Done when:
-every card-introduced change and at least as many harmless ones per scenario appear with their time and owner, a
-back-out of a harmless entry has a tested cost, and goldens are regenerated with a "Behaviour change" note.
-
 ### PT-54 · Cards end on effect, not on a fix id
-`list: playtest-fixes · status: blocked: after PT-53 · priority: low · size: M · area: game`
+`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 
 Source: PT-20 (docs/pt-20-design.md §4, §5, §7). Give each card an operation ends an `endedBy`
 effect, matched in place of `endEventByFix`, including Harbourline's BOT_ATTACK, RETRY_STORM and ZIIP_LOSS. CICS_SOS

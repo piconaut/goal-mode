@@ -27,6 +27,7 @@ import { grantProjectHours } from './projects';
 import { ARMED, failRisk, NO_TARGET, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
 import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
+import { applyBackout, landRoutineChanges } from './run/otherTeamChanges';
 import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
@@ -158,6 +159,7 @@ export function startDay(run: RunState, content: GameContent): RunState {
       const why = arms.length > 0 ? ` (${ARMED})` : noTarget ? ` (${NO_TARGET})` : '';
       r = logLine(r, `Planned change applied: ${c.label}${why}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
+      if (c.backoutChangeId) r = applyBackout(r, content, c.backoutChangeId);
     } else {
       if (c.status === 'APPLIED' && c.revertDay === r.day) {
         r = { ...r, pendingCommands: [...r.pendingCommands, ...c.revertCommands] };
@@ -200,6 +202,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   let hour: ReturnType<typeof copyHourForAdvance> | undefined;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
+    r = landRoutineChanges(r, content);
     // The hour's scheduled switch is issued before the tick's queued commands (PR-01): a queued activation is the
     // later act, so it wins the tick and the editor's "Queued for next tick" is what the player gets. A scheduled
     // switch that the queue overrides still shows in the log, so it never disappears silently.
@@ -223,7 +226,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const resolvedCulprits = new Map<string, string[]>();
     for (const e of events) {
       const def = defs.get(e.defId);
-      if (!e.started && e.startTick <= tick) {
+      if (!e.started && !e.ended && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.culprits) {
           const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
@@ -308,7 +311,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       affects: resolvedAffects.get(e.uid) ?? e.affects,
       ...(resolvedReach.has(e.uid) ? { reach: resolvedReach.get(e.uid) } : {}),
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
-      started: e.started || e.startTick <= tick,
+      started: e.started || (!e.ended && e.startTick <= tick),
       ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
       ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
       ...(resolvedCulprits.has(e.uid) ? { culprits: resolvedCulprits.get(e.uid) } : {}),
@@ -629,7 +632,7 @@ export type { ChangeRequest } from './run/changes';
 
 export type { ChangeOutcome } from './run/changes';
 
-export { fixIdsOf, visibleFixIds } from './run/events';
+export { boardFixIdsOf, fixIdsOf, visibleFixIds } from './run/events';
 
 export { previewContext } from './run/changes';
 

@@ -222,6 +222,7 @@ export function addParts(into: Record<string, number>, p: NonNullable<import('..
 
 export function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSpec[] {
   const measure = mods.measureCpu ?? {};
+  const rollout = mods.rolloutCpu ?? {};
   const eff = mods.efficiency ?? {};
   const io = mods.ioPerTxn ?? {};
   const shift = mods.ziipShift ?? {};
@@ -229,13 +230,15 @@ export function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): 
   const hasCpu = Object.keys(mods.cpu).length > 0;
   const hasAs = Object.keys(mods.asCpu).length > 0;
   const hasProj = Object.keys(eff).length + Object.keys(io).length + Object.keys(shift).length + Object.keys(elig).length > 0;
-  if (!hasCpu && !hasAs && !hasProj && Object.keys(measure).length === 0) return slices;
+  if (!hasCpu && !hasAs && !hasProj && Object.keys(measure).length === 0 && Object.keys(rollout).length === 0) return slices;
   return slices.map((s) => {
-    const m = s.workloadId
+    const change = rollout[s.workloadId ?? s.jobname ?? ''] ?? 1;
+    const base = s.workloadId
       ? (mods.cpu[s.workloadId] ?? 1) * (measure[s.workloadId] ?? 1) * (eff[s.workloadId] ?? 1)
       : s.jobname
         ? (mods.asCpu[s.jobname] ?? 1) * (measure[s.jobname] ?? 1)
         : 1;
+    const m = base * change;
     const ioM = s.workloadId ? (io[s.workloadId] ?? 1) : 1;
     const z = s.workloadId ? (shift[s.workloadId] ?? 0) : 0;
     const e = s.workloadId ? (elig[s.workloadId] ?? 1) : 1;

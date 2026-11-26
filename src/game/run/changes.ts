@@ -6,7 +6,7 @@ import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { COD_DEACTIVATE_HOURS, DASD_REBALANCE } from '../../content/hardware-catalog';
-import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange, type BackoutCost } from '../catalog';
 import { engineerHoursMult, slowInternalOf } from '../staff';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
@@ -66,9 +66,9 @@ export function previewContext(run: RunState, content?: GameContent) {
 }
 
 /** Plan (BRIEFING) or make an emergency change (LIVE). */
-export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
+export function requestChange(run: RunState, content: GameContent, req: ChangeRequest, backout?: BackoutCost & { id: string }): ChangeOutcome {
   const live = run.phase === 'LIVE';
-  const preview = previewChange(previewContext(run, content), req);
+  const preview = previewChange(previewContext(run, content), req, backout);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
   // Only the player's own plan is checked here: refusing a fix because no event matches would let the Change Desk
   // be probed for hidden events at no cost. A fix with no target is charged and reports "no effect" once it runs.
@@ -101,6 +101,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
     revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
     endsEvent: fix?.id ?? null,
+    ...(backout ? { backoutChangeId: backout.id } : {}),
   };
   r = { ...r, nextId: r.nextId + 1 };
 

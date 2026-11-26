@@ -47,6 +47,17 @@ export interface PlannedChange {
   /** Applied fixes only: cards of this fix that the player could see and that had not started yet when the fix
    * applied. They end when they start that day (a forewarned change met by the fix already in place). */
   armedEvents?: string[];
+  /** Other-team rollout targeted by this Change Desk request. */
+  backoutChangeId?: string;
+}
+
+export interface OtherTeamChange {
+  id: string;
+  eventId: string;
+  eventUid?: string;
+  startTick: number;
+  endTick: number | null;
+  status: 'SCHEDULED' | 'APPLIED' | 'COMPLETE' | 'BACKED_OUT';
 }
 
 export interface ActiveEvent {
@@ -493,6 +504,7 @@ export interface RunState {
   /** Critical batch deadline, seconds after the played day's 06:00 start. */
   batchDeadlineSec: number;
   changes: PlannedChange[];
+  otherTeamChanges?: OtherTeamChange[];
   nextId: number;
   events: ActiveEvent[];
   pendingCommands: Command[];

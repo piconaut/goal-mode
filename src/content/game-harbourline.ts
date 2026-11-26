@@ -1,5 +1,6 @@
 import { defineGame } from './defineGame';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from './events/harbourline-events';
+import { HARBOURLINE_CHANGES } from './otherTeamChanges';
 
 /** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so
  * month-1 bills land ~5–15 % over it (hb40e sweep: textbook $1.52–1.67M, expert $1.55–1.78M; Midwest's run 7–10 % over).
@@ -7,6 +8,7 @@ import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from './events/harbourline-even
  * month's R4HA peak and the vendor price rise landed in month 1 (expert won 13/20 on Normal). */
 export const HARBOURLINE_GAME = defineGame({
   events: HARBOURLINE_EVENTS,
+  otherTeamChanges: HARBOURLINE_CHANGES,
   story: HARBOURLINE_STORY,
   opexBudgetMonthly: 1_600_000,
   capexQuarter: 2_400_000,

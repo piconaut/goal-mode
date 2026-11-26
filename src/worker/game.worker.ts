@@ -634,6 +634,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       settleGame(out);
       break;
     }
+    case 'BACKOUT_CHANGE': {
+      const out = command({ kind: 'BACKOUT_CHANGE', changeId: m.changeId });
+      if (out.run !== run) trace({ cmd: 'backoutChange', changeId: m.changeId });
+      settleGame(out);
+      break;
+    }
     case 'DRAFT': {
       const o = command({ kind: 'DRAFT', optionId: m.optionId });
       run = o.run;
