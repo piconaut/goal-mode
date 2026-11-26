@@ -3,7 +3,7 @@
 // essentially single-threaded: at full speed it alternates CPU and I/O, so its
 // unconstrained elapsed time is cpu + ioCount × ioRt. Contention stretches both parts.
 
-import type { JobClassConfig } from '../core/types';
+import type { JobClassConfig, SimModifiers } from '../core/types';
 import { DAY_SEC, TICK_SEC } from '../core/units';
 
 export interface JobDef {
@@ -67,6 +67,14 @@ export function addJobDelay(j: JobRuntime, cause: JobDelayCause, sec: number): v
   if (sec <= 0) return;
   const d = j.delaySec ?? { cpu: 0, io: 0, lock: 0, db2: 0, swap: 0 };
   j.delaySec = { ...d, [cause]: d[cause] + sec };
+}
+
+/** The running job of the stream named by the lock boost's holder (PT-52); undefined when the boost is off, names no
+ *  holder, or no job of that stream runs. The one rule behind the boost and the Db2 blockers view. */
+export function lockHolderJob(mods: SimModifiers, jobs: readonly JobRuntime[]): JobRuntime | undefined {
+  const holder = mods.lockHolder;
+  if (!mods.lockBoost || !holder) return undefined;
+  return jobs.find((j) => j.status === 'RUNNING' && j.def.stream === holder.stream);
 }
 
 export interface NightSummary {

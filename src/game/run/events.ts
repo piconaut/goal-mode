@@ -2,6 +2,7 @@ import { type EventDef } from '../../content/events/midwest-events';
 import { cardMechanisms } from '../../content/footprint';
 import { STORY_BEAT_HINTS } from '../../content/hints';
 import { EVENT_RUMOURS } from '../../content/inquiries';
+import { secAfterPlayedStart } from '../../sim/core/clock';
 import { Rng, streamRng } from '../../sim/core/rng';
 import { TICK_SEC, TICKS_PER_DAY } from '../../sim/core/units';
 import { difficultyOf, storyBeatsFor } from '../difficulty';
@@ -11,9 +12,6 @@ import {
 } from '../types';
 import type { GameContent } from './shared';
 import { msg } from './shared';
-
-/** Seconds after the played day's 06:00 start for a wall-clock hour (24+ = next morning). */
-const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
 
 /** Pick tomorrow's (or today's) events; forewarn when the card says so. */
 export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
@@ -41,7 +39,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
   })(streamRng(run.seed, 'events', day));
   let r = run;
   for (const { def, hour } of picked) {
-    const startTick = day * TICKS_PER_DAY + Math.round(secAfterStart(hour) / TICK_SEC);
+    const startTick = day * TICKS_PER_DAY + Math.round(secAfterPlayedStart(hour) / TICK_SEC);
     const endTick = def.durationHours === null ? null : startTick + Math.max(1, Math.round((def.durationHours * 3600) / TICK_SEC));
     const ev: ActiveEvent = {
       uid: `${def.id}@${day}`,

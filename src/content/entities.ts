@@ -15,11 +15,14 @@ export const ROSTERS = {
   tokenRange: [1000, 99_999] as const,
 };
 
+/** The Db2 utilities a nightly schedule runs. */
+export type UtilityKind = 'REORG' | 'COPY' | 'RUNSTATS';
+
 /** A Db2 utility in a scenario's nightly schedule (`-DISPLAY UTILITY` shows it by utility ID). */
 export interface UtilityDef {
   /** Utility ID, as -DISPLAY UTILITY prints it. */
   id: string;
-  kind: 'REORG' | 'COPY' | 'RUNSTATS';
+  kind: UtilityKind;
   /** Db2 member it runs on. */
   member: string;
   /** Table space it works on. */

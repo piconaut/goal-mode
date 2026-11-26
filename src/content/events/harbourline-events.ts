@@ -9,8 +9,8 @@ import { adapt } from './adapt';
 
 const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 
-const mod = (m: 'rate' | 'cpu', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
-const aorFail = (workloadId: string, region: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: 'aorFailFrac', key: `${workloadId}@${region}`, value });
+const mod = (m: 'rate' | 'cpu' | 'aorFailFrac', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
+const aorFail = (workloadId: string, region: string, value: number): Command => mod('aorFailFrac', `${workloadId}@${region}`, value);
 
 const ALL_ONLINE = ['MKTORD', 'MKTQRY', 'RETAIL', 'CARDS', 'PAYMENTS', 'MOBILE'];
 const CF_AFFECTED = ['MKTORD', 'MKTQRY', 'RETAIL', 'CARDS', 'PAYMENTS', 'MOBILE'];

@@ -9,14 +9,14 @@ import { cpSpeed, ziipSpeed } from '../hw/cpc';
 import type { PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
 import { activeUtilities, utilityIopsByLcu } from '../subsys/utilities';
-import { closeNight, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobRuntime } from '../subsys/batch';
+import { closeNight, jobShape, lockHolderJob, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobRuntime } from '../subsys/batch';
 import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { scKeyOf } from '../workload/slices';
 import type { IoService } from '../wlm/evaluate';
 import { STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
 import { clockAt, formatClock } from './clock';
-import { applyCommands, type Command } from './commands';
+import { applyCommands, commandLogLine, COMMAND_LOG_MAX, type Command } from './commands';
 import { Rng } from './rng';
 import type { Scenario } from './scenario';
 import type { CpcConfig, EnvState, SimState, WorkloadRuntime } from './types';
@@ -38,14 +38,13 @@ function restartStcs(s: SimState): SimState {
   const left = down.filter((x) => x.restartTick === null || x.restartTick > s.tick);
   const back = down.filter((x) => x.restartTick !== null && x.restartTick <= s.tick).map((x) => `${x.jobname} restarted on ${x.lparId} by automation`);
   const { cancelledAddressSpaces: _drop, ...rest } = s;
-  return { ...(left.length ? { ...rest, cancelledAddressSpaces: left } : rest), commandLog: [...s.commandLog, ...back.map((m) => `OK  ${m}`)].slice(-50) };
+  return { ...(left.length ? { ...rest, cancelledAddressSpaces: left } : rest), commandLog: [...s.commandLog, ...back.map((m) => commandLogLine(true, m))].slice(-COMMAND_LOG_MAX) };
 }
 
 /** The lock boost counts while its holder stream has a job running (always, when the boost names no holder). */
 export function lockBoostNow(s: SimState, jobs: readonly JobRuntime[]): number {
-  const holder = s.mods.lockHolder;
-  if (!s.mods.lockBoost || !holder) return s.mods.lockBoost;
-  return jobs.some((j) => j.status === 'RUNNING' && j.def.stream === holder.stream) ? s.mods.lockBoost : 0;
+  if (!s.mods.lockHolder) return s.mods.lockBoost;
+  return lockHolderJob(s.mods, jobs) ? s.mods.lockBoost : 0;
 }
 
 export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
