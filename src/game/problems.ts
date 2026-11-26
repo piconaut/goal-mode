@@ -1,7 +1,7 @@
 // Problem records (RT-22, docs/rca-design.md §5.1): a diagnosis the player opens on a subject and a window, for the
 // cards, standing faults and quiet regressions that never page. An incident is the record the game opened; this
 // module judges a player's record with the same truth rules and the same recipe judge, and prices the anti-fishing
-// limits of §5.4. It unlocks no fix: D1's gating (RT-24) is still a separate decision (Q8b).
+// limits of §5.4. It unlocks no fix: D1's proof gate was dropped (Q8b, 2026-11-26).
 
 import { PROBLEM, triggerLabel } from '../content/rca';
 import type { GameContent } from '../content/types';

@@ -34,7 +34,7 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | List | Prefix | What goes in it |
 | --- | --- | --- |
 | `playtest-fixes` | PT | Findings from human and agent playtests: bugs, clue-path gaps, UI and tooling problems |
-| `rca-truth` | RT | RCA judging and incident truth, and D1 (docs/rca-design.md) |
+| `rca-truth` | RT | RCA judging and incident truth (docs/rca-design.md) |
 | `wlm-truth` | WT | WLM policy adjustment against real WLM (docs/wlm-design.md) |
 | `pr-followups` | PR | Non-blocking findings left open by PR reviews |
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
@@ -47,22 +47,29 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-19 · Inbox change notices are always bad news
-`list: playtest-fixes · status: blocked: design · priority: low · size: M · area: content`
+### PT-20 · General operations: design note
+`list: playtest-fixes · status: ready · priority: low · size: S · area: game`
 
-By D26 the player rolls back any announced change on sight (Db2 REBIND, monitoring agent). Add changes that help
-(better access path, cheaper agent) so impact has to be judged. Needs a design call: which changes, how often, and how
-the player tells good from bad (SPEC §9 clue rules). Related: under D1 (RT-24) a rollback needs proof that the change
-made work cost more (docs/rca-design.md §4.6, §5.1), which removes the "roll back on sight" habit; the regression
-recipe is the "tell good from bad" mechanism. Decide with RT-24.
-
-### PT-20 · General-purpose operations instead of per-event ones
-`list: playtest-fixes · status: blocked: design · priority: low · size: L · area: game`
-
-Add operations for common fixes that aren't tied to one event, and generalise event-specific ones (e.g. "Recycle CICS
-AORs" with a choice of regions). Each event registers a general operation that fixes it, so `endEventByFix` matches on
-effect, not on a card-specific fix id. Needs a design call, made together with RT-24 (D1): docs/rca-design.md §5.6
-limits which general operations may end a card.
+Source: playtest round 2 ("a button that fixes this exact problem feels inauthentic") and the user's decision of
+2026-11-26: D1's proof gate (RT-24) is dropped in favour of general operations that aren't tied to one event; cards
+that no general operation fits keep no targeted fix and are solved with the levers everyone has. Write
+`docs/pt-20-design.md` for the user's decision, covering:
+- the five general operations and their targets: **cancel work** (a job, STC, DDF thread, utility or TSO user;
+  finishes SPEC §10's "Cancel job/query, quiesce address space" verb, which exists today only as two card end effects,
+  `CANCEL_DB2_READERS` and `REMOVE_ADDRESS_SPACE`),
+  **recycle CICS regions** (which regions), **back out a change** (an entry on the Change board of PT-53), **throttle a
+  channel at the gateway** (which workload) and **hold DFSMShsm recalls**;
+- a table of the 23 cards with a targeted fix today (the 23 `FIXES` in `src/game/catalog.ts`, 20 once Revenue's three
+  `_REV` copies are folded into their Midwest originals): the operation and target that
+  ends each, what a wrong target costs, and where its decoys come from. SCOPE_ENCRYPTION, NEGOTIATE_MLC_PRICE,
+  SCOPE_SMF_AUDIT and COMMIT_SETTLEMENT_OFTEN are not operator actions and become replies on the inbox thread that
+  announces them;
+- the open calls: whether a recycle ends a storage-leak card or relieves it until the leak rebuilds; that a wrong
+  target costs a real sim effect (lost work, a rerun, shed users), not only trust; which operations are immediate
+  operator commands and which go through the Change Desk; how forewarned cards are prepared for without
+  `armableEvents` (backing out the announced change early);
+- real behaviour of cancel, CICS recycle and HSM HOLD RECALL checked with the zos-docs skill.
+Done when: the user has decided the note's calls, PT-52 … PT-55 are rewritten to match, and PT-52 is `ready`.
 
 ### PT-22 · Pacing and late-game engineer hours
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: game`
@@ -85,10 +92,50 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
+### PT-52 · General operations as real levers
+`list: playtest-fixes · status: blocked: after PT-20 · priority: low · size: M · area: sim`
+
+Source: PT-20. Add the five general operations to Change Desk › Operations, each with its own sim effect whatever is
+running: cancel work (reusing `REMOVE_ADDRESS_SPACE` and `CANCEL_DB2_READERS`), a new `RECYCLE_CICS` (in-flight work
+lost, the region briefly down, its leak reset), a gateway arrival cap, and an HSM recall hold. Cards, their fix ids
+and the old fix buttons are unchanged. Codex entries for each operation. Done when: each operation's effect has a unit
+or realism test, and `npm run compare` against `dev` shows no differences (no bot or golden uses the operations yet).
+
+### PT-53 · Other teams' changes on the Change board
+`list: playtest-fixes · status: blocked: after PT-52 · priority: low · size: M · area: game`
+
+Source: PT-20; absorbs PT-19 (inbox change notices were always bad news, so the player rolled back any announced
+change on sight by D26). Add a section for changes made by application teams, DBAs and vendors to the existing Change
+board (`src/ui/changeDesk/Requests.tsx`), beside the player's own changes: the changes cards bring in (the overnight
+REBIND, teller release 4.2, the monitoring agent, the external SQL procedures) and harmless or helpful entries from
+each scenario's content (a better access path, a cheaper agent), so that "back out the only entry" isn't the answer.
+"Back out a change" targets an entry; backing out a harmless one costs its feature and trust. Done when: every
+card-introduced change and at least as many harmless ones per scenario appear with their time and owner, a back-out
+of a harmless entry has a tested cost, and `npm run compare` shows no differences.
+
+### PT-54 · Cards end on effect, not on a fix id
+`list: playtest-fixes · status: blocked: after PT-53 · priority: low · size: M · area: game`
+
+Source: PT-20. Each card with a fix today declares an `endedBy` effect (e.g. cancel `CICSXLOG`; a recycle covering
+CICSAOR2 and CICSAOR4; a back-out of the REBIND entry), and the operation's effect is matched against it in place of
+`endEventByFix`. Delete `FIXES`, `visibleFixIds`, `armableEvents` and each card's `fix`; the four business cards
+answer through their inbox thread. Bots' `ON_SIGHT_FIXES` map a card to its operation and target, still from truth, so
+the bands barely move. Migrate old saves' fix changes. Rewrite SPEC §9 and §10. Done when: no card ends by fix id,
+goldens are regenerated with a "Behaviour change" note, and a three-scenario sweep shows every bot band where it was
+or the move is explained.
+
+### PT-55 · Bots choose operation targets from report data
+`list: playtest-fixes · status: blocked: after PT-54 · priority: low · size: M · area: tooling`
+
+Source: PT-20. Bots pick targets from what a player can read (the Monitor III top consumer, the Change board, the
+regions short on storage, the workload with the arrival surge), not from `inc.truth`; a target the data doesn't
+single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a target, a
+three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call on the main
+agent).
+
 ## rca-truth
 
-RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating, ending in design
-direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
+RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
 - **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. An agent playtest of four 8-day runs (2026-11-21)
@@ -96,7 +143,7 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
   findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
-  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1: RT-22 (problem records) landed 2026-11-25; RT-24 waits for Q8b.
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 (problem records) landed 2026-11-25 and stays; D1's proof gate (RT-24) was dropped (user, 2026-11-26) for PT-20's general operations.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
@@ -152,16 +199,6 @@ After RT-14. Cards whose footprint reaches the critical jobs' images or LCUs dur
 JOB_FAILURE only when the ABEND's lost time is the largest cause or the job never finished; co-dominant causes
 accepted; capping by share of the night (A12). Done when: a DASD_DEGRADED at 22:00 that makes the window miss is
 IO/HARDWARE_FAULT.
-
-### RT-24 · D1: targeted fixes unlocked by proof
-`list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
-
-After RT-13, RT-14 and RT-22 (landed 2026-11-25; PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
-Q8a decides problem records (RT-22), Q8b the gating itself, including whether arming a forewarned fix needs proof. Per-card unlock claims and recipes (§5.2) in content;
-`visibleFixIds`/`armableEvents` require a filed diagnosis with a complete recipe; costs and limits of §5.4; hint
-ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a
-three-scenario sweep and a re-tune call on the main agent. Start with REGRESSION and XLOG_LOOP. Done when: SPEC §9
-and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the bands are restored or re-decided.
 
 ### RT-27 · Strong evidence for the pairs three pins cannot prove
 `list: rca-truth · status: blocked: design · priority: low · size: S · area: game`
