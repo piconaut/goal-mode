@@ -8,7 +8,7 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import { scenarioFor } from './difficulty';
 import { HISTORY_EVERY_TICKS } from './history';
 import { advance } from './run';
-import { hasFeature } from './tools';
+import { hasFeature, monitorCollectorDown } from './tools';
 import type { GameContent } from './run/shared';
 import type { RunState } from './types';
 
@@ -39,7 +39,7 @@ export function advanceHours(run: RunState, content: GameContent, hours: number,
       hourLeft -= k;
       left -= k;
       if (hooks.onChunk && r.sim.tick % HISTORY_EVERY_TICKS === 0) hooks.onChunk(r);
-      if (hooks.onMintime && r.sim.tick % MON3_HISTORY.mintimeTicks === 0 && hasFeature(r, 'MON3')) hooks.onMintime(r);
+      if (hooks.onMintime && r.sim.tick % MON3_HISTORY.mintimeTicks === 0 && hasFeature(r, 'MON3') && !monitorCollectorDown(r)) hooks.onMintime(r);
     }
     if (r.phase === 'LIVE' && hooks.stopWhen?.(r)) break;
   }

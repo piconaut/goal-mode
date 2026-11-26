@@ -20,7 +20,7 @@ import { plannedPolicy, type ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, reportedBySystem, softCapped, type Mon3View } from './mon3';
-import { features, toolsView, type ToolView } from './tools';
+import { features, monitorCollectorDown, toolsView, type ToolView } from './tools';
 import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt, hhmm, instanceClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
@@ -37,6 +37,7 @@ import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 import { idText } from './ids';
+import { operationsView } from './operations';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
@@ -163,6 +164,7 @@ export interface ViewModel {
   piHeat: PiCell[];
   sla: SlaTicker[];
   batch: BatchView;
+  operations: ReturnType<typeof operationsView>;
   incidents: Incident[];
   inbox: Message[];
   log: string[];
@@ -182,6 +184,7 @@ export interface ViewModel {
   features: ToolFeature[];
   /** RMF Monitor III live views (null without the tool). */
   mon3: Mon3View | null;
+  monitorCollectorDown: boolean;
   tools: ToolView[];
   reportsOpenedToday: number;
   /** Day-1 tutorial: the installed policy puts Db2 at or above the CICS regions (F1 fixed). */
@@ -221,6 +224,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const c = clockAt(sim.tick);
   const tickOfDay = sim.tick - run.day * TICKS_PER_DAY;
   const def = sim.wlm.definition;
+  const collectorDown = monitorCollectorDown(run);
 
   const lpars: LparView[] = sim.config.lpars.map((l) => {
     const rt = sim.lpars.find((x) => x.id === l.id);
@@ -329,6 +333,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     piHeat,
     sla,
     batch,
+    operations: operationsView(run, scenario),
     incidents: run.incidents.slice(-30),
     inbox: run.inbox.slice(-40),
     log: run.log.slice(-40),
@@ -344,7 +349,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     plannedPolicy: plannedPolicy(run),
     previewCtx: previewContext(run, packOf(run.scenarioId).game),
     features: [...feats].sort(),
-    mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
+    mon3: feats.has('MON3') && !collectorDown ? buildMon3(run, scenario) : null,
+    monitorCollectorDown: collectorDown,
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
     tutorialDb2Fixed: db2AboveItsClients(installedPolicy(run)),

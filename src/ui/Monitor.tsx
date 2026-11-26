@@ -50,7 +50,9 @@ export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHa
       <div className="panel">
         <h3>RMF Monitor III</h3>
         <Empty>
-          Live views need the RMF Monitor III tool (<AnalyticsLink open={openAnalytics} />). Until then you diagnose from yesterday's Postprocessor reports.
+          {v.monitorCollectorDown && v.features.includes('MON3')
+            ? 'Live data is unavailable while MONAGENT is down. The collector returns after its automatic restart.'
+            : <>Live views need the RMF Monitor III tool (<AnalyticsLink open={openAnalytics} />). Until then you diagnose from yesterday's Postprocessor reports.</>}
         </Empty>
       </div>
     );

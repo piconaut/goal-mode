@@ -22,6 +22,10 @@ export function features(run: RunState): Set<ToolFeature> {
 
 export const hasFeature = (run: RunState, f: ToolFeature): boolean => features(run).has(f);
 
+/** In the game the MONAGENT collector feeds the live sysplex view. */
+export const monitorCollectorDown = (run: RunState): boolean =>
+  run.sim.cancelledAddressSpaces?.some((a) => a.jobname === 'MONAGENT' && (a.restartTick === null || a.restartTick > run.sim.tick)) ?? false;
+
 const onTrial = (run: RunState, id: string): boolean => (run.toolTrials ?? []).some((t) => t.id === id);
 
 /**

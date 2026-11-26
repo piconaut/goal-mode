@@ -1086,8 +1086,9 @@ contents simplified):
 
 ## 6. Player verbs (what you can change)
 
-All changes go through the **Change Calendar**. Each has an Engineer-Hours cost, an activation
-point (now, next policy activation, next IPL, after a hardware lead time) and a CAB risk.
+The **Change Calendar** handles planned and emergency changes. Each has an Engineer-Hours cost, an activation
+point (now, next policy activation, next IPL, after a hardware lead time) and a CAB risk. The Operations panel runs
+live operator commands directly, with their own hands-on hours and operational costs.
 
 | Area | Verb | Activation | Hours | Notes |
 |---|---|---|---|---|
@@ -1096,7 +1097,7 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | WLM | Resource groups | on activation | 0.5 | |
 | WLM | Policy overrides (e.g. a "NIGHT" or "MONTHEND" policy) | scheduled activation | 1 | Schedulable switch at given times |
 | z/OS | `RESET jobname,SRVCLASS=x` | immediate | 0.25 | Live emergency verb |
-| z/OS | Cancel job/query, quiesce address space | immediate | 0.25 | Business may object (trust) |
+| z/OS | Cancel a running batch job, started task or TSO user | immediate | 0.5 | Jobs ABEND and lose work. Started tasks restart through site automation. TSO logoff costs developer time and trust. |
 | z/OS | IEAOPT parms (BLWLINTHD, BLWLTRPCT, IIPHONORPRIORITY, ERV) | immediate (SET OPT) | 0.5 | |
 | z/OS | SMF/RMF interval and record selection | immediate | 0.25 | |
 | PR/SM | LPAR weights | dynamic | 0.5 | HMC screen shows resulting VH/VM/VL |
@@ -1112,6 +1113,10 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | Projects | Multi-day projects: threadsafe CICS, zIIP-enable Java, Db2 compression, SQL tuning sprint, archive old data | n days | 8–40 | Permanent per-txn CPU/I-O improvements |
 | Analytics | Buy/enable tools (§8) | varies | varies | |
 | Ops | Take an IPL (in a change window) | weekend/night | 2 | Needed for some changes; brief LPAR outage |
+| Ops | `-CANCEL THREAD` / `-TERM UTILITY` | immediate | 0.5 | Choose a token or utility from the Db2 displays. A cancelled request fails and is retried. Termination loses the utility run. |
+| Ops | Recycle selected CICS regions | immediate, in sequence | 1 | Backs out in-flight work, reroutes eligible arrivals and resets leaked storage. |
+| Ops | Gateway protection | immediate toggle | 1 | Rate limit, client backoff or block sources for one channel. Every enabled mode sheds some legitimate requests. |
+| Ops | `HOLD RECALL` / `RELEASE RECALL` | immediate toggle | 0.5 | Batch WAIT recalls fail while held. Queued recall I/O drains after release. |
 
 Saved policies offer **Activate now** and **Load into editor** in the browser and play CLI.
 Activation uses the ordinary install-and-activate Change Desk path (1.5h before perks): planned
@@ -2148,6 +2153,10 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Nightly Db2 utility schedule (PT-52) | **Plausible model** | REORG of the settlement table spaces, COPY and RUNSTATS on most nights (seeded per day), each a few thousand sequential I/Os a second on its LCU's hot volumes (FICTIONAL). REORG_OVERRUN keeps the REORG active at 55,000 I/Os a second; no claims, drains or log volume modelled |
 | Lock escalation holder (PT-52) | **Approximation** | LOCK_ESCALATION names the settlement stream: its lock boost counts only while a job of that stream runs, and the Db2 blockers view names the running job, member and object. APPROX: every step of the stream escalates; a step's end does not free the locks before the next starts |
 | Sick region abends per region (PT-52) | **Approximation** | `aorFailFrac` per `workload@REGION`; CICS work is spread evenly over an image's AORs, so the image fails the mean over its regions, and the CICS per-region statistics report the abends on the sick region only (Abend Count XMRAENDC is kept per region: CICS TS 6 Statistics Reference PDF p.358 (printed 348)) |
+| Operator cancellation and utility termination (PT-56) | **Approximation** | A selected batch job abends and resumes from the game's checkpoint on restart. Cancelling MONAGENT interrupts the live sysplex Monitor III view. A TSO logout removes the user's share of demand for the day. A Db2 thread cancel backs out one simulated request and releases its share of tracked reader claims immediately. A terminated utility stays off for the night. A missed COPY leaves a backup gap, and missing RUNSTATS makes Db2 work on its member more expensive until the next scheduled RUNSTATS completes (FICTIONAL). |
+| Rolling CICS recycle (PT-56) | **Approximation** | In-flight tasks in the chosen AOR fail at the start of its outage. Other requests redistribute among eligible AORs, with a FICTIONAL affinity share that fails on the down region. Restart clears the region's sick state. Resetting leaked EDSA to base and letting a leak grow again is a game rule. |
+| Gateway protection (PT-56) | **Game rule** | Rate limit sheds a share of all arrivals, backoff suppresses retry traffic and turns away some legitimate requests, and blocking drops attack traffic and a small share of legitimate traffic from shared addresses. The shed fractions are FICTIONAL. |
+| DFSMShsm recall hold (PT-56) | **Approximation** | Extra recall I/O on LCU 30 queues during a hold, then drains at a FICTIONAL rate. Some I/O jobs need a WAIT recall at start (FICTIONAL) and fail if it is held. |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | The table as of z/OS 1.8 (SG24-6472 p.65; Enrico slide 49): 255 SYSTEM, 254 SYSSTC, 253–249 reserved (the sim: promotion 253, resource-group minimum 249, APPROX), 248 small consumer, 247–203 managed, 201–192 discretionary. Goal periods sit on a canonical ladder (246, 244, …; unbunching, WLM Services p.139), so 247 is never occupied (WT-06). The sim runs every discretionary period at 196 and has no small consumers (row "Small consumer, mean-time-to-wait") |
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); CHANGE REASON renders on the CPU Activity report header (RMF Report Analysis p.391–392: NONE / POWERSAVE (initiated by the user) / MACHINE (cycle steering, initiated by the machine)), and Partition Data no longer carries it. APPROX: the sim's CPU Activity report carries only the CHANGE REASON line per CPC (no CPU table, CPC CAPACITY or HIPERDISPATCH, p.391); SMF70CAI is kept on the interval for tooling but not printed, while real RMF shows effective capacity as CAP% in the Workload Activity POLICY header (p.543). The Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98). A power cap does not slow cycle speed |
 | On/Off CoD early deactivation | **Approximation** | An active lease can be ended early and reverts at 06:00 the next day. Real capacity remains active until deactivated, exhausted or the record expires, and bills on a 24-hour basis; manual deactivation removes the processors (SG24-8579-00 Jul 2025 p.370, p.372). APPROX: the game's fixed three-day lease and next-06:00 boundary stand in for operator-controlled deactivation and daily windows |

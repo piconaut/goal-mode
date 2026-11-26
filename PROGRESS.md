@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-26: PT-56 adds targeted operator commands, live Db2 thread and utility views, and gateway and DFSMShsm status in Change Desk → Operations. PT-53 wires change backout to the board. Db2 lock release on rollback is verified for PT-54. The three-scenario comparison against merged PT-52 is identical.
 - 2026-11-26: PT-52 the world's entities: daily DDF-thread and TSO-userid rosters (RUNAWAY and SHADOW_IT load their culprits), a permanent CICSXLOG STC with CANCEL and automation restart, a nightly Db2 utility schedule (REORG_OVERRUN overruns its REORG), the settlement lock holder in Db2 blockers, SICK_AOR abends per region; cards still end by fix id (RF-11 queued).
 - 2026-11-26: PT-20 decided ([docs/pt-20-design.md](docs/pt-20-design.md); user: Q1–Q7 yes; revised after an adversarial review): seven general operations with real wrong-target costs on entities in always-present rosters, 21 cards end or are relieved through one, 4 business cards through inbox replies; five entries: PT-52 (entities, ready), PT-56 (operations), PT-53, PT-54, PT-55.
 - 2026-11-26: Design call (user): D1's proof gate (RT-24) dropped, Q8b no; PT-20 becomes a design note for general operations, followed by PT-52 … PT-55; PT-19 folds into PT-53.

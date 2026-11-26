@@ -68,20 +68,8 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-56 · General operations as real levers
-`list: playtest-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: PT-20 (docs/pt-20-design.md §3). Add the seven general operations to Change Desk › Operations with their real
-effects and wrong-target costs: cancel a job/STC/TSO user, cancel a Db2 thread, terminate a Db2 utility, recycle CICS
-regions (`RECYCLE_CICS`), back out a change (wired to the Change board in PT-53), gateway protection (rate limit,
-backoff, block sources) and the HSM recall hold with its backlog. Add the DISPLAY THREAD and DISPLAY UTILITY views,
-report lines for held recalls and gateway modes, and Codex entries. Check the backout lock hold of a cancelled job
-with zos-docs before PT-54 models it. Cards and fix buttons are unchanged and nothing uses the operations yet.
-Coefficients FICTIONAL in `content/`. Done when: each operation's effect and wrong-target cost has a unit or realism
-test, and `npm run compare` against `dev` shows no sim difference (`--drop` for reporting-only fields).
-
 ### PT-53 · Other teams' changes on the Change board
-`list: playtest-fixes · status: blocked: after PT-56 · priority: low · size: M · area: game`
+`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 
 Source: PT-20 (docs/pt-20-design.md §6); absorbs PT-19 (inbox change notices were always bad news, so the player
 rolled back any announced change on sight by D26). Add a section for changes made by application teams, DBAs and
@@ -245,7 +233,7 @@ SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 dr
 regenerated with a behaviour note and the three-scenario sweep is recorded.
 
 ### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
-`list: realism-fixes · status: blocked: after PT-56 · priority: low · size: M · area: sim`
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
 Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
 CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
