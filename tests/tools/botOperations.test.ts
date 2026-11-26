@@ -26,7 +26,7 @@ const withGatewayReports = (run: RunState, baselines: Record<string, number>, cu
   const hourOfDay = closed?.hourOfDay ?? clockAt(run.sim.tick - TICKS_PER_HOUR).hourOfDay;
   const day = closed?.day ?? run.day;
   const workload = (rate: number): RunState['smfHours'][number]['workloads'][string] => ({
-    completions: rate * 3600, withinSla: 0, failed: 0, rtSumSec: 0, parts: {}, offeredSec: rate * 3600,
+    completions: rate * 3600, withinSla: 0, failed: 0, rtSumSec: 0, parts: {}, offeredArrivals: rate * 3600,
   });
   const ids = [...new Set([...Object.keys(baselines), ...Object.keys(currents)])].sort();
   const rows = (rates: Record<string, number>, atDay: number): RunState['smfHours'][number] => ({
@@ -157,9 +157,9 @@ describe('report-driven bot operation targets', () => {
   it('leaves two Change-board rollouts in the same visible minute ambiguous', () => {
     const def = midwest.game.events.find((row) => row.id === 'REGRESSION')!;
     const profile = midwest.game.otherTeamChanges!.find((row) => row.eventId === def.id)!;
-    const event = eventFor(def, 20);
-    let run = announceOtherTeamChange(live(), profile, 20, null, event.uid);
-    run = announceOtherTeamChange(run, profile, 21, null);
+    const event = eventFor(def, 780);
+    let run = announceOtherTeamChange(live(), profile, 780, null, event.uid);
+    run = announceOtherTeamChange(run, profile, 781, null);
     expect(operationsForEventReports(run, midwest.scenario, contentWith(def), event)).toEqual([]);
   });
 
@@ -172,7 +172,7 @@ describe('report-driven bot operation targets', () => {
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 6 },
     ]) };
     run = advance(run, midwest.scenario, noEvents, TICKS_PER_HOUR);
-    const current = run.smfHours.at(-1)!.workloads.MOBILE!.offeredSec! / 3600;
+    const current = run.smfHours.at(-1)!.workloads.MOBILE!.offeredArrivals! / 3600;
     expect(operationsForEventReports(withMobileReports(run, baseline, current), midwest.scenario, contentWith(def), eventFor(def))).toEqual([
       { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' },
     ]);
@@ -205,7 +205,7 @@ describe('report-driven protection release', () => {
       hsmRecalls: { heldSinceTick: 0, backlogIo: 10 },
     } };
     const during = advance(guarded, midwest.scenario, noEvents, TICKS_PER_HOUR);
-    const duringRate = during.smfHours.at(-1)!.workloads.MOBILE!.offeredSec! / 3600;
+    const duringRate = during.smfHours.at(-1)!.workloads.MOBILE!.offeredArrivals! / 3600;
     expect(protectionReleases(withMobileReports(during, baseline, duringRate), midwest.scenario)).toEqual([]);
     const recovered = advance({ ...during, sim: applyCommands(during.sim, [
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 1 },

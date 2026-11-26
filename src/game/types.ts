@@ -103,8 +103,8 @@ export interface WorkloadHour {
   withinSla: number;
   failed: number;
   rtSumSec: number;
-  /** Offered arrival-seconds before gateway protection; absent on old saved hours. */
-  offeredSec?: number;
+  /** Offered arrival count before gateway protection; absent on old saved hours. */
+  offeredArrivals?: number;
   parts: Record<string, number>;
   /** Units of work that ended in rollback rather than commit (RT-23); absent when every unit committed. */
   rolledBack?: number;

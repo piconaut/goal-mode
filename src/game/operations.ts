@@ -147,7 +147,7 @@ function buildOperationsView(run: RunState, scenario: Scenario) {
       const closed = run.smfHours.at(-1)?.workloads[id];
       return {
         id, name, mode: sim.gatewayModes?.[id] ?? null,
-        offeredAvgPerSec: closed?.offeredSec !== undefined ? closed.offeredSec / 3600 : last?.offeredRate ?? last?.arrivalRate ?? 0,
+        offeredAvgPerSec: closed?.offeredArrivals !== undefined ? closed.offeredArrivals / 3600 : last?.offeredRate ?? last?.arrivalRate ?? 0,
       };
     }),
     recalls: {

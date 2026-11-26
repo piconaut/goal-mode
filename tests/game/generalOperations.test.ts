@@ -145,11 +145,17 @@ describe('general operator commands', () => {
     ]) };
     let guarded = issue(surged, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' }).run;
     guarded = issue(guarded, { kind: 'HOLD_HSM_RECALL', held: true }).run;
-    guarded = advance(guarded, scenario, content, TICKS_PER_HOUR);
+    let offeredArrivals = 0;
+    for (let tick = 0; tick < TICKS_PER_HOUR; tick++) {
+      guarded = advance(guarded, scenario, content, 1);
+      offeredArrivals += guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.offeredRate! * TICK_SEC;
+    }
     const view = operationsView(guarded, scenario);
     const offered = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.offeredRate!;
     const admitted = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.arrivalRate;
-    const offeredAvg = guarded.smfHours.at(-1)!.workloads.MOBILE!.offeredSec! / 3600;
+    const closed = guarded.smfHours.at(-1)!.workloads.MOBILE!;
+    const offeredAvg = offeredArrivals / 3600;
+    expect(closed.offeredArrivals).toBeCloseTo(offeredArrivals, 6);
     expect(admitted).toBeLessThan(offered);
     expect(view.gateway.find((g) => g.id === 'MOBILE')).toMatchObject({ offeredAvgPerSec: offeredAvg });
     expect(view.recalls.incomingIops).toBe(60_000);
@@ -157,11 +163,26 @@ describe('general operator commands', () => {
       ...hour,
       workloads: Object.fromEntries(Object.entries(hour.workloads).map(([id, row]) => {
         const copy = { ...row };
-        delete copy.offeredSec;
+        delete copy.offeredArrivals;
         return [id, copy];
       })),
     } : hour);
     expect(operationsView({ ...guarded, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredAvgPerSec).toBe(offered);
+    const legacyTick = {
+      ...guarded,
+      sim: {
+        ...guarded.sim,
+        last: {
+          ...guarded.sim.last,
+          workloads: guarded.sim.last.workloads.map((row) => {
+            const copy = { ...row };
+            delete copy.offeredRate;
+            return copy;
+          }),
+        },
+      },
+    };
+    expect(operationsView({ ...legacyTick, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredAvgPerSec).toBe(admitted);
   });
 
   it('charges each CICS owner once when recycling a region', () => {

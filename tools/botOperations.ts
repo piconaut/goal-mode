@@ -2,7 +2,7 @@
 // card's resolved culprits: the target must be identifiable from the same Operations/report rows a player sees.
 
 import type { EventDef } from '../src/content/events/midwest-events';
-import { clockAt } from '../src/sim/core/clock';
+import { minuteKey } from '../src/sim/core/clock';
 import type { GatewayMode, Operation, RosterTarget } from '../src/sim/core/operations';
 import type { Scenario } from '../src/sim/core/scenario';
 import { classify } from '../src/sim/wlm/classify';
@@ -79,17 +79,12 @@ function topAddressSpace(run: RunState, scenario: Scenario, def: EventDef): Card
   return [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: top.jobname, lparId: top.system }];
 }
 
-const visibleMinute = (tick: number) => {
-  const clock = clockAt(tick);
-  return `${clock.day}:${Math.floor(clock.hourOfDay * 60)}`;
-};
-
 function changeTarget(run: RunState, content: GameContent, def: EventDef, event: ActiveEvent): CardOperation[] {
   const profile = profileOf(content.otherTeamChanges, def.id);
   if (!profile) return [];
   const rows = otherTeamChangesView(run, content).filter((row) => isOpenStatus(row.status) && !row.planned &&
     row.owner === profile.owner && row.kind === profile.kind && row.label.startsWith(`${profile.label} · `));
-  const timed = rows.filter((row) => visibleMinute(row.startTick) === visibleMinute(event.startTick));
+  const timed = rows.filter((row) => minuteKey(row.startTick) === minuteKey(event.startTick));
   // The board's visible label and minute must single out one rollout; never fall back to its hidden event link.
   return timed.length === 1 ? [{ kind: 'BACKOUT_CHANGE', changeId: timed[0]!.id }] : [];
 }
@@ -116,7 +111,7 @@ function storageTargets(run: RunState, scenario: Scenario, def: EventDef): CardO
 }
 
 function abendTarget(run: RunState, scenario: Scenario): CardOperation[] {
-  const stats = run.smfHours.at(-1)?.cicsStorage ?? run.hour?.cicsStorage ?? {};
+  const stats = run.smfHours.at(-1)?.cicsStorage ?? {};
   const rows = Object.entries(stats).filter(([, row]) => (row.abends ?? 0) > 0)
     .map(([name, row]) => ({ name, count: row.abends ?? 0 }))
     .sort((a, b) => b.count - a.count || textOrder(a.name, b.name));
@@ -130,15 +125,15 @@ function arrivalBaseline(run: RunState, workloadId: string): number | undefined 
   const current = run.smfHours.at(-1);
   if (!current) return undefined;
   const recent = run.smfHours.slice(0, -1).filter((row) => row.day < current.day && row.hourOfDay === current.hourOfDay &&
-    (row.workloads[workloadId]?.offeredSec ?? 0) > 0).slice(-BASELINE_HOURS);
-  return median(recent.map((row) => row.workloads[workloadId]!.offeredSec! / 3600));
+    (row.workloads[workloadId]?.offeredArrivals ?? 0) > 0).slice(-BASELINE_HOURS);
+  return median(recent.map((row) => row.workloads[workloadId]!.offeredArrivals! / 3600));
 }
 
 function gatewaySurges(run: RunState, scenario: Scenario) {
   const current = run.smfHours.at(-1)?.workloads;
   return operationsView(run, scenario).gateway.map((row) => {
     const baseline = arrivalBaseline(run, row.id);
-    const offeredAvg = current?.[row.id]?.offeredSec;
+    const offeredAvg = current?.[row.id]?.offeredArrivals;
     return { ...row, ratio: baseline !== undefined && offeredAvg !== undefined ? row.offeredAvgPerSec / baseline : undefined };
   }).sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) || textOrder(a.id, b.id));
 }
