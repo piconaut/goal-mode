@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { PACKS } from '../../src/content/packs';
 import { applyGameCommand } from '../../src/game/commands';
 import { applyTraceCommand } from '../../src/game/dayTrace';
-import { operationsView, requestOperation } from '../../src/game/operations';
+import { chargeHeldRecalls, operationsView, requestOperation } from '../../src/game/operations';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { applyCommand } from '../../src/sim/core/commands';
 import { operatorRoster, rolloverOperations, type Operation } from '../../src/sim/core/operations';
-import { TICK_SEC, TICKS_PER_DAY } from '../../src/sim/core/units';
+import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { releaseNetwork } from '../../src/sim/subsys/batch';
 
 const { scenario, game } = PACKS.midwest!;
@@ -95,5 +95,42 @@ describe('general operator commands', () => {
     expect(rolloverOperations(nextNight, site).terminatedUtilities).toHaveLength(1);
     const afterCopy = { ...nextNight, tick: nextNight.tick + 60 / TICK_SEC };
     expect(rolloverOperations(afterCopy, site).terminatedUtilities).toBeUndefined();
+  });
+  it('removes a logged-off TSO user\'s share of demand on its image', () => {
+    const run = live();
+    const target = operatorRoster(run.sim, scenario, 'TSO_USER').sort((a, b) => b.shareFrac - a.shareFrac)[0]!;
+    const out = issue(run, { kind: 'CANCEL_SESSION', target });
+    expect(out.ok).toBe(true);
+    const cpu = (r: RunState) => {
+      const grant = advance(r, scenario, content, 1).sim.last.lpars.find((l) => l.lparId === target.lparId)?.cpByWorkload?.[target.workloadId];
+      return grant ? grant.cp + (grant.iipcp ?? 0) + grant.ziip : 0;
+    };
+    const before = cpu(run);
+    expect(before).toBeGreaterThan(0);
+    expect(cpu(out.run)).toBeCloseTo(before * (1 - target.shareFrac), 6);
+  });
+
+  it('makes Db2 work on a member dearer while its RUNSTATS run is missing', () => {
+    const run = live();
+    const member = run.sim.config.db2.find((m) => m.lparId === 'PROD1')!.ssid;
+    const missed = { ...run, sim: { ...run.sim, terminatedUtilities: [{ id: 'RSTEST', day: 0, kind: 'RUNSTATS' as const, member, object: 'TEST' }] } };
+    const other = { ...run, sim: { ...run.sim, terminatedUtilities: [{ id: 'CPTEST', day: 0, kind: 'COPY' as const, member, object: 'TEST' }] } };
+    const cpu = (r: RunState) => {
+      const g = advance(r, scenario, content, 1).sim.last.lpars.find((l) => l.lparId === 'PROD1')!.cpByWorkload!.RBANK!;
+      return g.cp + (g.iipcp ?? 0) + g.ziip;
+    };
+    const base = cpu(run);
+    expect(cpu(other)).toBeCloseTo(base, 9);
+    expect(cpu(missed)).toBeGreaterThan(base * 1.01);
+  });
+
+  it('charges owner trust once per full hour that recalls stay held', () => {
+    const run = live();
+    const held = { ...run, sim: { ...run.sim, hsmRecalls: { heldSinceTick: 0, backlogIo: 0 } } };
+    expect(chargeHeldRecalls(held, TICKS_PER_HOUR - 2)).toBe(held);
+    expect(chargeHeldRecalls(held, TICKS_PER_HOUR - 1).trust.Retail).toBeLessThan(run.trust.Retail!);
+    expect(chargeHeldRecalls(held, TICKS_PER_HOUR)).toBe(held);
+    const released = { ...run, sim: { ...run.sim, hsmRecalls: { heldSinceTick: null, backlogIo: 5 } } };
+    expect(chargeHeldRecalls(released, TICKS_PER_HOUR - 1)).toBe(released);
   });
 });
