@@ -88,8 +88,8 @@ export interface ActiveEvent {
   /** Start tick of the hour whose union `affects` (a power cap's scope follows the routing) and `reach` hold. */
   affectsHour?: number;
   endCommands: Command[];
-  /** Last tick carrying a relieved card’s effect, exclusive, including a storm’s backlog replay. */
-  footprintReplay?: { startTick: number; endTick: number };
+  /** Windows of LCU I/O from queued recalls that replayed after the storm. */
+  footprintReplays?: { startTick: number; endTick: number }[];
   /** A matching rolling recycle takes effect when the target shutdowns have started. */
   endOnRecycleTick?: number;
   /** Roster entities the card loaded when it began (thread tokens or userids), for its truth and later operations. */

@@ -1,6 +1,7 @@
 import { newHour } from '../../src/game/run/hourly';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { requestOperation } from '../../src/game/operations';
+import { activeIn } from '../../src/game/sla';
 import { db2LockHolder } from '../../src/game/smf';
 import { requestBackout } from '../../src/game/run/otherTeamChanges';
 import { PACKS } from '../../src/content/packs';
@@ -68,8 +69,14 @@ describe('Operations command delivery', () => {
     expect(released.ok).toBe(true);
     r = advance(released.run, pack.scenario, pack.game, 1);
     expect(r.events[0]!.reach).toEqual(r.sim.config.lpars.map((l) => l.id).sort());
-    expect(r.events[0]!.footprintReplay).toBeDefined();
+    expect(r.events[0]!.footprintReplays).toEqual([{ startTick: 6, endTick: 7 }]);
     expect(r.events[0]!.ended).toBe(true);
+
+    r = advance(requestOperation(r, pack.scenario, pack.game, { kind: 'HOLD_HSM_RECALL', held: true }).run, pack.scenario, pack.game, 1);
+    r = advance(requestOperation(r, pack.scenario, pack.game, { kind: 'HOLD_HSM_RECALL', held: false }).run, pack.scenario, pack.game, 1);
+    expect(activeIn(r.events[0]!, { startTick: 6, endTick: 7 })).toBe(true);
+    expect(activeIn(r.events[0]!, { startTick: 7, endTick: 8 })).toBe(false);
+    expect(activeIn(r.events[0]!, { startTick: 8, endTick: 9 })).toBe(true);
   });
 
   it('ends SICK_AOR when the affected region starts its scheduled recycle', () => {

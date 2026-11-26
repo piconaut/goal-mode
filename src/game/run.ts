@@ -54,7 +54,7 @@ import { packOf } from '../content/packs';
 import { allWorkloads } from './workloads';
 import { resolveCulprits } from './culprits';
 import { HSM_RECALL } from '../content/operations';
-import { cicsStorageReach, hourUnion, regionKey, resolveReach, type ReachWorld } from './footprint';
+import { cicsStorageReach, hourUnion, recordReplayTick, regionKey, resolveReach, type ReachWorld } from './footprint';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
 
 export type { GameContent } from './run/shared';
@@ -205,7 +205,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
     r = landRoutineChanges(r, content);
-    for (const event of r.events) {
+    for (const event of r.sim.cicsRecycles?.length ? r.events : []) {
       if (!event.ended && event.endOnRecycleTick === tick && (event.endTick === null || event.endTick > tick)) {
         r = resolveEvent(r, event);
       }
@@ -323,9 +323,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || (!e.ended && e.startTick <= tick),
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
-      ...(e === recallReplay && !running(e) ? { footprintReplay: {
-        startTick: e.footprintReplay?.endTick === tick ? e.footprintReplay.startTick : tick, endTick: tick + 1,
-      } } : {}),
+      ...(e === recallReplay && !running(e) ? { footprintReplays: recordReplayTick(e.footprintReplays, tick) } : {}),
       ...(resolvedCulprits.has(e.uid) ? { culprits: resolvedCulprits.get(e.uid) } : {}),
       ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),

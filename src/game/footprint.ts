@@ -4,6 +4,7 @@
 import { CICS_STORAGE } from '../content/subsys';
 import type { FootprintReach } from '../content/footprint';
 import type { SimState } from '../sim/core/types';
+import type { ActiveEvent } from './types';
 import type { AddressSpaceDef, WorkloadDef } from '../sim/workload/types';
 
 export interface ReachWorld {
@@ -61,4 +62,11 @@ export function cicsStorageReach(regions: readonly string[], images: SimState['l
   return images.flatMap((image) => (image.cicsStorage ?? [])
     .filter((storage) => regions.includes(storage.region) && storage.limitMb - storage.inUseMb < cushionMb)
     .map((storage) => regionKey(storage.region, image.lparId)));
+}
+
+/** A release can be interrupted and resumed. Keep the earlier I/O windows for subsequent RCA queries. */
+export function recordReplayTick(previous: ActiveEvent['footprintReplays'], tick: number): NonNullable<ActiveEvent['footprintReplays']> {
+  const latest = previous?.at(-1);
+  if (previous && latest?.endTick === tick) return [...previous.slice(0, -1), { ...latest, endTick: tick + 1 }];
+  return [...(previous ?? []), { startTick: tick, endTick: tick + 1 }];
 }

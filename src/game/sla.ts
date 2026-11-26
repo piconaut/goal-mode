@@ -353,15 +353,14 @@ export const hourWindow = (hourIndex: number): { startTick: number; endTick: num
 
 function effectOverlap(e: ActiveEvent, w: { startTick: number; endTick: number }): number {
   const overlap = (start: number, end: number) => Math.max(0, Math.min(end, w.endTick) - Math.max(start, w.startTick));
-  const replay = e.footprintReplay;
-  return overlap(e.startTick, e.endTick ?? Infinity) + (replay ? overlap(replay.startTick, replay.endTick) : 0);
+  const active = overlap(e.startTick, e.endTick ?? Infinity);
+  return e.footprintReplays?.reduce((total, replay) => total + overlap(replay.startTick, replay.endTick), active) ?? active;
 }
 
 /** A card was active in the half-open window, including any recall I/O replayed there after the storm. */
 export function activeIn(e: ActiveEvent, w: { startTick: number; endTick: number }): boolean {
-  const replay = e.footprintReplay;
   return e.started && ((e.startTick < w.endTick && (e.endTick === null || e.endTick > w.startTick)) ||
-    (replay !== undefined && replay.startTick < w.endTick && replay.endTick > w.startTick));
+    e.footprintReplays?.some((replay) => replay.startTick < w.endTick && replay.endTick > w.startTick) === true);
 }
 
 /** How a card's footprint (RT-14, docs/rca-design.md §4.4(1)) meets the work: listed (direct), or the work's images or
