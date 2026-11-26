@@ -1,9 +1,9 @@
 # The Shadow Week: a guided prologue (design)
 
-Status: **proposal, not scheduled** (written 2026-11-25, rewritten the same day for the real-handover framing). It
+Status: **designed; scoped into BACKLOG list `prologue`** (written 2026-11-25, rewritten the same day for the real-handover framing). It
 supersedes PROGRESS.md proposal P2 ("full-day guided tutorial") and keeps P2's rules: steps are content data, nothing
 is fixed automatically, every step accepts more than one valid fix, and the scripted events never leak into normal
-runs. Nothing here is a task until it is scoped into BACKLOG.md entries (§13 lists the proposed ones). The user's
+runs. Nothing here is a task until it is scoped into BACKLOG.md entries (§13; now BACKLOG list `prologue`). The user's
 decisions are in §14.
 
 **Hard requirements (user, 2026-11-25):**
@@ -901,9 +901,10 @@ Every statement Ruth makes about z/OS behaviour is a statement about z/OS behavi
 - The forgotten migration cap is a story, not a claim about any real shop; Ruth's "every temporary change is
   permanent" is advice, not a fact.
 
-## 13. Delivery plan (proposed BACKLOG list `prologue`)
+## 13. Delivery plan (BACKLOG list `prologue`)
 
-To be scoped into BACKLOG.md entries once the user approves the direction:
+Scoped into BACKLOG.md list `prologue` on 2026-11-25; the entries there are the source of truth for scope and
+"Done when":
 
 1. **PRO-01 calendar start**: `monthDayAtStart` through `clockAt` and its callers. The only sim change; `npm run
    compare` shows no difference, and the bench hashes are unchanged.
