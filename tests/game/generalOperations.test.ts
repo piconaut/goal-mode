@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { PACKS } from '../../src/content/packs';
 import { applyGameCommand } from '../../src/game/commands';
 import { applyTraceCommand } from '../../src/game/dayTrace';
+import { addPin } from '../../src/game/evidence';
+import { buildMon3 } from '../../src/game/mon3';
+import { emptyMon3History, mon3At, recordMon3History } from '../../src/game/mon3History';
+import { emptyMon3PinHistory, mon3PinsAt, recordMon3Pins } from '../../src/game/mon3PinHistory';
 import { chargeHeldRecalls, operationsView, requestOperation } from '../../src/game/operations';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
@@ -61,15 +65,51 @@ describe('general operator commands', () => {
     expect(operationsView(out.run, scenario).threads).not.toContainEqual(expect.objectContaining({ id: thread.id, lparId: thread.lparId, workloadId: thread.workloadId }));
   });
 
-  it('takes the monitoring collector offline until site automation restarts it', () => {
-    const run = { ...live(), tools: ['RMF_MON3'] };
-    const op = { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'MONAGENT', lparId: 'PROD1' } as const;
-    const out = issue(run, op);
+  it('cancelling MONAGENT pauses alerting only; Monitor III keeps gathering', () => {
+    const run = { ...live(), tools: ['RMF_MON3', 'ALERTS'] };
+    const out = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'MONAGENT', lparId: 'PROD1' });
     expect(out.ok).toBe(true);
-    expect(buildView(out.run, scenario)).toMatchObject({ mon3: null, monitorCollectorDown: true });
+    const v = buildView(out.run, scenario);
+    expect(v.alerts?.agentDown).toBe(true);
+    expect(v.mon3).not.toBeNull();
+    expect(v.mon3!.missingSystems).toBeUndefined();
     const tick = out.run.sim.cancelledAddressSpaces![0]!.restartTick!;
-    expect(buildView({ ...out.run, sim: { ...out.run.sim, tick } }, scenario).monitorCollectorDown).toBe(false);
+    expect(buildView({ ...out.run, sim: { ...out.run.sim, tick } }, scenario).alerts?.agentDown).toBe(false);
   });
+
+  it('cancelling RMFGAT leaves a Monitor III gap on that system only, until automation restarts it', () => {
+    const run = advance({ ...live(), tools: ['RMF_MON3'] }, scenario, content, 3 * TICKS_PER_HOUR);
+    const out = issue(run, { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: 'PROD1' });
+    expect(out.ok).toBe(true);
+    const full = buildMon3(run, scenario);
+    const m = buildView(out.run, scenario).mon3!;
+    expect(m.missingSystems).toEqual([{ system: 'PROD1', reason: 'Gatherer not active' }]);
+    expect(m.systems.map((s) => s.system)).not.toContain('PROD1');
+    expect(m.systems.map((s) => s.system)).toContain('PROD2');
+    expect(m.rows.some((r) => r.system === 'PROD1')).toBe(false);
+    expect(m.procJobs?.some((j) => j.system === 'PROD1')).toBe(false);
+    expect(m.wkm?.flatMap((w) => w.servers).some((x) => x.system === 'PROD1')).toBe(false);
+    // The other systems' rows are unchanged; the sysplex rows count only them.
+    const prod2 = (v: typeof m) => v.rows.filter((r) => r.system === 'PROD2');
+    expect(prod2(m)).toEqual(prod2(full));
+    for (const r of m.rows.filter((x) => x.system === '*PLEX')) {
+      const sum = m.rows.filter((x) => x.system !== '*PLEX' && x.scKey === r.scKey).reduce((a, x) => a + x.cpuEngines, 0);
+      expect(r.cpuEngines).toBeCloseTo(sum, 9);
+    }
+    // The CPC section still lists every partition (another gatherer on the CPC reads the PR/SM data).
+    expect(m.cpc.map((c) => c.lparId)).toEqual(full.cpc.map((c) => c.lparId));
+    const pin = (system: string) => addPin(out.run, scenario, { source: 'MON3', system, scKey: m.rows.find((r) => r.system === '*PLEX')!.scKey, metric: 'PI' });
+    expect(pin('PROD1')).toMatchObject({ ok: false, message: 'Monitor III gatherer not active on PROD1 in that range' });
+    expect(pin('*PLEX').ok).toBe(true);
+    // Both histories keep the gap, so a past range inside it shows it and refuses the pin too.
+    const at = out.run.sim.tick;
+    expect(mon3At(recordMon3History(emptyMon3History(), at, m), at)!.view.missingSystems).toEqual(m.missingSystems);
+    const cli = mon3PinsAt(recordMon3Pins(emptyMon3PinHistory(), at, m), at)!;
+    expect(cli.view.missingSystems).toEqual(m.missingSystems);
+    expect(addPin(out.run, scenario, { source: 'MON3', system: 'PROD1', scKey: 'ONLHI#1', metric: 'PI', tick: at }, () => cli).message).toBe('Monitor III gatherer not active on PROD1 in that range');
+    const tick = out.run.sim.cancelledAddressSpaces![0]!.restartTick!;
+    expect(buildMon3({ ...out.run, sim: { ...out.run.sim, tick } }, scenario).missingSystems).toBeUndefined();
+  }, 60_000);
 
   it('terminates an active utility and records the lost run', () => {
     const run = live();

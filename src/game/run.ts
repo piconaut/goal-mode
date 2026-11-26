@@ -15,7 +15,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import { classify } from '../sim/wlm/classify';
-import { emptyAlerts, evaluateAlerts } from './alerts';
+import { emptyAlerts, evaluateAlerts, suspendAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { opexBudgetFor } from './catalog';
 import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
@@ -36,7 +36,7 @@ import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
 import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
 import { nightStartTick } from './night';
 import { tfpAtDayEnd } from './tfp';
-import { expireToolTrials, measurementCommands, monitorCollectorDown, trialTool } from './tools';
+import { alertingAgentDown, expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
   FACETS,
   facetsOf,
@@ -320,13 +320,13 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];
-      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3') && !monitorCollectorDown(r)) r = evaluateAlerts(r, scenario);
+      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = alertingAgentDown(r) ? suspendAlerts(r) : evaluateAlerts(r, scenario);
       if (toolOn(r, 'AUTOMATION') && r.phase === 'LIVE') {
         const fired = (r.alerts?.firing ?? []).filter((id) => !before.includes(id));
         r = runAutomation(r, content, fired, requestChange);
       }
     }
-    if (chartsActive(r) && !monitorCollectorDown(r)) {
+    if (chartsActive(r)) {
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);
     }

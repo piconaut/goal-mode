@@ -22,9 +22,20 @@ export function features(run: RunState): Set<ToolFeature> {
 
 export const hasFeature = (run: RunState, f: ToolFeature): boolean => features(run).has(f);
 
-/** In the game the MONAGENT collector feeds the live sysplex view. */
-export const monitorCollectorDown = (run: RunState): boolean =>
-  run.sim.cancelledAddressSpaces?.some((a) => a.jobname === 'MONAGENT' && (a.restartTick === null || a.restartTick > run.sim.tick)) ?? false;
+const downOn = (run: RunState, jobname: string): string[] =>
+  [...new Set((run.sim.cancelledAddressSpaces ?? []).filter((a) => a.jobname === jobname && (a.restartTick === null || a.restartTick > run.sim.tick)).map((a) => a.lparId))].sort();
+
+/**
+ * Game rule: the site's alerting rules run in the vendor monitoring agent (MONAGENT), which reads Monitor III data and
+ * needs its copy on every image to evaluate the sysplex rules. With one copy down, alerting pauses sysplex-wide;
+ * Monitor III itself is RMFGAT's and keeps running.
+ */
+export const alertingAgentDown = (run: RunState): boolean => downOn(run, 'MONAGENT').length > 0;
+
+/** Images whose Monitor III data gatherer (RMFGAT) is not running. Each system gathers its own samples, and the
+ * reporter marks just that system "Gatherer not active" (z/OS 3.1 RMF User's Guide SC27-4936 PDF p.247 (printed 223),
+ * PDF pp.93–95 (printed 69–71)). */
+export const mon3GatherersDown = (run: RunState): string[] => downOn(run, 'RMFGAT');
 
 const onTrial = (run: RunState, id: string): boolean => (run.toolTrials ?? []).some((t) => t.id === id);
 

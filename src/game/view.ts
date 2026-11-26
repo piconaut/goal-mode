@@ -20,7 +20,7 @@ import { plannedPolicy, type ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, reportedBySystem, softCapped, type Mon3View } from './mon3';
-import { features, monitorCollectorDown, toolsView, type ToolView } from './tools';
+import { alertingAgentDown, features, toolsView, type ToolView } from './tools';
 import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt, hhmm, instanceClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
@@ -184,7 +184,6 @@ export interface ViewModel {
   features: ToolFeature[];
   /** RMF Monitor III live views (null without the tool). */
   mon3: Mon3View | null;
-  monitorCollectorDown: boolean;
   tools: ToolView[];
   reportsOpenedToday: number;
   /** Day-1 tutorial: the installed policy puts Db2 at or above the CICS regions (F1 fixed). */
@@ -202,7 +201,8 @@ export interface ViewModel {
   /** Saved service policies (with one-line goal summaries) and the daily switch schedule. */
   policies: { saved: { name: string; summary: string }[]; schedule: ScheduleEntry[] };
   /** Alert rules, firing ids and recent pages (null without the tool). */
-  alerts: { rules: (AlertRule & { text: string })[]; firing: number[]; log: AlertEvent[] } | null;
+  /** `agentDown`: MONAGENT, which runs the rules, is cancelled and not yet restarted. */
+  alerts: { rules: (AlertRule & { text: string })[]; firing: number[]; log: AlertEvent[]; agentDown: boolean } | null;
   /** Capacity planner forecasts (null without the tool). */
   planner: { forecasts: Forecast[]; daysRecorded: number } | null;
   /** Monitor III chart history sizes (fetch with GET_MON3_CHARTS); null without the tool. */
@@ -224,7 +224,6 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const c = clockAt(sim.tick);
   const tickOfDay = sim.tick - run.day * TICKS_PER_DAY;
   const def = sim.wlm.definition;
-  const collectorDown = monitorCollectorDown(run);
 
   const lpars: LparView[] = sim.config.lpars.map((l) => {
     const rt = sim.lpars.find((x) => x.id === l.id);
@@ -349,8 +348,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     plannedPolicy: plannedPolicy(run),
     previewCtx: previewContext(run, packOf(run.scenarioId).game),
     features: [...feats].sort(),
-    mon3: feats.has('MON3') && !collectorDown ? buildMon3(run, scenario) : null,
-    monitorCollectorDown: collectorDown,
+    mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
     tutorialDb2Fixed: db2AboveItsClients(installedPolicy(run)),
@@ -378,7 +376,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
       schedule: run.policies?.schedule ?? [],
     },
     alerts: feats.has('ALERTS')
-      ? { rules: (run.alerts?.rules ?? []).map((r) => ({ ...r, text: ruleText(r) })), firing: run.alerts?.firing ?? [], log: (run.alerts?.log ?? []).slice(-20) }
+      ? { rules: (run.alerts?.rules ?? []).map((r) => ({ ...r, text: ruleText(r) })), firing: run.alerts?.firing ?? [], log: (run.alerts?.log ?? []).slice(-20), agentDown: alertingAgentDown(run) }
       : null,
     planner: feats.has('CAPACITY_PLANNER') ? { forecasts: capacityForecasts(run), daysRecorded: (run.capacityDays ?? []).length } : null,
     mon3Charts:

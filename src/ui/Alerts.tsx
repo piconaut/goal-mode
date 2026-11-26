@@ -42,6 +42,7 @@ export function Alerts({ v, game, openAnalytics }: { v: ViewModel; game: GameHan
       <h3>
         Alert rules ({a.rules.length}/{ALERTS.maxRules})
       </h3>
+      {a.agentDown && <div className="help">The alerting agent MONAGENT is down: no rule is checked until automation restarts it.</div>}
       <div className="help">
         Checked every sim-minute against Monitor III data. A rule pages once when its condition has held for the set time, and again only after it clears. Pages between{' '}
         {ALERTS.nightStart}:00 and 0{ALERTS.nightEnd}:00 wake someone up (+{ALERTS.nightFatigue} fatigue each): noisy rules cost you.
