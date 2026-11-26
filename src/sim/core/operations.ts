@@ -101,10 +101,12 @@ export function applyOperation(s: SimState, scenario: Scenario, op: Operation): 
     case 'CANCEL_JOB': {
       const job = s.batch.jobs.find((j) => j.day === op.day && j.def.name === op.jobname && j.lparId === op.lparId && j.status === 'RUNNING');
       if (!job) return fail(`IEE341I ${op.jobname} NOT ACTIVE on ${op.lparId}`);
+      // CANCEL without DUMP ends the job with system completion code 222; 122 is CANCEL with DUMP
+      // (z/OS 3.1 MVS System Codes SA38-0665-60 PDF p.336 (printed 324) and PDF p.253 (printed 241)).
       const jobs = s.batch.jobs.map((j) => j === job
-        ? { ...j, status: 'ABENDED' as const, abended: true, failCode: 'S122', failTick: s.tick, endTick: s.tick + 1 }
+        ? { ...j, status: 'ABENDED' as const, abended: true, failCode: 'S222', failTick: s.tick, endTick: s.tick + 1 }
         : j);
-      return ok({ ...s, batch: { ...s.batch, jobs } }, `CANCEL ${op.jobname}: ABEND S122 on ${op.lparId}`);
+      return ok({ ...s, batch: { ...s.batch, jobs } }, `CANCEL ${op.jobname}: ABEND S222 on ${op.lparId}`);
     }
     case 'CANCEL_SESSION': {
       const target = op.target;

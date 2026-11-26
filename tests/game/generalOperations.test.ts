@@ -27,7 +27,7 @@ describe('general operator commands', () => {
     const op = { kind: 'CANCEL_JOB', day: 0, jobname: target!.def.name, lparId: 'PROD1' } as const;
     const cancelled = issue(before, op);
     expect(cancelled.ok).toBe(true);
-    expect(cancelled.run.sim.batch.jobs[0]).toMatchObject({ status: 'ABENDED', failCode: 'S122' });
+    expect(cancelled.run.sim.batch.jobs[0]).toMatchObject({ status: 'ABENDED', failCode: 'S222' });
     expect(cancelled.run.sim.batch.jobs[1]).toBe(other);
     expect(target!.status).toBe('RUNNING');
     const restarted = applyCommand(cancelled.run.sim, { kind: 'RESTART_JOB', day: 0, name: target!.def.name });
