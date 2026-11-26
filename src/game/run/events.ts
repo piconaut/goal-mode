@@ -82,13 +82,23 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
   }
   if (profiles.length) {
     // Sample the same deck and rollout windows with a separate seed stream. This avoids pairing a routine notice
-    // with a regression. The first briefing starts with a routine change already on the schedule.
+    // with a specific regression. The first briefing starts with a routine change already on the schedule.
     const rng = streamRng(run.seed, 'routine-changes', day);
     const available = content.events.filter((def) => profiles.some((p) => p.eventId === def.id));
     const handover = day === 0 ? rng.pickWeighted(available, (def) => def.weight) : null;
-    const routine = handover ? [{ def: handover, hour: rng.range(...handover.startHour) }] : pickEvents(run, content, day, rng, true);
+    const routine = handover ? [{ def: handover, hour: rng.range(...handover.startHour) }]
+      : pickEvents(run, content, day, rng, true).filter(({ def }) => available.includes(def));
+    // Keep routine rollouts at least as common even on seeds with an unusually busy change calendar.
+    const priorShortfall = (run.otherTeamChanges ?? []).reduce((sum, entry) => sum + (entry.eventUid ? 1 : -1), 0);
+    const minimum = notices.length + priorShortfall;
+    const candidates = available.filter((def) => day >= def.minDay && !routine.some((rollout) => rollout.def === def));
+    while (routine.length < minimum && candidates.length > 0) {
+      const def = rng.pickWeighted(candidates, (candidate) => candidate.weight);
+      if (!def) break;
+      candidates.splice(candidates.indexOf(def), 1);
+      routine.push({ def, hour: rng.range(...def.startHour) });
+    }
     for (const { def, hour } of routine) {
-      if (!available.includes(def)) continue;
       const startTick = changeTick(day, hour);
       notices.push({ eventId: def.id, startTick, endTick: endTickOf(def, startTick) });
     }

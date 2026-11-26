@@ -98,4 +98,23 @@ describe('other teams’ changes', () => {
       }
     }
   });
+
+  it('keeps cumulative routine notices at least as numerous as card notices', () => {
+    for (const name of ['midwest', 'harbourline', 'revenue']) {
+      const pack = PACKS[name]!;
+      for (const seed of [1, 7, 42, 123]) {
+        let run = newRun(pack.scenario, pack.game, seed);
+        for (let day = 1; day <= 30; day++) {
+          const changes = run.otherTeamChanges ?? [];
+          const cardCount = changes.filter((c) => c.eventUid).length;
+          expect(changes.length - cardCount, `${name} seed ${seed} day ${day}`).toBeGreaterThanOrEqual(cardCount);
+          run = drawEvents(run, pack.game, day);
+        }
+        const changes = run.otherTeamChanges ?? [];
+        const cardCount = changes.filter((c) => c.eventUid).length;
+        expect(changes.length - cardCount, `${name} seed ${seed} day 30`).toBeGreaterThanOrEqual(cardCount);
+      }
+    }
+  });
+
 });

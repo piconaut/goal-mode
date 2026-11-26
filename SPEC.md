@@ -1173,8 +1173,9 @@ one live day, so its fix could otherwise only be bought as an emergency change.
 
 **Other teams’ changes (PT-53).** The Change board shows each rollout’s owner, scheduled time and status. The
 inbox uses the same notice format for release regressions and routine rollouts. Each scenario pairs its card
-rollouts with routine changes from the same owner and rollout window. Routine rollouts are drawn independently
-using the same card weights, with a routine change already scheduled at handover. They reduce the target workload’s
+rollouts with routine changes from the same owner and rollout window. Routine rollouts use a separate seed stream
+and the same card weights. One is scheduled at handover, and the board always posts at least as many routine rollouts
+as card rollouts. Routine rollouts reduce the target workload’s
 or started task’s CPU demand by a fictional 5% during the rollout window. A successful backout spends engineer-hours
 and owner trust. Before rollout it cancels the change, and afterward it reverses its effects. A REBIND backout is
 immediate. Deployments use the normal briefing plan or live emergency change, including the applicable failure risk.
