@@ -31,6 +31,7 @@ import { applyWlmEdit, pendingBase, playerWlmEditError, serviceClassGoalIssues, 
 import { activateSavedPolicy, deactivateCod } from './run';
 import { deletePolicy, policyEditSource, savedPolicy, savePolicy, setSchedule, type ScheduleEntry } from './policies';
 import { buildView } from './view';
+import { requestOperation } from './operations';
 import { MECHANISMS, TRIGGERS } from './sla';
 import { alsoAcceptedOf, groupAcceptedOf, rcaAnswerText, rcaGroupOf } from './run/rca';
 import { TRIGGER_LABEL } from '../content/rca';
@@ -40,6 +41,7 @@ import { idText } from './ids';
 import type { Mon3PinLookup } from './mon3PinHistory';
 import type { GameContent } from './run/shared';
 import type { Scenario } from '../sim/core/scenario';
+import type { Operation } from '../sim/core/operations';
 import type { Mechanism, ProblemSubject, RunState, Trigger } from './types';
 import type { InquiryKind } from '../content/inquiries';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -49,6 +51,7 @@ import type { ServiceDefinition } from '../sim/wlm/types';
 export type GameCommand =
   | { kind: 'START' }
   | { kind: 'CHANGE'; req: ChangeRequest }
+  | { kind: 'OPERATION'; op: Operation }
   | { kind: 'RESTART'; name: string }
   | { kind: 'CANCEL'; changeId: number }
   | { kind: 'COD_DEACTIVATE'; changeId: number }
@@ -114,6 +117,8 @@ export function applyGameCommand(
     }
     case 'CHANGE':
       return result(requestChange(run, content, cmd.req));
+    case 'OPERATION':
+      return result(requestOperation(run, sc, content, cmd.op));
     case 'RESTART': {
       const batch = buildView(run, sc).batch;
       const a = batch.abended.find((x) => x.name === cmd.name.toUpperCase());

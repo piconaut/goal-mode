@@ -6,7 +6,7 @@ import { CAPACITY_SETTING_FRAC } from '../../content/hardware';
 import { CICS_STORAGE } from '../../content/subsys';
 import { cfUsedGb, duplexSecondary, failCf, type CfStructureConfig } from '../cf/cf';
 import { startTfp, type TfpTerms } from '../cost/mlc';
-import { TICK_SEC } from './units';
+import { TICK_SEC, TICKS_PER_DAY } from './units';
 import { LCU_MAX_DEVICES } from '../io/dasd';
 import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
@@ -444,6 +444,10 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
     }
 
     case 'SET_UTILITY_OVERRUN': {
+      const day = Math.floor(s.tick / TICKS_PER_DAY);
+      if (cmd.seqIops !== null && s.terminatedUtilities?.some((u) => u.kind === cmd.utility && u.day === day)) {
+        return ok(s, `${cmd.utility} step was terminated tonight`);
+      }
       const { utilityOverruns, ...rest } = s;
       const left = (utilityOverruns ?? []).filter((x) => x.kind !== cmd.utility);
       const next = cmd.seqIops === null ? left : [...left, { kind: cmd.utility, seqIops: cmd.seqIops }];

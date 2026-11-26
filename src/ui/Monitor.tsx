@@ -65,6 +65,11 @@ export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHa
         <CodexHints ids={['rmf', 'blocked-workload']} />
       </h3>
       {game.mon3Range && <TimeBar range={game.mon3Range} at={at} setAt={setAt} />}
+      {(m ?? v.mon3).missingSystems?.map((x) => (
+        <div key={x.system} className="help">
+          Data Index: {x.system} *** {x.reason} *** No samples from {x.system} in this range; the sysplex rows count the other systems only.
+        </div>
+      ))}
       <div className="form">
         {VIEWS.map((x) => (
           <button key={x.id} className={view === x.id ? 'active' : ''} onClick={() => setView(x.id)}>

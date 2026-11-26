@@ -171,7 +171,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: ['RMF_MON3'],
     unlocks: ['ALERTS'],
     overhead: null,
-    reveals: 'Threshold rules over Monitor III data page you (and can pause the game): PI, CPC busy, capping, R4HA vs DC, batch slack. Night pages tire the team.',
+    reveals: 'Threshold rules over Monitor III data page you (and can pause the game): PI, CPC busy, capping, R4HA vs DC, batch slack. The monitoring agent MONAGENT runs them on every image. Night pages tire the team.',
   },
   {
     id: 'AUTOMATION',

@@ -20,7 +20,7 @@ import { plannedPolicy, type ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, reportedBySystem, softCapped, type Mon3View } from './mon3';
-import { features, toolsView, type ToolView } from './tools';
+import { alertingAgentDown, features, toolsView, type ToolView } from './tools';
 import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt, hhmm, instanceClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
@@ -37,6 +37,7 @@ import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 import { idText } from './ids';
+import { operationsView } from './operations';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
@@ -163,6 +164,7 @@ export interface ViewModel {
   piHeat: PiCell[];
   sla: SlaTicker[];
   batch: BatchView;
+  operations: ReturnType<typeof operationsView>;
   incidents: Incident[];
   inbox: Message[];
   log: string[];
@@ -199,7 +201,8 @@ export interface ViewModel {
   /** Saved service policies (with one-line goal summaries) and the daily switch schedule. */
   policies: { saved: { name: string; summary: string }[]; schedule: ScheduleEntry[] };
   /** Alert rules, firing ids and recent pages (null without the tool). */
-  alerts: { rules: (AlertRule & { text: string })[]; firing: number[]; log: AlertEvent[] } | null;
+  /** `agentDown`: MONAGENT, which runs the rules, is cancelled and not yet restarted. */
+  alerts: { rules: (AlertRule & { text: string })[]; firing: number[]; log: AlertEvent[]; agentDown: boolean } | null;
   /** Capacity planner forecasts (null without the tool). */
   planner: { forecasts: Forecast[]; daysRecorded: number } | null;
   /** Monitor III chart history sizes (fetch with GET_MON3_CHARTS); null without the tool. */
@@ -329,6 +332,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     piHeat,
     sla,
     batch,
+    operations: operationsView(run, scenario),
     incidents: run.incidents.slice(-30),
     inbox: run.inbox.slice(-40),
     log: run.log.slice(-40),
@@ -372,7 +376,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
       schedule: run.policies?.schedule ?? [],
     },
     alerts: feats.has('ALERTS')
-      ? { rules: (run.alerts?.rules ?? []).map((r) => ({ ...r, text: ruleText(r) })), firing: run.alerts?.firing ?? [], log: (run.alerts?.log ?? []).slice(-20) }
+      ? { rules: (run.alerts?.rules ?? []).map((r) => ({ ...r, text: ruleText(r) })), firing: run.alerts?.firing ?? [], log: (run.alerts?.log ?? []).slice(-20), agentDown: alertingAgentDown(run) }
       : null,
     planner: feats.has('CAPACITY_PLANNER') ? { forecasts: capacityForecasts(run), daysRecorded: (run.capacityDays ?? []).length } : null,
     mon3Charts:

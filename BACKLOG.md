@@ -68,20 +68,8 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-56 · General operations as real levers
-`list: playtest-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: PT-20 (docs/pt-20-design.md §3). Add the seven general operations to Change Desk › Operations with their real
-effects and wrong-target costs: cancel a job/STC/TSO user, cancel a Db2 thread, terminate a Db2 utility, recycle CICS
-regions (`RECYCLE_CICS`), back out a change (wired to the Change board in PT-53), gateway protection (rate limit,
-backoff, block sources) and the HSM recall hold with its backlog. Add the DISPLAY THREAD and DISPLAY UTILITY views,
-report lines for held recalls and gateway modes, and Codex entries. Check the backout lock hold of a cancelled job
-with zos-docs before PT-54 models it. Cards and fix buttons are unchanged and nothing uses the operations yet.
-Coefficients FICTIONAL in `content/`. Done when: each operation's effect and wrong-target cost has a unit or realism
-test, and `npm run compare` against `dev` shows no sim difference (`--drop` for reporting-only fields).
-
 ### PT-53 · Other teams' changes on the Change board
-`list: playtest-fixes · status: blocked: after PT-56 · priority: low · size: M · area: game`
+`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 
 Source: PT-20 (docs/pt-20-design.md §6); absorbs PT-19 (inbox change notices were always bad news, so the player
 rolled back any announced change on sight by D26). Add a section for changes made by application teams, DBAs and
@@ -227,6 +215,17 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-26 · Report lines for held recalls and gateway modes
+`list: pr-followups · status: ready · priority: low · size: S · area: game`
+
+Source: PR #497 review (PT-56). PT-56 asked for report lines for held DFSMShsm recalls and gateway protection
+modes; the PR shows both only in Change Desk › Operations (`operationsView`), so a player reading the reports after
+the fact can't see why a channel shed work or why batch jobs failed with `HSM RECALL HELD`. Add a line for each to
+the day's reports (the gateway mode per channel while enabled, the recall hold and its queued backlog), join a
+report identity in `tests/helpers/reportIdentities.ts`, and point the `hsm-recall-hold` and `gateway-protection`
+Codex entries at them. Done when: both lines render from sim state, an identity ties each to it, and
+`npm run compare` against `dev` shows no sim difference.
+
 ## realism-fixes
 
 ### RF-10 · Utility drains on the settlement partition ignore online writers
@@ -245,7 +244,7 @@ SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 dr
 regenerated with a behaviour note and the three-scenario sweep is recorded.
 
 ### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
-`list: realism-fixes · status: blocked: after PT-56 · priority: low · size: M · area: sim`
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
 Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
 CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
@@ -255,6 +254,19 @@ enclave or address space in the workload's last period, at most its engines), si
 its usual hours stays about the same. Done when: a realism test shows the excess independent of the arrival rate and
 of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
 three-scenario sweep is recorded.
+
+### RF-12 · A stopped Monitor III gatherer leaves holes in its SMF records
+`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
+
+Source: PR review of PT-56 (2026-11-26), docs/research.md "RMF". Monitor III writes SMF records too (Monitor I, II and
+III write types 70–79), and coupling facility structure detail for the CF Activity report is gathered only on the
+master gatherer system, picked among systems whose Monitor III gatherer is active (Data Gatherer User's Guide PDF p.23
+(printed 5), PDF p.99 (printed 81), PDF pp.102–103 (printed 84–85)). In the sim, cancelling RMFGAT gaps only the live
+Monitor III views; the Postprocessor intervals are untouched. Design first: which RMF intervals the sim should treat as
+Monitor III-written (the book's table of record types per monitor is the source), whether the master role moves when
+its gatherer stops (not stated in the pages read; check before modelling), and how a partial interval shows. Done when:
+cancelling RMFGAT on a system leaves the chosen records short for that interval and system, a realism test shows it,
+the report invariants still hold, and SPEC §17 and the ledger row are updated.
 
 ## balance
 
