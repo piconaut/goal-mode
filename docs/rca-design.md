@@ -1,7 +1,7 @@
 # RCA judging and incident truth: audit, truth model and D1 draft
 
 Status: **proposal for the user** (2026-11-09). Nothing here is implemented. The work it leads to is in
-[BACKLOG.md](../BACKLOG.md) list `rca-truth` (RT-01 … RT-24) and RF-02; entries that need a decision name the section of this
+[BACKLOG.md](../BACKLOG.md) list `rca-truth` (RT-01 … RT-35) and RF-02; entries that need a decision name the section of this
 document to decide on. §7 lists the decisions.
 
 Scope: the whole chain from sim causality → game "truth" (`src/game/sla.ts`, `run/hourly.ts`) → evidence matching
@@ -838,6 +838,12 @@ rule with the change as the "card".
 
 ## 5. D1 on top of it: fixes unlocked by proof
 
+**Superseded (user, 2026-11-26).** The proof gate is dropped: a button that fixes one exact problem is the
+inauthentic part, and gating it behind proof keeps the button. General operations that aren't tied to one event
+replace it (BACKLOG PT-20, PT-52 … PT-55; `docs/pt-20-design.md` once written). Problem records (§5.1 "As built", RT-22) and
+the recipes they are judged by stay. The unlock claims and recipes of §5.1 and §5.2, the costs of §5.4, the unlock
+side of §5.5 and the gating of §5.7 are kept below as the record of what was considered, not as a plan.
+
 A draft for the user. It assumes §4.1, §4.4 and §4.6 are in place.
 
 ### 5.1 What unlocks a fix
@@ -975,7 +981,8 @@ weights and logical CPs, defined capacity and group caps, On/Off CoD and hardwar
 structure moves, and the generic operations PT-20 proposes. The trade D1 wants is then real: pay hours, money or
 trust for a generic lever now, or spend attention on the proof and get the cheap fix. PT-20's "each event registers a
 general operation that fixes it" must respect the gate: a general operation that ends a card (recycle a region)
-stays open only where a competent operator would do it without knowing the cause.
+stays open only where a competent operator would do it without knowing the cause. (Superseded 2026-11-26: with no
+gate, PT-20's operations are open to everyone and a wrong target pays its own cost.)
 
 ### 5.7 Bots
 
@@ -1006,7 +1013,7 @@ cannot pick an entry before its prerequisites are merged.
    is still judged capacity and bots buy CPs on it), then hour-of-day baselines (RT-17); the playtest's findings
    RT-28 … RT-31 follow them. **Still parked until the human playtest (RT-18 … RT-21):** fallback triggers (RT-18),
    server CPU and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
-4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and PT-20's design call.
+4. **D1:** RT-22 (problem records) landed 2026-11-25; the proof gate (RT-24) was dropped for PT-20 (user, 2026-11-26).
 
 D1 depends on RT-05, RT-07, RT-12, RT-13 and RT-14. It does not depend on RT-16 … RT-21, because unlocking is
 judged against accepted sets and recipes, not against the primary label.
@@ -1022,7 +1029,7 @@ judged against accepted sets and recipes, not against the primary label.
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
 | Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10); yes for RT-17 after the agent playtest (2026-11-21), RT-19 and RT-20 stay parked | RT-17, RT-19, RT-20 |
 | Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Yes, after the agent playtest (2026-11-21); build detail and Q7a … Q7e (accepted as recommended, 2026-11-21) in [rt-16-design.md](rt-16-design.md) | RT-16, RT-32, RT-33 |
-| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately. Q8a: **yes**, independent of Q8b; a record earns what a correct RCA earns until D1 gives it a fix to unlock (2026-11-23); RT-22 built 2026-11-25. Q8b: open | RT-22, RT-24 |
+| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately. Q8a: **yes**, independent of Q8b; a record earns what a correct RCA earns until D1 gives it a fix to unlock (2026-11-23); RT-22 built 2026-11-25. Q8b: **no** (2026-11-26): no proof gate; PT-20's general operations replace per-card fixes, and cards no general operation fits keep no targeted fix | RT-22, PT-20 |
 | Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Yes; research settled 2026-11-21: SMF 101 rollback share (`QWACABRT`), commit-only retries out of scope; RT-23 landed 2026-11-23 | RT-23 |
 | Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |
 | Q11 | RT-29: accept any mechanism whose complete recipe holds on the incident's rows? Judge CF/DASD "slow" against peers, not only the resource's own history? | No to the first: fix the recipe, since THREAD_LIMIT's *or* ruling-out half passed with QR wait high; yes to the second, as an accepted source, primary unchanged | As recommended (2026-11-23) | RT-34 (landed), RT-35 |
