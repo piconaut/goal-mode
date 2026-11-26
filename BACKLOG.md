@@ -55,7 +55,8 @@ Source: playtest round 2 ("a button that fixes this exact problem feels inauthen
 that no general operation fits keep no targeted fix and are solved with the levers everyone has. Write
 `docs/pt-20-design.md` for the user's decision, covering:
 - the five general operations and their targets: **cancel work** (a job, STC, DDF thread, utility or TSO user;
-  finishes SPEC §10's "Cancel job/query, quiesce address space" verb, of which only `CANCEL_DB2_READERS` exists),
+  finishes SPEC §10's "Cancel job/query, quiesce address space" verb, which exists today only as two card end effects,
+  `CANCEL_DB2_READERS` and `REMOVE_ADDRESS_SPACE`),
   **recycle CICS regions** (which regions), **back out a change** (an entry on the Change board of PT-53), **throttle a
   channel at the gateway** (which workload) and **hold DFSMShsm recalls**;
 - a table of the 23 cards with a targeted fix today (the 23 `FIXES` in `src/game/catalog.ts`, 20 once Revenue's three
