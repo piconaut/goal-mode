@@ -195,7 +195,7 @@ export interface WorkloadTick {
   id: string;
   /** Arrivals admitted to the workload after gateway protection. */
   arrivalRate: number;
-  /** Arrivals offered before gateway protection; absent on old saves and when no mode changes the rate. */
+  /** Arrivals offered before gateway protection; absent on old saved ticks. */
   offeredRate?: number;
   completions: number;
   withinSla: number;

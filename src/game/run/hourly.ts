@@ -111,6 +111,7 @@ export function accumulateHour(run: RunState, h = copyHourForAdvance(run)): RunS
     a.withinSla += w.withinSla;
     a.failed += w.failed;
     a.rtSumSec += w.rtSumSec;
+    a.offeredSec = (a.offeredSec ?? 0) + (w.offeredRate ?? w.arrivalRate) * TICK_SEC;
     if ((w.rolledBack ?? 0) > 0) a.rolledBack = (a.rolledBack ?? 0) + w.rolledBack!;
   }
   // Cumulative count of DBAT requests that waited for a slot during the hour, per LPAR running a Db2 member

@@ -21,15 +21,21 @@ const eventFor = (def: (typeof midwest.game.events)[number], startTick = 0): Act
   started: true, ended: false,
 });
 const contentWith = (def: (typeof midwest.game.events)[number]) => ({ ...midwest.game, events: [def] });
-const withMobileBaseline = (run: RunState, ratePerSec: number): RunState => ({
-  ...run,
-  day: run.day + 1,
-  smfHours: [{
-    day: run.day,
-    hourOfDay: clockAt(run.sim.tick).hourOfDay,
-    workloads: { MOBILE: { completions: ratePerSec * 3600, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} } },
-  }],
-});
+const withGatewayReports = (run: RunState, baselines: Record<string, number>, currents: Record<string, number>): RunState => {
+  const closed = run.smfHours.at(-1);
+  const hourOfDay = closed?.hourOfDay ?? clockAt(run.sim.tick - TICKS_PER_HOUR).hourOfDay;
+  const day = closed?.day ?? run.day;
+  const workload = (rate: number): RunState['smfHours'][number]['workloads'][string] => ({
+    completions: rate * 3600, withinSla: 0, failed: 0, rtSumSec: 0, parts: {}, offeredSec: rate * 3600,
+  });
+  const ids = [...new Set([...Object.keys(baselines), ...Object.keys(currents)])].sort();
+  const rows = (rates: Record<string, number>, atDay: number): RunState['smfHours'][number] => ({
+    day: atDay, hourOfDay, workloads: Object.fromEntries(ids.filter((id) => rates[id] !== undefined).map((id) => [id, workload(rates[id]!)])),
+  });
+  return { ...run, day: day + 1, smfHours: [rows(baselines, day - 1), rows(currents, day)] };
+};
+const withMobileReports = (run: RunState, baseline: number, current: number) =>
+  withGatewayReports(run, { MOBILE: baseline }, { MOBILE: current });
 
 describe('report-driven bot operation targets', () => {
   it.each(['RUNAWAY', 'SHADOW_IT'] as const)('picks %s culprits from the displayed roster CPU, not resolved culprits', (id) => {
@@ -58,12 +64,40 @@ describe('report-driven bot operation targets', () => {
     ]);
   });
 
+  it('does not cancel a normal started task when no address space is elevated', () => {
+    const def = midwest.game.events.find((row) => row.id === 'XLOG_LOOP')!;
+    const run = advance(live(), midwest.scenario, noEvents, TICKS_PER_HOUR);
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
+  });
+
+  it('does not cancel another class after the looping archiver is down', () => {
+    const def = midwest.game.events.find((row) => row.id === 'XLOG_LOOP')!;
+    const base = live();
+    const sim = applyCommands(base.sim, [
+      { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' },
+      { kind: 'SET_MODIFIER', mod: 'asCpu', key: 'MONAGENT', value: 100 },
+    ], midwest.scenario.addressSpaces);
+    const run = advance({ ...base, sim }, midwest.scenario, noEvents, TICKS_PER_HOUR);
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
+  });
+
   it('terminates the utility whose displayed status is past its scheduled end', () => {
     const def = midwest.game.events.find((row) => row.id === 'REORG_OVERRUN')!;
     const run = { ...live(), sim: applyCommands(live().sim, def.begin) };
     const ops = operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def));
     expect(ops).toHaveLength(1);
     expect(ops[0]).toMatchObject({ kind: 'TERM_UTILITY' });
+  });
+
+  it('leaves two overrunning utilities ambiguous', () => {
+    const def = midwest.game.events.find((row) => row.id === 'REORG_OVERRUN')!;
+    const reorg = midwest.scenario.utilities!.find((row) => row.kind === 'REORG')!;
+    const site = { ...midwest.scenario, utilities: [
+      { ...reorg, id: 'REORG_A', startHour: 0, durationMin: 1, nightFrac: 1 },
+      { ...reorg, id: 'REORG_B', startHour: 0, durationMin: 1, nightFrac: 1 },
+    ] };
+    const run = { ...live(), sim: applyCommands(live().sim, def.begin) };
+    expect(operationsForEventReports(run, site, contentWith(def), eventFor(def))).toEqual([]);
   });
 
   it('cancels the running job named by the Db2 lock-holder report', () => {
@@ -76,6 +110,16 @@ describe('report-driven bot operation targets', () => {
     expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([
       { kind: 'CANCEL_JOB', day: job.day, jobname: job.def.name, lparId: 'PROD1' },
     ]);
+  });
+
+  it('does not recancel a lock holder that is already backing out', () => {
+    const def = midwest.game.events.find((row) => row.id === 'LOCK_ESCALATION')!;
+    const base = live();
+    const batch = releaseNetwork(base.sim.batch, 0, midwest.scenario.batchNetwork(base.seed, 0, 1));
+    const job = batch.jobs.find((row) => row.def.name.startsWith('STL'))!;
+    Object.assign(job, { status: 'RUNNING', lparId: 'PROD1', startTick: 5, lockBackout: { untilTick: 100, lockIndex: 6, object: 'SETTLE.POSTINGS' } });
+    const run = { ...base, sim: { ...applyCommands(base.sim, def.begin), tick: 15, batch } };
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
   });
 
   it('recycles the regions whose displayed EDSA headroom is below the SOS cushion', () => {
@@ -93,7 +137,7 @@ describe('report-driven bot operation targets', () => {
     const content = { ...pack.game, events: [] };
     const def = pack.game.events.find((row) => row.id === 'SICK_AOR')!;
     const base = startDay(newRun(pack.scenario, content, 42), content);
-    const run = advance({ ...base, sim: applyCommands(base.sim, def.begin) }, pack.scenario, content, 1);
+    const run = advance({ ...base, sim: applyCommands(base.sim, def.begin) }, pack.scenario, content, TICKS_PER_HOUR);
     expect(operationsForEventReports(run, pack.scenario, { ...pack.game, events: [def] }, eventFor(def))).toEqual([
       { kind: 'RECYCLE_CICS', targets: [{ name: 'CICSAOR3', lparId: 'PRDC' }] },
     ]);
@@ -110,18 +154,40 @@ describe('report-driven bot operation targets', () => {
     ]);
   });
 
+  it('leaves two Change-board rollouts in the same visible minute ambiguous', () => {
+    const def = midwest.game.events.find((row) => row.id === 'REGRESSION')!;
+    const profile = midwest.game.otherTeamChanges!.find((row) => row.eventId === def.id)!;
+    const event = eventFor(def, 20);
+    let run = announceOtherTeamChange(live(), profile, 20, null, event.uid);
+    run = announceOtherTeamChange(run, profile, 21, null);
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), event)).toEqual([]);
+  });
+
   it('chooses the gateway channel with the reported offered-traffic surge', () => {
     const original = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
     const def = { ...original, endedBy: { kind: 'SET_GATEWAY' as const, workloadId: 'RBANK', mode: 'BLOCK' as const } };
     const base = advance(live(), midwest.scenario, noEvents, 12 * TICKS_PER_HOUR);
     const baseline = base.sim.last.workloads.find((row) => row.id === 'MOBILE')!.arrivalRate;
-    const run = { ...base, sim: applyCommands(base.sim, [
+    let run = { ...base, sim: applyCommands(base.sim, [
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 6 },
     ]) };
-    run.sim = advance(run, midwest.scenario, noEvents, 1).sim;
-    expect(operationsForEventReports(withMobileBaseline(run, baseline), midwest.scenario, contentWith(def), eventFor(def))).toEqual([
+    run = advance(run, midwest.scenario, noEvents, TICKS_PER_HOUR);
+    const current = run.smfHours.at(-1)!.workloads.MOBILE!.offeredSec! / 3600;
+    expect(operationsForEventReports(withMobileReports(run, baseline, current), midwest.scenario, contentWith(def), eventFor(def))).toEqual([
       { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' },
     ]);
+  });
+
+  it('leaves near-tied gateway surges unresolved', () => {
+    const def = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
+    const run = withGatewayReports(live(), { MOBILE: 100, CARDAUTH: 100 }, { MOBILE: 160, CARDAUTH: 159 });
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
+  });
+
+  it('does not invent a surge from a flat closed-hour report', () => {
+    const def = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
+    const run = withGatewayReports(live(), { MOBILE: 100 }, { MOBILE: 100 });
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
   });
 });
 
@@ -138,13 +204,14 @@ describe('report-driven protection release', () => {
       gatewayModes: { MOBILE: 'BLOCK' as const },
       hsmRecalls: { heldSinceTick: 0, backlogIo: 10 },
     } };
-    const during = advance(guarded, midwest.scenario, noEvents, 1);
-    expect(protectionReleases(withMobileBaseline(during, baseline), midwest.scenario)).toEqual([]);
+    const during = advance(guarded, midwest.scenario, noEvents, TICKS_PER_HOUR);
+    const duringRate = during.smfHours.at(-1)!.workloads.MOBILE!.offeredSec! / 3600;
+    expect(protectionReleases(withMobileReports(during, baseline, duringRate), midwest.scenario)).toEqual([]);
     const recovered = advance({ ...during, sim: applyCommands(during.sim, [
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 1 },
       { kind: 'SET_LCU', lcuId: '30', extraIops: {} },
-    ]) }, midwest.scenario, noEvents, 1);
-    expect(protectionReleases(withMobileBaseline(recovered, baseline), midwest.scenario)).toEqual([
+    ]) }, midwest.scenario, noEvents, TICKS_PER_HOUR);
+    expect(protectionReleases(withMobileReports(recovered, baseline, baseline), midwest.scenario)).toEqual([
       { kind: 'HOLD_HSM_RECALL', held: false },
       { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: null },
     ]);

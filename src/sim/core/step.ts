@@ -234,8 +234,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { backlog, ziipBacklog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
   for (const w of workloads) {
     wlTick[w.id] = {
-      id: w.id, arrivalRate: rates[w.id] ?? 0,
-      ...(prev.gatewayModes?.[w.id] && offeredRates[w.id] !== rates[w.id] ? { offeredRate: offeredRates[w.id] } : {}),
+      id: w.id, arrivalRate: rates[w.id] ?? 0, offeredRate: offeredRates[w.id] ?? rates[w.id] ?? 0,
       completions: 0, withinSla: 0,
       failed: (cancelledRequests?.[w.id] ?? 0) + (gatewayFailed?.[w.id] ?? 0) + (recycleFailures?.[w.id] ?? 0),
       rtSumSec: 0, parts: {},

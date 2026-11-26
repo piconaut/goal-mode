@@ -5,6 +5,7 @@ import type { EventDef } from '../src/content/events/midwest-events';
 import { clockAt } from '../src/sim/core/clock';
 import type { GatewayMode, Operation, RosterTarget } from '../src/sim/core/operations';
 import type { Scenario } from '../src/sim/core/scenario';
+import { classify } from '../src/sim/wlm/classify';
 import { cicsStorageReach, regionKey } from '../src/game/footprint';
 import { buildMon3 } from '../src/game/mon3';
 import { operationsView } from '../src/game/operations';
@@ -18,8 +19,11 @@ import type { ActiveEvent, RunState } from '../src/game/types';
 // and a gateway surge must be well above its recent same-hour report baseline before protection is chosen.
 const ROSTER_TOP_SHARE = 0.25;
 const PROCU_TOP_RATIO = 1.5;
+const PROCU_MIN_ENGINES = 0.25;
+const PROCU_MIN_ELEVATION = 4;
 const GATEWAY_SURGE_RATIO = 1.5;
 const GATEWAY_CLEAR_RATIO = 1.25;
+const GATEWAY_AMBIGUITY_MARGIN = 0.1;
 const BASELINE_HOURS = 3;
 
 const textOrder = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
@@ -51,27 +55,42 @@ function rosterTargets(run: RunState, scenario: Scenario, def: EventDef): CardOp
   }));
 }
 
-function topAddressSpace(run: RunState, scenario: Scenario): CardOperation[] {
+function topAddressSpace(run: RunState, scenario: Scenario, def: EventDef): CardOperation[] {
+  const effect = def.endedBy;
+  if (effect?.kind !== 'CANCEL_ADDRESS_SPACE') return [];
+  const spaces = [...scenario.addressSpaces, ...run.sim.extraAddressSpaces];
+  const expected = spaces.find((row) => row.jobname === effect.jobname && row.lparId === effect.lparId);
+  if (!expected) return [];
+  const serviceClass = classify(run.sim.wlm.definition, {
+    subsystem: expected.subsystem, TN: expected.jobname, SY: expected.lparId,
+  }).serviceClass;
   const offered = new Set(operationsView(run, scenario).addressSpaces.map((row) => `${row.jobname}@${row.lparId}`));
   const jobs = (buildMon3(run, scenario).procJobs ?? [])
-    .filter((row) => row.cx === 'S' && offered.has(`${row.jobname}@${row.system}`))
+    .filter((row) => row.cx === 'S' && row.serviceClass === serviceClass && offered.has(`${row.jobname}@${row.system}`))
     .sort((a, b) => (b.eapplCpEngines + b.eapplZiipEngines) - (a.eapplCpEngines + a.eapplZiipEngines) ||
       textOrder(`${a.system}:${a.jobname}`, `${b.system}:${b.jobname}`));
   const top = jobs[0];
-  if (!top || top.eapplCpEngines + top.eapplZiipEngines <= 0) return [];
+  if (!top) return [];
+  const engines = top.eapplCpEngines + top.eapplZiipEngines;
+  const base = spaces.find((row) => row.jobname === top.jobname && row.lparId === top.system)?.baseEnginesRef ?? 0;
+  if (engines < Math.max(PROCU_MIN_ENGINES, base * PROCU_MIN_ELEVATION)) return [];
   const second = jobs[1];
-  if (second && (top.eapplCpEngines + top.eapplZiipEngines) <
-    (second.eapplCpEngines + second.eapplZiipEngines) * PROCU_TOP_RATIO) return [];
+  if (second && engines < (second.eapplCpEngines + second.eapplZiipEngines) * PROCU_TOP_RATIO) return [];
   return [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: top.jobname, lparId: top.system }];
 }
+
+const visibleMinute = (tick: number) => {
+  const clock = clockAt(tick);
+  return `${clock.day}:${Math.floor(clock.hourOfDay * 60)}`;
+};
 
 function changeTarget(run: RunState, content: GameContent, def: EventDef, event: ActiveEvent): CardOperation[] {
   const profile = profileOf(content.otherTeamChanges, def.id);
   if (!profile) return [];
   const rows = otherTeamChangesView(run, content).filter((row) => isOpenStatus(row.status) && !row.planned &&
-    row.owner === profile.owner && row.kind === profile.kind && row.label === `${profile.label} · ${row.id}`);
-  const timed = rows.filter((row) => row.startTick === event.startTick);
-  // The board's visible label/time must single out one rollout; never fall back to its hidden event link.
+    row.owner === profile.owner && row.kind === profile.kind && row.label.startsWith(`${profile.label} · `));
+  const timed = rows.filter((row) => visibleMinute(row.startTick) === visibleMinute(event.startTick));
+  // The board's visible label and minute must single out one rollout; never fall back to its hidden event link.
   return timed.length === 1 ? [{ kind: 'BACKOUT_CHANGE', changeId: timed[0]!.id }] : [];
 }
 
@@ -97,32 +116,37 @@ function storageTargets(run: RunState, scenario: Scenario, def: EventDef): CardO
 }
 
 function abendTarget(run: RunState, scenario: Scenario): CardOperation[] {
-  const counts = run.sim.last.lpars.flatMap((lpar) => Object.entries(lpar.cicsAbends ?? {}).map(([name, count]) => ({ name, lparId: lpar.lparId, count })));
-  const top = counts.sort((a, b) => b.count - a.count || textOrder(`${a.lparId}:${a.name}`, `${b.lparId}:${b.name}`))[0];
-  if (!top || top.count <= 0 || (counts[1] && counts[1]!.count === top.count)) return [];
-  const region = operationsView(run, scenario).regions.find((row) => row.name === top.name && row.lparId === top.lparId && !row.recycle);
-  return region ? [{ kind: 'RECYCLE_CICS', targets: [{ name: region.name, lparId: region.lparId }] }] : [];
+  const stats = run.smfHours.at(-1)?.cicsStorage ?? run.hour?.cicsStorage ?? {};
+  const rows = Object.entries(stats).filter(([, row]) => (row.abends ?? 0) > 0)
+    .map(([name, row]) => ({ name, count: row.abends ?? 0 }))
+    .sort((a, b) => b.count - a.count || textOrder(a.name, b.name));
+  const top = rows[0];
+  if (!top || (rows[1] && rows[1]!.count === top.count)) return [];
+  const regions = operationsView(run, scenario).regions.filter((row) => row.name === top.name && !row.recycle);
+  return regions.length === 1 ? [{ kind: 'RECYCLE_CICS', targets: [{ name: regions[0]!.name, lparId: regions[0]!.lparId }] }] : [];
 }
 
 function arrivalBaseline(run: RunState, workloadId: string): number | undefined {
-  const hour = clockAt(run.sim.tick).hourOfDay;
-  const recent = run.smfHours.filter((row) => row.day < run.day && row.hourOfDay === hour &&
-    (row.workloads[workloadId]?.completions ?? 0) > 0).slice(-BASELINE_HOURS);
-  const reported = median(recent.map((row) => row.workloads[workloadId]!.completions / 3600));
-  return reported !== undefined && reported > 0 ? reported : undefined;
+  const current = run.smfHours.at(-1);
+  if (!current) return undefined;
+  const recent = run.smfHours.slice(0, -1).filter((row) => row.day < current.day && row.hourOfDay === current.hourOfDay &&
+    (row.workloads[workloadId]?.offeredSec ?? 0) > 0).slice(-BASELINE_HOURS);
+  return median(recent.map((row) => row.workloads[workloadId]!.offeredSec! / 3600));
 }
 
 function gatewaySurges(run: RunState, scenario: Scenario) {
+  const current = run.smfHours.at(-1)?.workloads;
   return operationsView(run, scenario).gateway.map((row) => {
     const baseline = arrivalBaseline(run, row.id);
-    return { ...row, ratio: baseline !== undefined ? row.offeredRatePerSec / baseline : undefined };
+    const offeredAvg = current?.[row.id]?.offeredSec;
+    return { ...row, ratio: baseline !== undefined && offeredAvg !== undefined ? row.offeredAvgPerSec / baseline : undefined };
   }).sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) || textOrder(a.id, b.id));
 }
 
 function gatewayTarget(run: RunState, scenario: Scenario, mode: GatewayMode): CardOperation[] {
   const [top, second] = gatewaySurges(run, scenario);
   if (!top || top.ratio === undefined || top.ratio < GATEWAY_SURGE_RATIO ||
-    (second?.ratio !== undefined && Math.abs(top.ratio - second.ratio) < 1e-9)) return [];
+    (second?.ratio !== undefined && second.ratio >= top.ratio * (1 - GATEWAY_AMBIGUITY_MARGIN))) return [];
   if (top.mode === mode) return [];
   return [{ kind: 'SET_GATEWAY', workloadId: top.id, mode }];
 }
@@ -132,7 +156,7 @@ export function operationsForEventReports(run: RunState, scenario: Scenario, con
   const def = content.events.find((row) => row.id === event.defId);
   if (!def || !event.started || event.ended || (event.endTick !== null && event.endTick <= run.sim.tick)) return [];
   switch (def.endedBy?.kind) {
-    case 'CANCEL_ADDRESS_SPACE': return topAddressSpace(run, scenario);
+    case 'CANCEL_ADDRESS_SPACE': return topAddressSpace(run, scenario, def);
     case 'CANCEL_SESSION': return rosterTargets(run, scenario, def);
     case 'CANCEL_JOB': return lockTarget(run, scenario);
     case 'TERM_UTILITY': return utilityTarget(run, scenario);

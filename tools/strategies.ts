@@ -227,8 +227,7 @@ function obviousHourly(r: RunState, scenario: Scenario, content: GameContent): R
     run = requestChange(run, content, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
   }
   for (const active of run.events.filter((e) => e.started && !e.ended && OBVIOUS_FIX_CARD_IDS.has(e.defId))) {
-    const pointed = run.incidents.some((i) => i.endTick === null &&
-      (active.affects.includes(i.workloadId) || (active.affects.includes('BATCH') && i.workloadId === 'BATCH')));
+    const pointed = run.incidents.some((i) => i.endTick === null && active.affects.includes(i.workloadId));
     if (pointed) run = remedy(run, scenario, content, active);
   }
   return run;

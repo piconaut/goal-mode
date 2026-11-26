@@ -144,7 +144,11 @@ function buildOperationsView(run: RunState, scenario: Scenario) {
     })),
     gateway: gatewayChannels(sim, scenario).map(({ id, name }) => {
       const last = sim.last.workloads.find((w) => w.id === id);
-      return { id, name, mode: sim.gatewayModes?.[id] ?? null, offeredRatePerSec: last?.offeredRate ?? last?.arrivalRate ?? 0 };
+      const closed = run.smfHours.at(-1)?.workloads[id];
+      return {
+        id, name, mode: sim.gatewayModes?.[id] ?? null,
+        offeredAvgPerSec: closed?.offeredSec !== undefined ? closed.offeredSec / 3600 : last?.offeredRate ?? last?.arrivalRate ?? 0,
+      };
     }),
     recalls: {
       held: sim.hsmRecalls?.heldSinceTick != null,

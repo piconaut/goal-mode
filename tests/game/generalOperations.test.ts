@@ -143,31 +143,25 @@ describe('general operator commands', () => {
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 2.5 },
       { kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } },
     ]) };
-    const control = advance(surged, scenario, content, 1);
     let guarded = issue(surged, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' }).run;
     guarded = issue(guarded, { kind: 'HOLD_HSM_RECALL', held: true }).run;
-    guarded = advance(guarded, scenario, content, 1);
+    guarded = advance(guarded, scenario, content, TICKS_PER_HOUR);
     const view = operationsView(guarded, scenario);
-    const offered = control.sim.last.workloads.find((w) => w.id === 'MOBILE')!.arrivalRate;
+    const offered = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.offeredRate!;
     const admitted = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.arrivalRate;
+    const offeredAvg = guarded.smfHours.at(-1)!.workloads.MOBILE!.offeredSec! / 3600;
     expect(admitted).toBeLessThan(offered);
-    expect(view.gateway.find((g) => g.id === 'MOBILE')).toMatchObject({ offeredRatePerSec: offered });
+    expect(view.gateway.find((g) => g.id === 'MOBILE')).toMatchObject({ offeredAvgPerSec: offeredAvg });
     expect(view.recalls.incomingIops).toBe(60_000);
-    const legacy = {
-      ...guarded,
-      sim: {
-        ...guarded.sim,
-        last: {
-          ...guarded.sim.last,
-          workloads: guarded.sim.last.workloads.map((row) => {
-            const copy = { ...row };
-            delete copy.offeredRate;
-            return copy;
-          }),
-        },
-      },
-    };
-    expect(operationsView(legacy, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredRatePerSec).toBe(admitted);
+    const legacyHours = guarded.smfHours.map((hour, index) => index === guarded.smfHours.length - 1 ? {
+      ...hour,
+      workloads: Object.fromEntries(Object.entries(hour.workloads).map(([id, row]) => {
+        const copy = { ...row };
+        delete copy.offeredSec;
+        return [id, copy];
+      })),
+    } : hour);
+    expect(operationsView({ ...guarded, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredAvgPerSec).toBe(offered);
   });
 
   it('charges each CICS owner once when recycling a region', () => {
