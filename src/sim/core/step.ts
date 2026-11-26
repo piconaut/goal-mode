@@ -17,6 +17,8 @@ import { STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC } from '../../co
 import { CF_FAILURE } from '../../content/cf';
 import { clockAt, formatClock } from './clock';
 import { applyCommands, type Command } from './commands';
+import { rolloverOperations } from './operations';
+import { failHeldRecalls, gatewayTraffic, hsmIo, recycleRouting, startRecycles, type GatewayTraffic } from './tick/operatorEffects';
 import { Rng } from './rng';
 import type { Scenario } from './scenario';
 import type { CpcConfig, EnvState, SimState, WorkloadRuntime } from './types';
@@ -48,27 +50,24 @@ export function lockBoostNow(s: SimState, jobs: readonly JobRuntime[]): number {
   return jobs.some((j) => j.status === 'RUNNING' && j.def.stream === holder.stream) ? s.mods.lockBoost : 0;
 }
 
-export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
-  const prev = restartStcs(updateRouting(applyCommands(before, commands, scenario.addressSpaces), scenario));
+export function step(before: SimState, commands: readonly Command[], scenario: Scenario, sources?: Readonly<Record<string, GatewayTraffic>>): SimState {
+  const commanded = rolloverOperations(applyCommands(before, commands, scenario.addressSpaces), scenario);
+  const prev = startRecycles(restartStcs(updateRouting(commanded, scenario)));
   const rng = new Rng(prev.rng);
-  const workloads = effectiveWorkloads(scenario, prev);
-  const addressSpaces = effectiveAddressSpaces(scenario, prev);
+  const baseWorkloads = effectiveWorkloads(scenario, prev);
   const clock = clockAt(prev.tick);
   const clockText = formatClock(prev.tick);
-  const { config } = prev;
   const def = prev.wlm.definition;
   const env = prev.env;
   const db2 = scenario.db2Contention ? startDb2Contention(scenario.db2Contention, env.db2Contention, clock, prev.tick) : undefined;
   const tickOfDay = prev.tick % TICKS_PER_DAY;
-  const plan = lparPlan(scenario, config, def, workloads, addressSpaces);
-  const cpcOf = plan.cpcOf;
-  const workloadById = byIdOf(workloads);
 
   // 1–2. Arrivals (noise is mean-corrected so it doesn't inflate average λ).
   const rates: Record<string, number> = {};
+  const gatewayFailed: Record<string, number> | undefined = prev.gatewayModes ? {} : undefined;
   const prevWl: Record<string, WorkloadRuntime> = {};
   for (const w of prev.workloads) prevWl[w.id] = w;
-  const workloadRt: WorkloadRuntime[] = workloads.map((w) => {
+  const workloadRt: WorkloadRuntime[] = baseWorkloads.map((w) => {
     const p = prevWl[w.id] ?? { id: w.id, noise: 0, retryRate: 0, lastRtSec: 0 };
     const noise = stepNoise(p.noise, w, rng.normal());
     // Interactive users (closed loop): slow responses throttle their own arrival rate.
@@ -77,13 +76,33 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const b = w.shape.bursts;
     const burst = b ? stepBurst(p.burst ?? { mult: 1, leftSec: 0 }, b, TICK_SEC, rng) : undefined;
     const burstMult = b && burst ? burst.mult * scheduledBurstMult(b, clock) : 1;
-    rates[w.id] = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
+    const organicRate = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop;
+    const mode = prev.gatewayModes?.[w.id];
+    rates[w.id] = organicRate + p.retryRate;
+    if (mode && gatewayFailed) {
+      const edge = gatewayTraffic(mode, organicRate, p.retryRate, sources?.[w.id]);
+      rates[w.id] = edge.admittedRate;
+      gatewayFailed[w.id] = edge.failedRate * TICK_SEC;
+    }
     return burst ? { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec, burst } : { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
   });
   if (db2) {
     const id = db2.profile.reader;
     rates[id] = Math.min(rates[id] ?? 0, db2.availableClientSlots / TICK_SEC);
   }
+  const cancelledRequests: Record<string, number> | undefined = prev.cancelledSessions?.length ? {} : undefined;
+  if (cancelledRequests) {
+    for (const session of prev.cancelledSessions ?? []) {
+      if (session.kind !== 'DDF_THREAD' || session.atTick !== prev.tick) continue;
+      // One unit of work was already in flight. Count its failure, then offer its replacement as new work.
+      cancelledRequests[session.workloadId] = (cancelledRequests[session.workloadId] ?? 0) + 1 - session.cohortAborted;
+      rates[session.workloadId] = (rates[session.workloadId] ?? 0) + 1 / TICK_SEC;
+    }
+  }
+  const { workloads, addressSpaces, config, failed: recycleFailures } = recycleRouting(prev, baseWorkloads, effectiveAddressSpaces(scenario, prev), rates);
+  const plan = lparPlan(scenario, config, def, workloads, addressSpaces);
+  const cpcOf = plan.cpcOf;
+  const workloadById = byIdOf(workloads);
 
   // Batch scheduling: release tonight's network at the start of the played day.
   // Only queued and running jobs are mutated in place below (promotion copies the held jobs it
@@ -97,6 +116,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     if (cp && cp.availableEngines > 0) lparBusy[l.id] = cp.deliveredEngines / cp.availableEngines;
   }
   startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy, db2Lpars: plan.db2Lpars });
+  failHeldRecalls(prev, batch.jobs);
   const runningBy: Record<string, JobRuntime[]> = {};
   for (const j of batch.jobs) if (j.status === 'RUNNING' && j.lparId !== null) (runningBy[j.lparId] ??= []).push(j);
   // Jobs waiting for an initiator in a WLM-managed class are initiation delay for their service class
@@ -212,7 +232,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   // 7–10. Dispatch and response per image.
   const { backlog, ziipBacklog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
   for (const w of workloads) {
-    wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
+    wlTick[w.id] = {
+      id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0,
+      failed: (cancelledRequests?.[w.id] ?? 0) + (gatewayFailed?.[w.id] ?? 0) + (recycleFailures?.[w.id] ?? 0),
+      rtSumSec: 0, parts: {},
+    };
   }
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
   if (storageCritical.size > 0) {
@@ -233,7 +257,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { randomIops, seqIops, cfRequests } = sums;
 
   // I/O subsystem and CF for next tick.
-  const dasd = evaluateDasd(config.dasd, { RANDOM: randomIops, SEQ: seqIops }, utilityIopsByLcu(activeUtilities(scenario.utilities, prev.seed, prev.tick, prev.utilityOverruns)));
+  const hsm = hsmIo(prev);
+  const dasd = evaluateDasd(hsm.dasd, { RANDOM: randomIops, SEQ: seqIops }, utilityIopsByLcu(activeUtilities(scenario.utilities, prev.seed, prev.tick, prev.utilityOverruns, prev.terminatedUtilities)));
   const cfImages: CfImageInput[] = config.cfs.flatMap((cfg) => {
     if (cfg.failed) return [];
     const l = plan.lparById[cfg.lparId];
@@ -289,8 +314,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { cappingLpars, cappingGroups, groupJoinTicks, groupLimitsMsu, groupByLpar, msuBy, r4haBy } = stepCapping(t, zosLpars);
   const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
   const rmf = stepRmf(t, batch, dasd, cf, r4haBy, groupByLpar, nextTick, cfBySystem, lockIndex);
-  return {
+  const next: SimState = {
     ...prev,
+    ...(hsm.recalls ? { hsmRecalls: hsm.recalls } : {}),
     tick: prev.tick + 1,
     rng: rng.snapshot(),
     lpars,
@@ -310,4 +336,6 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     cost,
     rmf,
   };
+  if (prev.hsmRecalls && !hsm.recalls) delete next.hsmRecalls;
+  return next;
 }

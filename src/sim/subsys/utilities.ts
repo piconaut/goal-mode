@@ -2,6 +2,7 @@
 // LCU while it runs. A card can make one overrun (SimState.utilityOverruns), which keeps it active after its scheduled end.
 
 import type { UtilityDef } from '../../content/entities';
+import type { TerminatedUtility } from '../core/operations';
 import { streamRng } from '../core/rng';
 import type { UtilityOverrun } from '../core/types';
 import { TICK_SEC, TICKS_PER_DAY } from '../core/units';
@@ -23,12 +24,13 @@ export interface ActiveUtility {
 }
 
 /** The utilities running at `tick`: the night's scheduled ones inside their window, plus any overrunning one. */
-export function activeUtilities(utilities: readonly UtilityDef[] | undefined, seed: number, tick: number, overruns: readonly UtilityOverrun[] | undefined): ActiveUtility[] {
+export function activeUtilities(utilities: readonly UtilityDef[] | undefined, seed: number, tick: number, overruns: readonly UtilityOverrun[] | undefined, terminated?: readonly TerminatedUtility[]): ActiveUtility[] {
   if (!utilities?.length) return [];
   const day = Math.floor(tick / TICKS_PER_DAY);
   const tod = tick % TICKS_PER_DAY;
   const out: ActiveUtility[] = [];
   for (const u of utilities) {
+    if (terminated?.some((t) => t.day === day && t.id === u.id)) continue;
     const over = overruns?.find((o) => o.kind === u.kind);
     if (over) {
       out.push({ def: u, seqIops: over.seqIops, overrun: true });

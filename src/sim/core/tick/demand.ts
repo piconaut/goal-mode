@@ -3,6 +3,7 @@ import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
 import { blockedDbats, slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
+import { OPERATIONS } from '../../../content/operations';
 import { bpIoMultiplier, DB2 } from '../../subsys/db2';
 import { buildSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
 import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
@@ -54,11 +55,32 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const reader = profile?.reader;
   const resident = profile ? content?.before?.readers[db2!.ssid] : undefined;
   const residentReader = resident && reader && !workloadById[reader]?.routing[l.id] ? reader : undefined;
-  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
+  let imageRates = rates;
+  if (prev.cancelledSessions) {
+    const lostShare: Record<string, number> = {};
+    for (const session of prev.cancelledSessions) {
+      if (session.kind === 'TSO_USER' && session.lparId === l.id) lostShare[session.workloadId] = (lostShare[session.workloadId] ?? 0) + session.shareFrac;
+    }
+    for (const [id, share] of Object.entries(lostShare)) {
+      if (imageRates === rates) imageRates = { ...rates };
+      imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - share);
+    }
+  }
+  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;
   const aors = img.aors;
+  if (db2 && prev.terminatedUtilities?.some((u) => u.kind === 'RUNSTATS' && u.member === db2.ssid)) {
+    const mult = OPERATIONS.staleStatsCpuMult;
+    for (const slice of base) {
+      if (!slice.workloadId || !usesDb2(workloadById[slice.workloadId]!)) continue;
+      slice.cpEngines *= mult;
+      slice.ziipEngines *= mult;
+      slice.cpuSecPerTxn *= mult;
+      slice.ziipSecPerTxn *= mult;
+    }
+  }
   // CICS QR TCB load per AOR (CICS work is spread evenly over the image's AORs).
   let cicsQrCpu = 0;
   let cicsRate = 0;
