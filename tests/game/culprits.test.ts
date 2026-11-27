@@ -67,6 +67,17 @@ describe('resolveCulprits', () => {
     }
   });
 
+  it('caps one entity at its image\'s processors', () => {
+    const cap = MIDWEST.world.lpars.find((l) => l.id === 'DEVT')!.pools.reduce((n, p) => n + (p.pool === 'CP' || p.pool === 'ZIIP' ? p.logical : 0), 0);
+    const r = resolveCulprits(sim, ws, { ...tsoSpec, count: 1, cpuMult: 1e6 }, 'huge');
+    const load = r.commands[0]!;
+    expect(load.kind).toBe('SET_ENTITY_LOAD');
+    if (load.kind === 'SET_ENTITY_LOAD') {
+      expect(load.load.cpEngines + load.load.ziipEngines).toBeGreaterThan(0);
+      expect(load.load.cpEngines + load.load.ziipEngines).toBeLessThanOrEqual(cap + 1e-9);
+    }
+  });
+
   it('returns no commands for an unknown workload', () => {
     expect(resolveCulprits(sim, ws, { ...tsoSpec, workloadId: 'NOPE' }, 'x')).toEqual({ ids: [], commands: [] });
   });

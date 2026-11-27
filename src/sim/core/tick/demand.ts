@@ -75,7 +75,8 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     const mult = OPERATIONS.staleStatsCpuMult;
     for (let i = 0; i < base.length; i++) {
       const slice = base[i]!;
-      if (!slice.workloadId || !usesDb2(workloadById[slice.workloadId]!)) continue;
+      // A loaded entity's demand is its own engines, not the workload's CPU per transaction (RF-11).
+      if (slice.kind === 'AS' || !slice.workloadId || !usesDb2(workloadById[slice.workloadId]!)) continue;
       base[i] = scaleSliceCpu(slice, mult);
     }
   }

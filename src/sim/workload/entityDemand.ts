@@ -55,7 +55,7 @@ export function meanReferenceRate(w: WorkloadDef, startTick: number, hours: numb
 /** Processors the image has online: the most one enclave or address space can run on. */
 export function entityEngineCap(config: WorldConfig, lparId: string): number {
   const lpar = config.lpars.find((l) => l.id === lparId);
-  const logical = lpar?.pools.reduce((n, p) => n + p.logical, 0) ?? 0;
+  const logical = lpar?.pools.reduce((n, p) => n + (p.pool === 'CP' || p.pool === 'ZIIP' ? p.logical : 0), 0) ?? 0;
   return logical > 0 ? logical : Infinity;
 }
 

@@ -52,9 +52,10 @@ describe.each(Object.entries(SCENARIOS))('CPU accounting: %s', (_id, scenario) =
             w.backlog += r.parts.backlogWait * r.completions;
             w.completions += r.completions;
           }
-          const key = slice.kind === 'AS' && slice.role ? slice.role : slice.workloadId;
+          const roleSlice = slice.kind === 'AS' && slice.role !== null;
+          const key = roleSlice ? slice.role : slice.workloadId;
           if (key) {
-            const rows = slice.kind === 'AS' ? expectedRoles : expectedWork;
+            const rows = roleSlice ? expectedRoles : expectedWork;
             const row = rows[key] ??= { cp: 0, ziip: 0, iipcp: 0 };
             row.cp += r.cpGranted;
             row.ziip += r.ziipGranted;
@@ -98,6 +99,21 @@ it('omits consumer and wait records without corresponding slices, including afte
     expect(l.cpByWorkload).toBeUndefined();
   }
   for (const w of next.last.workloads) expect(w.cpuWaitByLpar).toBeUndefined();
+});
+
+it('counts a loaded entity\'s grants in its workload (RF-11)', () => {
+  const scenario = SCENARIOS.midwest!;
+  const total = (s: ReturnType<typeof step>) => {
+    const g = s.last.lpars.find((l) => l.lparId === 'PROD2')?.cpByWorkload?.ADHOC;
+    return g ? g.cp + g.iipcp + g.ziip : 0;
+  };
+  const plain = step(initState(42, scenario), [], scenario);
+  const loaded = step(initState(42, scenario), [
+    { kind: 'SET_ENTITY_LOAD', load: { tag: 't', kind: 'DDF_THREAD', id: '1', workloadId: 'ADHOC', lparId: 'PROD2', cpEngines: 0.6, ziipEngines: 0.4 } },
+  ], scenario);
+  expect(total(loaded) - total(plain)).toBeGreaterThan(0.5);
+  // It is a workload consumer, not an address-space role.
+  expect(loaded.last.lpars.find((l) => l.lparId === 'PROD2')!.cpByRole?.ADHOC).toBeUndefined();
 });
 
 it('omits wait records when workloads have no completions', () => {

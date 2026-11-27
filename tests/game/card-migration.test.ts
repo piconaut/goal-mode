@@ -48,15 +48,26 @@ describe('legacy card save migration', () => {
   it('converts a legacy rate-proportional entity load to the engines the save measured (RF-11)', () => {
     const content = { ...MIDWEST_GAME, events: [] };
     const r = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 1);
-    const grant = r.sim.last.lpars.find((l) => l.lparId === 'DEVT')?.cpByWorkload?.TSO;
-    expect(grant).toBeDefined();
-    const legacy = { tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 2 };
-    const old = { ...r, sim: { ...r.sim, entityLoads: [legacy] } } as unknown as RunState;
-    const migrated = migrateRunState(old);
+    // A pre-RF-11 save: `cpByWorkload` holds the workload's grant *with* the old multiplier, so 9 CP / 3 zIIP here is
+    // 3 CP / 1 zIIP of the workload's own CPU plus the loads' extra.
+    const withGrant = (loads: object[]) => {
+      const lpars = r.sim.last.lpars.map((l) => l.lparId === 'DEVT'
+        ? { ...l, cpByWorkload: { ...l.cpByWorkload, TSO: { cp: 6, iipcp: 3, ziip: 3 } } }
+        : l);
+      return { ...r, sim: { ...r.sim, last: { ...r.sim.last, lpars }, entityLoads: loads } } as unknown as RunState;
+    };
+    const one = { tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 2 };
+    const migrated = migrateRunState(withGrant([one]));
     expect(migrated.sim.entityLoads).toEqual([{
       tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT',
-      cpEngines: 2 * (grant!.cp + grant!.iipcp), ziipEngines: 2 * grant!.ziip,
+      cpEngines: (2 / 3) * 9, ziipEngines: (2 / 3) * 3,
     }]);
+    // Two loads on one image share the old inflated grant by their own fractions.
+    const split = migrateRunState(withGrant([one, { ...one, id: 'DEV002', extraCpuFrac: 3 }]));
+    expect(split.sim.entityLoads!.map((l) => [l.cpEngines, l.ziipEngines])).toEqual([
+      [(2 / 6) * 9, (2 / 6) * 3],
+      [(3 / 6) * 9, (3 / 6) * 3],
+    ]);
     // Loading again changes nothing.
     expect(migrateRunState(migrated)).toEqual(migrated);
   });

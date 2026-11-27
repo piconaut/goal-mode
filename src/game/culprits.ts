@@ -19,10 +19,11 @@ export function rosterOf(sim: SimState, w: WorkloadDef, kind: RosterEntry['kind'
 
 /**
  * The culprits for card `uid` and the commands that load them. The card's whole excess, (cpuMult − 1) × the workload's
- * CPU across the sysplex, is split evenly over the culprits as their own constant demand in engines (RF-11): a runaway
- * thread keeps running where it is, so the excess does not follow the workload's arrival rate and routing it away does
- * not remove it. `hours` is the card's usual run, over which the old rate-proportional excess is averaged; `severity`
- * scales the excess like the difficulty scaling of a card's modifiers.
+ * CPU across the sysplex, is split over the culprits: each carries that fraction of its own image's reference CPU as
+ * its own constant demand in engines (RF-11). A runaway thread keeps running where it is, so the excess does not follow
+ * the workload's arrival rate and routing it away does not remove it. `hours` is the card's usual run, over which the
+ * old rate-proportional excess is averaged; `severity` scales the excess like the difficulty scaling of a card's
+ * modifiers.
  */
 export function resolveCulprits(sim: SimState, workloads: readonly WorkloadDef[], spec: CulpritSpec, uid: string, severity = 1, hours = ROSTERS.sizingHours): { ids: string[]; commands: Command[] } {
   const w = workloads.find((x) => x.id === spec.workloadId);
