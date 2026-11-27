@@ -323,7 +323,8 @@ describe('Monitor III PROCU jobs (RMF Report Analysis p.188–189)', () => {
     const xlog = jobs.find((j) => j.system === 'PROD1' && j.jobname === 'CICSXLOG')!;
     expect(xlog.eapplCpEngines).toBeGreaterThan(0.6);
     expect(jobs[0]).toMatchObject({ system: 'PROD1', jobname: 'CICSXLOG' });
-    // The elevated space is also the class's heaviest processor user for DELAY's Primary Reason (RMF p.110).
+    // The elevated space is also the class's heaviest processor user for DELAY's Primary Reason
+    // (RMF Report Analysis 3.1 PDF p.110 (printed 70)).
     expect(mon.rows.filter((r) => r.system === 'PROD1' && r.primaryDelay === 'PRC')
       .some((r) => r.primaryReason === 'CICSXLOG')).toBe(true);
   }, 60_000);
