@@ -52,6 +52,9 @@ export function hhmm(tick: number): string {
   return `${pad2(Math.floor(secOfDay / 3600))}:${pad2(Math.floor((secOfDay % 3600) / 60))}`;
 }
 
+/** Played day + visible HH:MM key: two ticks share it when a report showing `hhmm` can't tell them apart. */
+export const minuteKey = (tick: number): string => `${clockAt(tick).day}:${hhmm(tick)}`;
+
 /** Seconds after the played day's 06:00 start for a wall-clock hour (hours below 6, or 24 and up, = next morning). */
 export const secAfterPlayedStart = (hour: number): number => ((hour - DAY_START_HOUR + 24) % 24) * 3600;
 

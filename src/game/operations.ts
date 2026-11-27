@@ -4,7 +4,7 @@ import { applyOperation, gatewayChannels, operatorRoster, type Operation } from 
 import type { Scenario } from '../sim/core/scenario';
 import { effectiveAddressSpaces } from '../sim/core/tick/helpers';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
-import type { GatewayTraffic } from '../sim/core/tick/operatorEffects';
+import { recallIncomingIops, type GatewayTraffic } from '../sim/core/tick/operatorEffects';
 import { activeUtilities } from '../sim/subsys/utilities';
 import { rosterCpuSec, type RosterEntry, type RosterKind } from '../sim/workload/rosters';
 import { endEventsByOperation } from './run/events';
@@ -15,6 +15,9 @@ import { hostImages } from './footprint';
 import { allWorkloads } from './workloads';
 import { facetOf, logLine, loseTrust, type GameContent } from './run/shared';
 import type { RunState } from './types';
+
+/** Which offered-traffic reading a gateway row shows: a closed hour, the current tick, or admitted traffic. */
+export type OfferedBasis = 'CLOSED' | 'TICK' | 'ADMITTED';
 
 export function operationHours(op: Operation, staffMult = 1): number {
   switch (op.kind) {
@@ -142,7 +145,24 @@ function buildOperationsView(run: RunState, scenario: Scenario) {
     regions: sim.config.cics.map(({ name, lparId }) => ({
       name, lparId, recycle: sim.cicsRecycles?.find((r) => r.name === name && r.lparId === lparId && r.restartTick > sim.tick) ?? null,
     })),
-    gateway: gatewayChannels(sim, scenario).map(({ id, name }) => ({ id, name, mode: sim.gatewayModes?.[id] ?? null })),
-    recalls: { held: sim.hsmRecalls?.heldSinceTick != null, backlogIo: sim.hsmRecalls?.backlogIo ?? 0 },
+    gateway: gatewayChannels(sim, scenario).map(({ id, name }) => {
+      const last = sim.last.workloads.find((w) => w.id === id);
+      const closedOffered = run.smfHours.at(-1)?.workloads[id]?.offeredArrivals;
+      const tickOffered = last?.offeredRate;
+      // Say which figure is shown: the closed-hour offered average, the current offered tick, or (on a pre-PT-55
+      // save) admitted traffic, which is all the run has. Protection hides offered pressure, not these readings.
+      const offeredBasis: OfferedBasis = closedOffered !== undefined ? 'CLOSED'
+        : tickOffered !== undefined ? 'TICK' : 'ADMITTED';
+      return {
+        id, name, mode: sim.gatewayModes?.[id] ?? null, offeredBasis,
+        offeredAvgPerSec: closedOffered !== undefined ? closedOffered / 3600
+          : tickOffered ?? last?.arrivalRate ?? 0,
+      };
+    }),
+    recalls: {
+      held: sim.hsmRecalls?.heldSinceTick != null,
+      backlogIo: sim.hsmRecalls?.backlogIo ?? 0,
+      incomingIops: recallIncomingIops(sim),
+    },
   };
 }

@@ -27,8 +27,11 @@ export function announceOtherTeamChange(
     `${labelOf(change, def)} is scheduled for ${hhmm(startTick)}.`, day);
 }
 
+/** The board's visible label for a rollout: the profile's title and the change reference. */
+export const labelFor = (def: OtherTeamChangeDef, id: string): string => `${def.label} · ${id}`;
+
 function labelOf(change: OtherTeamChange, def: OtherTeamChangeDef): string {
-  return `${def.label} · ${change.id}`;
+  return labelFor(def, change.id);
 }
 
 function statusOf(change: OtherTeamChange, event: ActiveEvent | undefined, tick: number): OtherTeamChange['status'] {

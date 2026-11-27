@@ -193,7 +193,10 @@ export interface CpuGrant {
 
 export interface WorkloadTick {
   id: string;
+  /** Arrivals admitted to the workload after gateway protection. */
   arrivalRate: number;
+  /** Arrivals offered before gateway protection; absent on old saved ticks. */
+  offeredRate?: number;
   completions: number;
   withinSla: number;
   failed: number;

@@ -53,9 +53,9 @@ import { applyMigratedRequest } from './run/migrate';
 import { packOf } from '../content/packs';
 import { allWorkloads } from './workloads';
 import { resolveCulprits } from './culprits';
-import { HSM_RECALL } from '../content/operations';
 import { cicsStorageReach, hourUnion, recordReplayTick, regionKey, resolveReach, type ReachWorld } from './footprint';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
+import { recallIncomingIops } from '../sim/core/tick/operatorEffects';
 
 export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
@@ -308,7 +308,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
             Object.entries(sim.routing[w.id] ?? w.routing).some(([lparId, share]) => share > 0 && hits.has(lparId))).map((w) => w.id);
           resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, direct));
         } else if (def.relief === 'HSM_RECALL') {
-          const stormIo = sim.config.dasd.lcus.find((lcu) => lcu.id === HSM_RECALL.lcuId)?.extraIops?.RANDOM ?? 0;
+          const stormIo = recallIncomingIops(sim);
           if (sim.hsmRecalls?.heldSinceTick != null || (e !== recallReplay && stormIo <= 0)) now = [];
           resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, now.length ? def.affects : []));
         }

@@ -101,13 +101,17 @@ export function gatewayTraffic(mode: GatewayMode, organicRate: number, retryRate
   }
 }
 
+/** The recall storm's incoming I/O per second, still counted while a hold keeps it off the LCU. */
+export const recallIncomingIops = (s: Pick<SimState, 'config'>): number =>
+  s.config.dasd.lcus.find((lcu) => lcu.id === HSM_RECALL.lcuId)?.extraIops?.RANDOM ?? 0;
+
 export function hsmIo(s: SimState): { dasd: WorldConfig['dasd']; recalls?: HsmRecalls } {
   const dasd = s.config.dasd;
   const recalls = s.hsmRecalls;
   if (!recalls) return { dasd };
   const lcu = dasd.lcus.find((l) => l.id === HSM_RECALL.lcuId);
   const held = recallHeld(recalls);
-  const incomingIops = lcu?.extraIops?.RANDOM ?? 0;
+  const incomingIops = recallIncomingIops(s);
   const drainedIops = held ? 0 : Math.min(HSM_RECALL.drainIops, recalls.backlogIo / TICK_SEC);
   const extraIops = held ? 0 : incomingIops + drainedIops;
   const backlogIo = held ? recalls.backlogIo + incomingIops * TICK_SEC : recalls.backlogIo - drainedIops * TICK_SEC;

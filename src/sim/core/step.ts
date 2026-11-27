@@ -63,6 +63,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   // 1–2. Arrivals (noise is mean-corrected so it doesn't inflate average λ).
   const rates: Record<string, number> = {};
+  const offeredRates: Record<string, number> = {};
   const gatewayFailed: Record<string, number> | undefined = prev.gatewayModes ? {} : undefined;
   const prevWl: Record<string, WorkloadRuntime> = {};
   for (const w of prev.workloads) prevWl[w.id] = w;
@@ -77,7 +78,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const burstMult = b && burst ? burst.mult * scheduledBurstMult(b, clock) : 1;
     const organicRate = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop;
     const mode = prev.gatewayModes?.[w.id];
-    rates[w.id] = organicRate + p.retryRate;
+    const offered = organicRate + p.retryRate;
+    rates[w.id] = offered;
+    offeredRates[w.id] = offered;
     if (mode && gatewayFailed) {
       const edge = gatewayTraffic(mode, organicRate, p.retryRate, sources?.[w.id]);
       rates[w.id] = edge.admittedRate;
@@ -232,7 +235,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const { backlog, ziipBacklog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
   for (const w of workloads) {
     wlTick[w.id] = {
-      id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0,
+      id: w.id, arrivalRate: rates[w.id] ?? 0, offeredRate: offeredRates[w.id] ?? rates[w.id] ?? 0,
+      completions: 0, withinSla: 0,
       failed: (cancelledRequests?.[w.id] ?? 0) + (gatewayFailed?.[w.id] ?? 0) + (recycleFailures?.[w.id] ?? 0),
       rtSumSec: 0, parts: {},
     };

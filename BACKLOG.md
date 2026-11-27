@@ -68,16 +68,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-55 · Bots choose operation targets from report data
-`list: playtest-fixes · status: ready · priority: low · size: M · area: tooling`
-
-Source: PT-20 (docs/pt-20-design.md §7). Bots pick targets from what a player can read (the Monitor III top consumer,
-DISPLAY THREAD, the Change board, the regions short on storage, the channel with the arrival surge), not from
-`inc.truth`, and release their toggles (HSM hold, gateway modes) when the reports show the storm over. A target the
-data doesn't single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a
-target, a three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call
-on the main agent).
-
 ### PT-57 · Operator commands in the play CLI
 `list: playtest-fixes · status: ready · priority: high · size: M · area: tooling`
 
@@ -90,7 +80,7 @@ use them and agent playtests never exercise PT-56. Add a `PlayCommand` that appl
 what the player can target now: the same rows as `operationsView` (running jobs and cancellable address spaces, TSO
 and DDF thread rosters, active and missed utilities, CICS regions with recycle state, gateway channels and modes,
 recall state), with the ids the verbs take. Refusals print the game's message (IEE838I, subsystem servers). Document
-the verbs in `docs/agents.md` and the player agent definitions. Not in scope: bots (PT-54, PT-55). Done when: each
+the verbs in `docs/agents.md` and the player agent definitions. Not in scope: automatic bot strategy changes. Done when: each
 operation can be issued and refused from the CLI, a test applies one of each through `playCore` and matches the
 browser path's result, and a short agent playtest log shows a player agent using one.
 
@@ -301,6 +291,23 @@ workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE
 strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
+
+### CL-64 · One helper for the "card is live" predicate
+`list: cleanup · status: ready · priority: low · size: S · area: game`
+
+Source: PR #502 simplify review (2026-11-26). The predicate "started, not ended, and not past its end tick" is spelled
+out at four sites: `endEventsByOperation` (`src/game/run/events.ts`), the bot chooser (`tools/botOperations.ts`),
+`gatewaySources` (`src/game/operations.ts`, as `!ended && startTick <= tick && …`), and `started && !ended` in
+`obviousHourly` and the fixer's on-sight loop (`tools/strategies.ts`), the regulator audit (`src/game/run.ts`) and
+`blockedHardware` (`src/game/run/changes.ts`), where the caller runs after `advance` has set `ended`. Add one
+`cardLive(event, tick)` helper and use it. Do not fold in `advance`'s local `running()`, which also counts a card whose
+`startTick` is this tick before its `started` flag is written; keep that tick-aware case explicit next to the helper.
+Leave the different questions alone: `inboxReply` (announced, not started), `activeIn`/`markMet`/`counterfactual`
+(window overlap), migration (scheduled today) and the begin/end/recycle triggers.
+
+No behaviour change. Done when: the equivalent sites call the one helper; a test pins a card that starts and another
+that ends in the current tick against both the live query and the engine's tick-aware case; `npm run compare --
+--base origin/dev` reports no differences and `npm run typecheck` is clean.
 
 ## prologue
 
