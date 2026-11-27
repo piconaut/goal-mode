@@ -181,8 +181,8 @@ level or a separate toggle.
 - Latest reference, PT-55 (2026-11-26, remote, Normal, seeds 1–20). Median end day for do-nothing / textbook / expert,
   then expert wins. Midwest 17 / 27 / 40 and 19/20, Revenue 20.5 / 27 / 40 and 20/20, Harbourline 10 / 32 / 40
   and 17/20 (textbook wins 2/20). All inside the CI bands. The medians held against PT-54, moving at most 2.5 days
-  and one expert win. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45909847217),
-  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45909860939), [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45909854793).
+  and one expert win. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45914762124),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45914776981), [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45914770298).
 - I13 quick reversals for S-1 through S-3 were 1/0/8, accepted by the user (2026-11-13, #331).
 - Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
   17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,
