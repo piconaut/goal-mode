@@ -13,6 +13,7 @@ import { buildMon3 } from '../src/game/mon3';
 import { operationsView } from '../src/game/operations';
 import type { GameContent } from '../src/game/run';
 import type { CardOperation } from '../src/game/run/eventEffects';
+import { cardLive } from '../src/game/run/shared';
 import { isOpenStatus, labelFor, otherTeamChangesView, profileOf } from '../src/game/run/otherTeamChanges';
 import { db2LockHolder } from '../src/game/smf';
 import type { ActiveEvent, RunState } from '../src/game/types';
@@ -161,7 +162,7 @@ function gatewayTarget(run: RunState, scenario: Scenario, def: EventDef, mode: G
 /** Operations whose targets are singled out by current player-visible reports. */
 export function operationsForEventReports(run: RunState, scenario: Scenario, content: GameContent, event: ActiveEvent): CardOperation[] {
   const def = content.events.find((row) => row.id === event.defId);
-  if (!def || !event.started || event.ended || (event.endTick !== null && event.endTick <= run.sim.tick)) return [];
+  if (!def || !cardLive(event, run.sim.tick)) return [];
   switch (def.endedBy?.kind) {
     case 'CANCEL_ADDRESS_SPACE': return topAddressSpace(run, scenario, def);
     case 'CANCEL_SESSION': return rosterTargets(run, scenario, def);

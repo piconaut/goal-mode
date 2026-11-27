@@ -14,7 +14,7 @@ import {
   type RunState
 } from '../types';
 import type { GameContent } from './shared';
-import { logLine, loseTrust, msg } from './shared';
+import { cardLive, logLine, loseTrust, msg } from './shared';
 import { previewContext, spendHours, type ChangeOutcome } from './changes';
 import { eventTargets, matchesEventEffect, type CardOperation } from './eventEffects';
 import { announceOtherTeamChange, profileOf } from './otherTeamChanges';
@@ -192,7 +192,7 @@ export function resolveEvent(run: RunState, event: ActiveEvent, operation?: Card
 export function endEventsByOperation(before: RunState, after: RunState, scenario: Scenario, content: GameContent, op: CardOperation): RunState {
   let run = after;
   for (const event of before.events) {
-    if (!event.started || event.ended || (event.endTick !== null && event.endTick <= before.sim.tick)) continue;
+    if (!cardLive(event, before.sim.tick)) continue;
     const def = content.events.find((d) => d.id === event.defId);
     if (def?.endedBy && matchesEventEffect(def.endedBy, op, eventTargets(before, scenario, def, event))) {
       if (op.kind === 'RECYCLE_CICS' && def.endedBy.kind === 'RECYCLE_CICS') {

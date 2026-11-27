@@ -31,7 +31,7 @@ import { applyBackout, landRoutineChanges } from './run/otherTeamChanges';
 import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
-import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
+import { BASE_HOURS, cardInForce, cardRunning, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
 import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
 import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
@@ -284,8 +284,6 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     // SPEC §10). The last hour's union is kept when the cap ends.
     const hourStartTick = tick - (tick % TICKS_PER_HOUR);
     const affectsHour = new Map<string, number>();
-    const running = (e: RunState['events'][number]) =>
-      (e.started || e.startTick <= tick) && !e.ended && (e.endTick === null || e.endTick > tick);
     // Every running card's footprint reach follows the routing and address spaces the same way, with the hour keeping
     // the union of what it reached in it (RT-14). The world is built only on a tick with such a card.
     const resolvedReach = new Map<string, string[]>();
@@ -295,7 +293,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     for (const e of events) {
       const def = defs.get(e.defId);
       const reach = def?.reach;
-      if ((!e.capacityCpcs && !reach) || (!running(e) && e !== recallReplay)) continue;
+      if ((!e.capacityCpcs && !reach) || (!cardRunning(e, tick) && e !== recallReplay)) continue;
       const sameHour = e.affectsHour === hourStartTick;
       if (e.capacityCpcs) resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, scopeOf(new Set(e.capacityCpcs))));
       if (reach) {
@@ -323,7 +321,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || (!e.ended && e.startTick <= tick),
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
-      ...(e === recallReplay && !running(e) ? { footprintReplays: recordReplayTick(e.footprintReplays, tick) } : {}),
+      ...(e === recallReplay && !cardRunning(e, tick) ? { footprintReplays: recordReplayTick(e.footprintReplays, tick) } : {}),
       ...(resolvedCulprits.has(e.uid) ? { culprits: resolvedCulprits.get(e.uid) } : {}),
       ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
@@ -450,7 +448,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], nightStartTick(r.day), () => batchHosts) };
   }
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
-  const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
+  const auditing = r.events.some((e) => cardInForce(e) && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
   if (auditing) {
     const seen = Object.entries(sysotherByLpar(r.sim.rmf.intervals, day)).filter(([, v]) => v > AUDIT.minApplPct);
     if (seen.length > 0) {

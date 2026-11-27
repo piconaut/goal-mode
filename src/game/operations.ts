@@ -13,7 +13,7 @@ import { poolUse } from './displaceable';
 import { difficultyOf, scaleExcess } from './difficulty';
 import { hostImages } from './footprint';
 import { allWorkloads } from './workloads';
-import { facetOf, logLine, loseTrust, type GameContent } from './run/shared';
+import { cardRunning, facetOf, logLine, loseTrust, type GameContent } from './run/shared';
 import type { RunState } from './types';
 
 /** Which offered-traffic reading a gateway row shows: a closed hour, the current tick, or admitted traffic. */
@@ -36,7 +36,7 @@ export function gatewaySources(run: RunState, content: GameContent): Record<stri
   const result: Record<string, GatewayTraffic> = {};
   for (const e of run.events) {
     const source = GATEWAY_TRAFFIC_CARDS[e.defId];
-    if (!source || e.ended || e.startTick > run.sim.tick || (e.endTick !== null && e.endTick <= run.sim.tick)) continue;
+    if (!source || !cardRunning(e, run.sim.tick)) continue;
     const def = content.events.find((d) => d.id === e.defId);
     const severity = def?.fixedSeverity ? 1 : difficultyOf(run.difficulty).eventSeverityMult;
     for (const cmd of def?.begin ?? []) {

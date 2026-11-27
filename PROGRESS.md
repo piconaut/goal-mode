@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-27: CL-64 replaces the scattered card-state checks (events, bot chooser, gateway sources, strategy bots, regulator audit, blocked hardware) with `cardLive`/`cardRunning`, plus `cardInForce` where the published state's one-tick `ended` lag is what decides. No behaviour change (compare: no differences; bench hashes unchanged).
 - 2026-11-27: CL-19 guards the service-class accumulator fields: a list typed against `ScpAcc`/`ScpTick` fails typecheck until each field's treatment in `addScp`, `decayInto`, `mergeAcc` and `sumAcc` is stated, and a unit test fails if any of them drops a field. No behaviour change (compare: no differences; bench hashes unchanged).
 - 2026-11-27: milestone #504 merged to `main` (PT-20 general operations). Backlog: PR-27 (gateway sources as sim state); RF-10 unblocked (the settlement drain holds off online writers for its wait and run windows; implementer checks the REORG drain phase); RF-12 re-scoped by research: a cancelled RMFGAT leaves Monitor I reports whole and shortens only CF Activity (SMF 74.4).
 - 2026-11-26: PT-57 exposes live operator commands and their targets in the play CLI through the same game path and Operations view as the browser.
