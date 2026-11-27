@@ -157,7 +157,7 @@ describe('general operator commands', () => {
     const offeredAvg = offeredArrivals / 3600;
     expect(closed.offeredArrivals).toBeCloseTo(offeredArrivals, 6);
     expect(admitted).toBeLessThan(offered);
-    expect(view.gateway.find((g) => g.id === 'MOBILE')).toMatchObject({ offeredAvgPerSec: offeredAvg });
+    expect(view.gateway.find((g) => g.id === 'MOBILE')).toMatchObject({ offeredAvgPerSec: offeredAvg, offeredBasis: 'CLOSED' });
     expect(view.recalls.incomingIops).toBe(60_000);
     const legacyHours = guarded.smfHours.map((hour, index) => index === guarded.smfHours.length - 1 ? {
       ...hour,
@@ -167,7 +167,8 @@ describe('general operator commands', () => {
         return [id, copy];
       })),
     } : hour);
-    expect(operationsView({ ...guarded, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredAvgPerSec).toBe(offered);
+    expect(operationsView({ ...guarded, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE'))
+      .toMatchObject({ offeredAvgPerSec: offered, offeredBasis: 'TICK' });
     const legacyTick = {
       ...guarded,
       sim: {
@@ -182,7 +183,8 @@ describe('general operator commands', () => {
         },
       },
     };
-    expect(operationsView({ ...legacyTick, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE')!.offeredAvgPerSec).toBe(admitted);
+    expect(operationsView({ ...legacyTick, smfHours: legacyHours }, scenario).gateway.find((g) => g.id === 'MOBILE'))
+      .toMatchObject({ offeredAvgPerSec: admitted, offeredBasis: 'ADMITTED' });
   });
 
   it('charges each CICS owner once when recycling a region', () => {

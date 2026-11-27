@@ -122,9 +122,10 @@ describe('report-driven bot operation targets', () => {
     expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
   });
 
-  it('recycles the regions whose displayed EDSA headroom is below the SOS cushion', () => {
+  it('recycles the regions whose displayed EDSA headroom is below the SOS cushion, within the card’s scope', () => {
     const def = midwest.game.events.find((row) => row.id === 'CICS_SOS')!;
-    const leaks = ['CICSAOR2', 'CICSAOR4'].map((name) => ({ kind: 'SET_CICS' as const, name, leak: { startMb: 900, mbPerHour: 40 } }));
+    // CICSAOR1 is short on storage too, but the card is about the PROD2 AORs; it is not a target.
+    const leaks = ['CICSAOR2', 'CICSAOR4', 'CICSAOR1'].map((name) => ({ kind: 'SET_CICS' as const, name, leak: { startMb: name === 'CICSAOR1' ? 2000 : 900, mbPerHour: 40 } }));
     const run = advance({ ...live(), sim: applyCommands(live().sim, leaks) }, midwest.scenario, noEvents, 1);
     const ops = operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def));
     expect(ops).toEqual([{ kind: 'RECYCLE_CICS', targets: [
@@ -141,6 +142,17 @@ describe('report-driven bot operation targets', () => {
     expect(operationsForEventReports(run, pack.scenario, { ...pack.game, events: [def] }, eventFor(def))).toEqual([
       { kind: 'RECYCLE_CICS', targets: [{ name: 'CICSAOR3', lparId: 'PRDC' }] },
     ]);
+  });
+
+  it('leaves an abend tie between regions unresolved', () => {
+    const pack = PACKS.harbourline!;
+    const content = { ...pack.game, events: [] };
+    const def = pack.game.events.find((row) => row.id === 'SICK_AOR')!;
+    const base = startDay(newRun(pack.scenario, content, 42), content);
+    const stats = (abends: number) => ({ peakMb: 900, limitMb: 1024, sosSec: 0, abends });
+    const run = { ...base, smfHours: [{ day: 0, hourOfDay: 6, workloads: {},
+      cicsStorage: { CICSAOR1: stats(2), CICSAOR2: stats(2) } }] };
+    expect(operationsForEventReports(run, pack.scenario, { ...pack.game, events: [def] }, eventFor(def))).toEqual([]);
   });
 
   it('uses the Change board label and time rather than a rollout’s hidden event link', () => {
@@ -178,8 +190,23 @@ describe('report-driven bot operation targets', () => {
     ]);
   });
 
-  it('leaves near-tied gateway surges unresolved', () => {
+  it('protects the card’s affected channel even when another channel surges harder', () => {
     const def = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
+    const run = withGatewayReports(live(), { MOBILE: 100, CARDAUTH: 100 }, { MOBILE: 160, CARDAUTH: 300 });
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([
+      { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' },
+    ]);
+  });
+
+  it('does not protect an unaffected channel when it is the only one surging', () => {
+    const def = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
+    const run = withGatewayReports(live(), { MOBILE: 100, CARDAUTH: 100 }, { MOBILE: 110, CARDAUTH: 300 });
+    expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
+  });
+
+  it('leaves near-tied surges between the card’s affected channels unresolved', () => {
+    const original = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
+    const def = { ...original, affects: ['MOBILE', 'CARDAUTH'] };
     const run = withGatewayReports(live(), { MOBILE: 100, CARDAUTH: 100 }, { MOBILE: 160, CARDAUTH: 159 });
     expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
   });
@@ -213,6 +240,17 @@ describe('report-driven protection release', () => {
     ]) }, midwest.scenario, noEvents, TICKS_PER_HOUR);
     expect(protectionReleases(withMobileReports(recovered, baseline, baseline), midwest.scenario)).toEqual([
       { kind: 'HOLD_HSM_RECALL', held: false },
+      { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: null },
+    ]);
+  });
+
+  it('keeps a mode through the 1.25–1.5 band and does not re-block it', () => {
+    const guarded = { ...live(), sim: { ...live().sim, gatewayModes: { MOBILE: 'BLOCK' as const } } };
+    const def = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
+    const band = withMobileReports(guarded, 100, 130);
+    expect(operationsForEventReports(band, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);
+    expect(protectionReleases(band, midwest.scenario)).toEqual([]);
+    expect(protectionReleases(withMobileReports(guarded, 100, 125), midwest.scenario)).toEqual([
       { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: null },
     ]);
   });

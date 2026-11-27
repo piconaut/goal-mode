@@ -24,7 +24,9 @@ const PROCU_MIN_ELEVATION = 4;
 const GATEWAY_SURGE_RATIO = 1.5;
 const GATEWAY_CLEAR_RATIO = 1.25;
 const GATEWAY_AMBIGUITY_MARGIN = 0.1;
-const BASELINE_HOURS = 3;
+// SMF keeps 48 hours, so a prior-day same-hour median has at most two rows; asking for three would read as if a
+// third day existed.
+const BASELINE_HOURS = 2;
 
 const textOrder = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
@@ -59,6 +61,9 @@ function topAddressSpace(run: RunState, scenario: Scenario, def: EventDef): Card
   const effect = def.endedBy;
   if (effect?.kind !== 'CANCEL_ADDRESS_SPACE') return [];
   const spaces = [...scenario.addressSpaces, ...run.sim.extraAddressSpaces];
+  // The card's clue names the looping job and its service class ("CICSXLOG ... the top consumer in STCHI"), so
+  // that class is the card's visible scope, not the hidden answer: the target itself must still be the class's
+  // clear top consumer in the current PROCU report.
   const expected = spaces.find((row) => row.jobname === effect.jobname && row.lparId === effect.lparId);
   if (!expected) return [];
   const serviceClass = classify(run.sim.wlm.definition, {
@@ -138,8 +143,12 @@ function gatewaySurges(run: RunState, scenario: Scenario) {
   }).sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) || textOrder(a.id, b.id));
 }
 
-function gatewayTarget(run: RunState, scenario: Scenario, mode: GatewayMode): CardOperation[] {
-  const [top, second] = gatewaySurges(run, scenario);
+function gatewayTarget(run: RunState, scenario: Scenario, def: EventDef, mode: GatewayMode): CardOperation[] {
+  // The card's symptom names the affected workload(s), so only those channels are candidates: an unrelated
+  // channel that happens to surge harder is not what the card's report points at, and protecting it would shed
+  // real traffic and leave the card unresolved. A stronger surge elsewhere must not veto the card's own channel.
+  const affected = new Set(def.affects);
+  const [top, second] = gatewaySurges(run, scenario).filter((row) => affected.has(row.id));
   if (!top || top.ratio === undefined || top.ratio < GATEWAY_SURGE_RATIO ||
     (second?.ratio !== undefined && second.ratio >= top.ratio * (1 - GATEWAY_AMBIGUITY_MARGIN))) return [];
   if (top.mode === mode) return [];
@@ -156,7 +165,7 @@ export function operationsForEventReports(run: RunState, scenario: Scenario, con
     case 'CANCEL_JOB': return lockTarget(run, scenario);
     case 'TERM_UTILITY': return utilityTarget(run, scenario);
     case 'RECYCLE_CICS': return abendTarget(run, scenario);
-    case 'SET_GATEWAY': return gatewayTarget(run, scenario, def.endedBy.mode);
+    case 'SET_GATEWAY': return gatewayTarget(run, scenario, def, def.endedBy.mode);
     case 'BACKOUT_CHANGE': return changeTarget(run, content, def, event);
     default:
       if (def.relief === 'HSM_RECALL') {

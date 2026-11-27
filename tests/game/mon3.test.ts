@@ -318,10 +318,14 @@ describe('Monitor III PROCU jobs (RMF Report Analysis p.188–189)', () => {
     let run = startDay(newRun(MIDWEST, { ...content, events: [] }, 42), { ...content, events: [] });
     run = { ...run, sim: applyCommands(run.sim, def.begin) };
     run = advance(run, MIDWEST, { ...content, events: [] }, TICKS_PER_HOUR);
-    const jobs = buildMon3(run, MIDWEST).procJobs!;
+    const mon = buildMon3(run, MIDWEST);
+    const jobs = mon.procJobs!;
     const xlog = jobs.find((j) => j.system === 'PROD1' && j.jobname === 'CICSXLOG')!;
     expect(xlog.eapplCpEngines).toBeGreaterThan(0.6);
     expect(jobs[0]).toMatchObject({ system: 'PROD1', jobname: 'CICSXLOG' });
+    // The elevated space is also the class's heaviest processor user for DELAY's Primary Reason (RMF p.110).
+    expect(mon.rows.filter((r) => r.system === 'PROD1' && r.primaryDelay === 'PRC')
+      .some((r) => r.primaryReason === 'CICSXLOG')).toBe(true);
   }, 60_000);
 
   it('batch misrouted into the CICS region class shows by name under STCHI (playtest round 1)', () => {

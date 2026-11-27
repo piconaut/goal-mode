@@ -145,9 +145,14 @@ function buildOperationsView(run: RunState, scenario: Scenario) {
     gateway: gatewayChannels(sim, scenario).map(({ id, name }) => {
       const last = sim.last.workloads.find((w) => w.id === id);
       const closed = run.smfHours.at(-1)?.workloads[id];
+      // Say which figure is shown: the closed-hour offered average, the current offered tick, or (on a pre-PT-55
+      // save) admitted traffic, which is all the run has. Protection hides offered pressure, not these readings.
+      const offeredBasis = closed?.offeredArrivals !== undefined ? 'CLOSED'
+        : last?.offeredRate !== undefined ? 'TICK' : 'ADMITTED';
       return {
-        id, name, mode: sim.gatewayModes?.[id] ?? null,
-        offeredAvgPerSec: closed?.offeredArrivals !== undefined ? closed.offeredArrivals / 3600 : last?.offeredRate ?? last?.arrivalRate ?? 0,
+        id, name, mode: sim.gatewayModes?.[id] ?? null, offeredBasis,
+        offeredAvgPerSec: offeredBasis === 'CLOSED' ? closed!.offeredArrivals! / 3600
+          : offeredBasis === 'TICK' ? last!.offeredRate! : last?.arrivalRate ?? 0,
       };
     }),
     recalls: {

@@ -179,7 +179,7 @@ function OperatorCommands({ v, game }: { v: ViewModel; game: GameHandle }) {
       <div className="row"><span>Back out a change</span><a href="#other-team-changes">Other teams’ changes on the Change board</a></div>
       <details>
         <summary>Gateway status</summary>
-        {gateway.map((g) => <div className="row" key={g.id}><span>{g.name}</span><span>{g.mode ? GATEWAY_MODE_LABEL[g.mode] : 'Off'} · offered avg {g.offeredAvgPerSec >= 10 ? g.offeredAvgPerSec.toFixed(0) : g.offeredAvgPerSec.toFixed(2)} tps</span></div>)}
+        {gateway.map((g) => <div className="row" key={g.id}><span>{g.name}</span><span>{g.mode ? GATEWAY_MODE_LABEL[g.mode] : 'Off'} · {g.offeredBasis === 'CLOSED' ? 'offered avg (last hour)' : g.offeredBasis === 'TICK' ? 'offered now' : 'admitted now (no offered history)'} {g.offeredAvgPerSec >= 10 ? g.offeredAvgPerSec.toFixed(0) : g.offeredAvgPerSec.toFixed(2)} tps</span></div>)}
       </details>
       <OperationPicker v={v} game={game} title="Gateway protection" action="Apply mode" empty="No external channels"
         options={gateway.flatMap((g) => ([null, 'LIMIT', 'BACKOFF', 'BLOCK'] as const)
@@ -188,7 +188,7 @@ function OperatorCommands({ v, game }: { v: ViewModel; game: GameHandle }) {
         } />
       <div className="row">
         <span>
-          DFSMShsm recalls {recalls.held ? 'HELD' : 'RELEASED'} · {Math.round(recalls.backlogIo).toLocaleString()} queued I/Os · {Math.round(recalls.incomingIops).toLocaleString()} incoming IOPS
+          DFSMShsm recalls {recalls.held ? 'HELD' : 'RELEASED'} · {Math.round(recalls.backlogIo).toLocaleString()} queued I/Os · {Math.round(recalls.incomingIops).toLocaleString()} incoming IOPS now
           <CodexHints ids={['hsm-recall-hold']} />
         </span>
         <OperationButton op={{ kind: 'HOLD_HSM_RECALL', held: !recalls.held }} action={recalls.held ? 'Release recalls' : 'Hold recalls'} v={v} game={game} />

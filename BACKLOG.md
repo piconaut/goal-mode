@@ -80,7 +80,7 @@ use them and agent playtests never exercise PT-56. Add a `PlayCommand` that appl
 what the player can target now: the same rows as `operationsView` (running jobs and cancellable address spaces, TSO
 and DDF thread rosters, active and missed utilities, CICS regions with recycle state, gateway channels and modes,
 recall state), with the ids the verbs take. Refusals print the game's message (IEE838I, subsystem servers). Document
-the verbs in `docs/agents.md` and the player agent definitions. Not in scope: bots (PT-54, PT-55). Done when: each
+the verbs in `docs/agents.md` and the player agent definitions. Not in scope: automatic bot strategy changes. Done when: each
 operation can be issued and refused from the CLI, a test applies one of each through `playCore` and matches the
 browser path's result, and a short agent playtest log shows a player agent using one.
 
