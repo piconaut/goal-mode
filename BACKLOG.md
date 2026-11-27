@@ -273,6 +273,19 @@ cancel on the master moves structure detail to another system from the next inte
 that CPU Activity/WLMGL/DASD are unchanged, the report invariants still hold, and SPEC §17 and the ledger row are
 updated.
 
+### RF-13 · The WLMGL row reports no queue time (SMF 72.3 R723CQDT)
+`list: realism-fixes · status: ready · priority: low · size: S · area: sim`
+
+Source: PR #506 review (2026-11-27). Real SMF 72.3 carries a period's total queue delay time, R723CQDT; for batch it
+is the time jobs waited on the job queue for an initiator (MVS SMF PDF p.646 (printed 618); docs/research.md). The
+sim tracks batch queue time only in WLM's management accumulator (`ScpAcc.rtQueueSumSec`, WT-12): `addScp` drops
+`ScpTick.rtQueueSumSec`, so the RMF interval record and the WLMGL row show none. Carry it through `addScp`/`mergeAcc`
+into the interval record and show it on the WLMGL row beside AVG RT (check the report layout with zos-docs first).
+Done when: a batch period with queued jobs reports a non-zero queue time that is part of its response time (a report
+identity in `tests/helpers/reportIdentities.ts`), `tests/sim/accFields.test.ts` lists `rtQueueSumSec` as summed by
+`addScp`, SPEC §17 and the docs/research.md row are updated, and goldens are regenerated with a behaviour note if the
+state hash changes.
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
