@@ -3,6 +3,8 @@ import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
 import { closeInterval } from '../../src/sim/measure/rmf';
 import type { JobRuntime } from '../../src/sim/subsys/batch';
+import { projectBatchRtPi } from '../../src/sim/wlm/batchRt';
+import { emptyScpTick } from '../../src/sim/wlm/evaluate';
 import { accPi, ACC_DECAY } from '../../src/sim/wlm/runtime';
 import type { Goal } from '../../src/sim/wlm/types';
 
@@ -72,6 +74,21 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     expect(measured(next).rtQueueSumSec).toBeCloseTo(20 * ACC_DECAY);
   });
 
+  it("keeps a period's queue/execution split across a goal change (RF-13)", () => {
+    const { state, scenario } = fixture({ kind: 'VEL', velocity: 30 });
+    const acc = measured(step(state, [], scenario));
+    // The job's 20 s initiator wait is recorded under the velocity goal too (R723CQDT is per period, not per goal).
+    expect(acc.rtQueueSumSec).toBe(20);
+    // The policy then gives the period an average response goal: the split measured under the old goal is available
+    // at once, so the WT-12 projection can use it (dev had none until an AVG completion was recorded).
+    const t = { ...emptyScpTick('BATCHPRD#1', 0), usingCpu: 1, delayCpu: 1 };
+    const projected = projectBatchRtPi({ kind: 'AVG', rtSec: 30 }, acc, t);
+    expect(projected).not.toBeNull();
+    expect(Number.isFinite(projected)).toBe(true);
+    const { rtQueueSumSec: _queue, ...withoutSplit } = acc;
+    expect(projectBatchRtPi({ kind: 'AVG', rtSec: 30 }, withoutSplit, t)).toBeNull();
+  });
+
   it('adds simultaneous job completions in the same period', () => {
     const { state, scenario } = fixture({ kind: 'AVG', rtSec: 30 });
     const second = structuredClone(state.batch.jobs[0]!);
@@ -131,15 +148,18 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     const acc = measured(next);
     // ENDED has no goal-type condition (RMF Report Analysis 3.1 p.530-531): the job is one ended transaction.
     expect([acc.completions, acc.rtSumSec]).toEqual([1, 60]);
-    // The queue split and the buckets stay with response-time goals (RMF's velocity distribution is not modelled).
-    expect(acc.rtQueueSumSec).toBeUndefined();
+    // The queue split is recorded whatever the goal (R723CQDT, RF-13: SMF carries it for every period); only the
+    // buckets stay with response-time goals (RMF's velocity distribution is not modelled).
+    expect(acc.rtQueueSumSec).toBe(20);
     expect(acc.buckets.every((n) => n === 0)).toBe(true);
     // Neither a velocity nor a discretionary PI reads completions.
     expect(accPi(goal, acc)).toBe(accPi(goal, { ...acc, completions: 0, rtSumSec: 0 }));
     const iv = closeInterval(next.rmf.acc, { def: next.wlm.definition, config: next.config, r4haByLpar: {}, jobs: [], endTick: next.tick });
     for (const system of ['PROD1', '*PLEX']) {
       const row = iv.wlmRc!.find((r) => r.lparId === system && r.scKey === 'BATCHRC')!;
-      expect([row.ended, row.avgRtSec]).toEqual([1, 60]);
+      // The row reports the initiator wait inside its response time (TRANS-TIME QUEUED, RMF Report Analysis 3.1
+      // PDF p.531 (printed 491)).
+      expect([row.ended, row.avgRtSec, row.avgQueueSec]).toEqual([1, 60, 20]);
       expect(row.buckets.every((n) => n === 0)).toBe(true);
     }
   });

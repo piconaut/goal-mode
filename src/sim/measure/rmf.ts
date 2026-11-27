@@ -120,6 +120,10 @@ export interface WlmRecord {
   endPerSec: number;
   failed: number;
   avgRtSec: number | null;
+  /** Mean queue (initiator) delay inside `avgRtSec`, R723CQDT ÷ completions. Null when no batch completion was
+   *  recorded in the period — transactions, or no job ended — so the SMF total is absent; a job that waited nothing
+   *  reports 0. */
+  avgQueueSec: number | null;
   execVelocity: number | null;
   pi: number | null;
   /** All time executed on general CPs, including the IIPCP subset (RMF Report Analysis p.534). */
@@ -454,6 +458,12 @@ export function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId
       : {}),
     failed: a.failed + t.failed,
   };
+  // The period's queue delay time (R723CQDT): absent until a batch job ends in the period, as on the SMF record.
+  // A store after the literal, not a conditional spread: this runs for every period every tick and the spread's
+  // property copy is slower than a shape transition on the fresh object.
+  if (t.rtQueueSumSec !== undefined || a.rtQueueSumSec !== undefined) {
+    out.rtQueueSumSec = (a.rtQueueSumSec ?? 0) + (t.rtQueueSumSec ?? 0);
+  }
   if (t.workManager || a.workManager) out.workManager = mergeWorkManager(a.workManager, t.workManager);
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
@@ -465,6 +475,9 @@ export function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
     ...(p.workManager || a.workManager ? { workManager: mergeWorkManager(p.workManager, a.workManager) } : {}),
     completions: p.completions + a.completions,
     rtSumSec: p.rtSumSec + a.rtSumSec,
+    ...(p.rtQueueSumSec !== undefined || a.rtQueueSumSec !== undefined
+      ? { rtQueueSumSec: (p.rtQueueSumSec ?? 0) + (a.rtQueueSumSec ?? 0) }
+      : {}),
     buckets: addBuckets(p.buckets, a.buckets),
     using: p.using + a.using,
     delay: p.delay + a.delay,
@@ -530,6 +543,7 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     endPerSec: sec > 0 ? a.completions / sec : 0,
     failed: a.failed,
     avgRtSec: a.completions > 1e-9 ? a.rtSumSec / a.completions : null,
+    avgQueueSec: a.completions > 1e-9 && a.rtQueueSumSec !== undefined ? a.rtQueueSumSec / a.completions : null,
     execVelocity: a.workManager ? null : velocityOf(velUsing(a), velDelay(a)),
     pi: goal ? accPi(goal, a) : null,
     applCpPct: ticks > 0 ? (100 * (a.cpuEngines + a.iipcpEngines)) / ticks : 0,

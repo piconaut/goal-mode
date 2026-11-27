@@ -263,9 +263,6 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   const out: ScpAcc = {
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
-    ...(acc.rtQueueSumSec !== undefined || t.rtQueueSumSec !== undefined
-      ? { rtQueueSumSec: (acc.rtQueueSumSec ?? 0) * d + (t.rtQueueSumSec ?? 0) }
-      : {}),
     buckets: decayBuckets(acc.buckets, t.buckets, d),
     using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
     delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
@@ -296,6 +293,13 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
         }
       : {}),
   };
+  // Added after the literal: a conditional object spread here copies properties and runs in the hot loop path
+  // (every period every tick once a batch class reports queue time), while a store on a fresh object is a shape
+  // transition V8 can inline. The values are unchanged; the key now sits at the end of the object, so a golden or
+  // bench hash taken from JSON sees a different key order.
+  if (acc.rtQueueSumSec !== undefined || t.rtQueueSumSec !== undefined) {
+    out.rtQueueSumSec = (acc.rtQueueSumSec ?? 0) * d + (t.rtQueueSumSec ?? 0);
+  }
   const moved = decayMoved(acc.moved, t.moved, d);
   if (moved) out.moved = moved;
   if (t.workManager || acc.workManager) {
