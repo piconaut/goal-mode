@@ -8,6 +8,7 @@ import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { resolveCulprits } from '../../src/game/culprits';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
+import { tickOfClock } from '../../src/sim/core/clock';
 import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { MIDWEST_ADDRESS_SPACES } from '../../src/content/scenarios/midwest-workloads';
 import type { RegionMode } from '../../src/sim/wlm/types';
@@ -1270,9 +1271,18 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     const clueLines = clueWindows.map((t) => lines.find((l) => l.startsWith(`${t.clockText} PROD1 ONLMED#1`)))
       .filter((l): l is string => l !== undefined);
     expect(clueLines.length).toBeGreaterThan(0);
+    // A period mostly waiting keeps the waiting note instead of a rejection (adjust.ts `waitingNote`): the settlement
+    // drain's unmanaged claim wait does that to this fixture for one interval (RF-10). The naming rule applies to the
+    // lines that do report a rejection; every other line must be that waiting note.
+    const rejected = clueLines.filter((l) => l.includes('rejected:'));
+    expect(rejected.length).toBeGreaterThan(0);
     for (const line of clueLines) {
-      expect(line).toContain('rejected: harms ONLHI#1, more important');
-      expect(line).not.toContain('no gain for the receiver');
+      if (line.includes('rejected:')) {
+        expect(line).toContain('rejected: harms ONLHI#1, more important');
+        expect(line).not.toContain('no gain for the receiver');
+      } else {
+        expect(line).toContain('mostly waiting, CPU delay');
+      }
     }
     // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
     expect(samples).toHaveLength(3);
@@ -1315,6 +1325,38 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
     // limit above still holds; this is two direction changes, not the repeated ED↔EB trading the gap test prevents.
     expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(2);
   }, 120_000);
+});
+
+describe('settlement drain holds online postings (RF-10)', () => {
+  const profile = MIDWEST.db2Contention!;
+  const start = tickOfClock('D1 14:48')!;
+  const drainTick = tickOfClock('D1 14:50')!;
+
+  it('charges both drain kinds to the postings and not to the CICS task slots', () => {
+    for (const kind of ['ALL', 'WRITERS'] as const) {
+      const s = { ...MIDWEST, db2Contention: { ...profile, isolation: 'CS' as const, drain: { ...profile.drain, kind } } };
+      let x = { ...initState(42, s), tick: start };
+      while (x.tick < drainTick) x = step(x, [], s);
+      x = step(x, [], s); // the 14:50 drain
+      const rbank = x.last.workloads.find((w) => w.id === 'RBANK')!;
+      // The posting pays the drain's run window in its response and SMF 101 row ...
+      expect(rbank.parts.drainLock ?? 0, kind).toBeGreaterThan(0);
+      // ... but the game's even AOR spread must not turn a settlement-only stop into region-wide starvation.
+      expect(Object.keys(x.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT')), kind).toEqual([]);
+      if (kind === 'WRITERS') expect(x.env.db2Contention?.readers.DB1B?.pending ?? 0).toBe(0);
+      // The task-slot queue would only form from the previous tick's hold, so follow the drain until a tick after
+      // it ends: no MXT queue at any tick, and CICS work that writes nothing on the partition never fails.
+      let drained = false;
+      for (let i = 0; i < 40 && (x.env.db2Contention?.drain || !drained); i++) {
+        x = step(x, [], s);
+        if (x.env.db2Contention?.drain?.phase === 'DRAINED') drained = true;
+        expect(Object.keys(x.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT')), `${kind} tick ${x.tick}`).toEqual([]);
+        expect(x.last.workloads.find((w) => w.id === 'CARDAUTH')!.failed, `${kind} tick ${x.tick}`).toBe(0);
+      }
+      expect(drained, kind).toBe(true);
+      expect(x.env.db2Contention?.drain, kind).toBeUndefined();
+    }
+  });
 });
 
 describe('Db2 batch on an image without Db2', () => {

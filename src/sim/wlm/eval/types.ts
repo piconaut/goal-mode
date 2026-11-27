@@ -62,6 +62,10 @@ export interface SliceSpec {
   outsideRefSec?: number;
   /** Diagnostic split of extraOtherSec (e.g. cf, lock, qr). */
   extraParts?: Record<string, number>;
+  /** Per-transaction share of extraOtherSec held by a Db2 utility drain. It stays in the response time but is not
+   * charged to the CICS task-slot hold, whose even AOR spread would turn a settlement-only stop into region-wide
+   * starvation (RF-10, SPEC §17 APPROX). */
+  drainHoldSec?: number;
   /** Report class from classification (reporting only: WLM never manages to it). */
   reportClass?: string | null;
   /** Share of its MQ queue this slice's messages may fill (message-driven work only). */
@@ -105,6 +109,7 @@ export function sliceSpec(p: Pick<SliceSpec, 'key' | 'scKey' | 'kind'> & Partial
     failFrac: p.failFrac ?? 0,
     outsideWaitSec: p.outsideWaitSec ?? 0,
     extraParts: p.extraParts,
+    drainHoldSec: 0,
     reportClass: p.reportClass ?? null,
     mqQueueFrac: p.mqQueueFrac,
     maxQueueMsgs: p.maxQueueMsgs,

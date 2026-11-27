@@ -311,7 +311,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
   if (db2) {
-    nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
+    nextEnv.db2Contention = {
+      readers: db2.readers,
+      ...(db2.drain ? { drain: db2.drain } : {}),
+      ...(db2.writerClaims ? { writerClaims: db2.writerClaims } : {}),
+    };
   }
   if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
   if (cf.length > 0) nextEnv.cfBySystem = cfBySystem;
