@@ -438,7 +438,9 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
     case 'SET_ENTITY_LOAD': {
       const l = cmd.load;
       const loads = (s.entityLoads ?? []).filter((x) => !(x.tag === l.tag && x.kind === l.kind && x.id === l.id && x.workloadId === l.workloadId && x.lparId === l.lparId));
-      return ok({ ...s, entityLoads: [...loads, { ...l }] }, `${l.kind === 'DDF_THREAD' ? 'Thread' : 'User'} ${l.id} on ${l.lparId}: CPU +${(l.cpEngines + l.ziipEngines).toFixed(2)} engines of ${l.workloadId}`);
+      // A fresh command always carries both pools; the guard keeps a hand-built or pre-migration load from logging NaN.
+      const engines = (l.cpEngines ?? 0) + (l.ziipEngines ?? 0);
+      return ok({ ...s, entityLoads: [...loads, { ...l }] }, `${l.kind === 'DDF_THREAD' ? 'Thread' : 'User'} ${l.id} on ${l.lparId}: CPU +${engines.toFixed(2)} engines of ${l.workloadId}`);
     }
 
     case 'CLEAR_ENTITY_LOADS': {
