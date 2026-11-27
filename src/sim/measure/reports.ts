@@ -46,6 +46,8 @@ const WLM_COLS: Col[] = [
   { w: 3, h1: 'IMP', h2: '', v: (r) => String(r.importance ?? '-') },
   { w: 25, h1: ' GOAL', h2: '', left: true, v: (r) => ` ${r.goalText}` },
   { w: 7, h1: 'ACTUAL', h2: 'RESP', v: (r) => (r.avgRtSec === null ? '-' : r.avgRtSec < 10 ? r.avgRtSec.toFixed(3) : r.avgRtSec.toFixed(1)) },
+  // TRANS-TIME QUEUED (RMF Report Analysis 3.1 p.531): the initiator wait inside ACTUAL, from R723CQDT.
+  { w: 7, h1: 'QUEUED', h2: '', v: (r) => (r.avgQueueSec === null ? '-' : r.avgQueueSec < 10 ? r.avgQueueSec.toFixed(3) : r.avgQueueSec.toFixed(1)) },
   { w: 6, h1: 'EX', h2: 'VEL%', v: (r) => fmt(r.execVelocity, 1) },
   { w: 6, h1: 'PERF', h2: 'INDX', v: (r) => fmt(r.pi, 2) },
   { w: 9, h1: 'ENDED', h2: '', v: (r) => String(Math.round(r.ended)) },
@@ -66,15 +68,16 @@ const WLM_COLS: Col[] = [
 ];
 /** Group headings over runs of columns (by index, inclusive). */
 const WLM_GROUPS: { from: number; to: number; label: string }[] = [
-  { from: 9, to: 11, label: 'APPL %' },
-  { from: 12, to: 14, label: 'USING %' },
-  { from: 15, to: 20, label: 'DELAY %' },
+  { from: 10, to: 12, label: 'APPL %' },
+  { from: 13, to: 15, label: 'USING %' },
+  { from: 16, to: 21, label: 'DELAY %' },
 ];
 const fmt = (x: number | null | undefined, d: number) => (x === null || x === undefined ? '-' : x.toFixed(d));
 const cell = (c: Col, s: string) => (c.left ? padRight(s, c.w) : padLeft(s, c.w)).slice(0, Math.max(c.w, s.length));
 
 function wlmRow(r: WlmRecord): string {
-  return WLM_COLS.map((c, i) => cell(c, r.resourceSamples === false && (i === 5 || i >= 9) ? '-' : c.v(r))).join(' ');
+  // A CICS region class has no resource samples (EX VEL% and APPL%/USING%/DELAY%), but its transaction times stand.
+  return WLM_COLS.map((c, i) => cell(c, r.resourceSamples === false && (i === 6 || i >= 10) ? '-' : c.v(r))).join(' ');
 }
 
 /** Two header lines whose labels sit over their columns; group labels are centred in dashes. */
@@ -171,7 +174,7 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
   out.push(`GOAL: ${r.goalText}`);
   out.push('');
   out.push(`-TRANSACTIONS-   ENDED ${Math.round(r.ended)}   END/S ${r.endPerSec.toFixed(2)}   FAILED ${Math.round(r.failed)}`);
-  out.push(`ACTUAL RESP ${r.avgRtSec === null ? '-' : r.avgRtSec.toFixed(4) + 's'}   EX VEL% ${f(r.execVelocity, 1, 0)}   PERF INDX ${f(r.pi, 2, 0)}`);
+  out.push(`ACTUAL RESP ${r.avgRtSec === null ? '-' : r.avgRtSec.toFixed(4) + 's'}   QUEUED ${r.avgQueueSec === null ? '-' : r.avgQueueSec.toFixed(4) + 's'}   EX VEL% ${f(r.execVelocity, 1, 0)}   PERF INDX ${f(r.pi, 2, 0)}`);
   if (r.resourceSamples !== false) {
     out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
     out.push(

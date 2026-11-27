@@ -116,6 +116,8 @@ function plexSum(c: Check, o: IntervalObs, rows: readonly WlmRecord[], what: str
     c.close(p.applIipPct, sum(parts.map((r) => r.applIipPct)), ROUNDING, w('APPL% IIP'));
     const rt = sum(parts.map((r) => (r.avgRtSec ?? 0) * r.ended));
     if (p.avgRtSec !== null) c.close(p.avgRtSec * p.ended, rt, ROUNDING, w('response time × ENDED'));
+    const queue = sum(parts.map((r) => (r.avgQueueSec ?? 0) * r.ended));
+    if (p.avgQueueSec !== null) c.close(p.avgQueueSec * p.ended, queue, ROUNDING, w('queue time × ENDED'));
     if (!p.reportClass || p.members?.length === 1) p.buckets.forEach((b, i) => c.close(b, sum(parts.map((r) => r.buckets[i] ?? 0)), ROUNDING, w(`bucket ${i}`)));
   }
 }
@@ -168,6 +170,26 @@ export const IDENTITIES: Identity[] = [
     source: 'RMF Report Analysis 3.1 p.530 Table 222',
     check: (run, c) => {
       for (const o of run.intervals) for (const r of [...o.iv.wlm, ...(o.iv.wlmRc ?? [])]) c.close(r.endPerSec * o.iv.intervalSec, r.ended, ROUNDING, () => `${at(o)} ${r.lparId} ${r.scKey}`);
+    },
+  },
+  {
+    id: 'wlmgl-queue-time',
+    title: 'WLMGL: QUEUED is an initiator wait inside ACTUAL response time, never more than it',
+    basis: 'z/OS',
+    // TRANS-TIME ACTUAL includes EXECUTION, QUEUED, R/S AFFIN and INELIGIBLE, and QUEUED "basically includes the
+    // time a job was delayed for initiation" (RMF Report Analysis 3.1 p.531). The SMF field is the period's total
+    // queue delay time R723CQDT, in 1024-microsecond units; for batch it is "the time jobs spent waiting for an
+    // initiator" (MVS SMF 3.1 p.646). That the row's weighted queue is the ended jobs' wait is checked against
+    // SMF 30 by `smf30-vs-wlmgl`; here it only has to be a part of the response time it sits in.
+    source: 'RMF Report Analysis 3.1 p.531 (TRANS-TIME); MVS SMF 3.1 p.646 (R723CQDT)',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        for (const r of [...o.iv.wlm, ...(o.iv.wlmRc ?? [])]) {
+          if (r.avgQueueSec === null) continue;
+          c.ok(r.avgQueueSec >= -1e-9, () => `${at(o)} ${r.lparId} ${r.scKey} QUEUED ${r.avgQueueSec} below zero`);
+          if (r.avgRtSec !== null) c.atMost(r.avgQueueSec, r.avgRtSec, ROUNDING, () => `${at(o)} ${r.lparId} ${r.scKey} QUEUED above ACTUAL`);
+        }
+      }
     },
   },
   {
@@ -942,6 +964,9 @@ export const IDENTITIES: Identity[] = [
             const rows = scRows(o.iv, lparId).filter((r) => !r.reportClass && r.serviceClass === sc);
             c.close(sum(rows.map((r) => r.ended)), inClass.length, ROUNDING, () => `${at(o)} ${lparId} ${sc} ENDED vs jobs ended`);
             c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inClass.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} response time vs queue + elapsed`);
+            // The queue/execution split of ACTUAL (RF-13): R723CQDT is the jobs' initiator wait, EXECUTION the rest.
+            c.close(sum(rows.map((r) => (r.avgQueueSec ?? 0) * r.ended)), sum(inClass.map((j) => j.queuedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} QUEUED vs initiator wait`);
+            c.close(sum(rows.map((r) => ((r.avgRtSec ?? 0) - (r.avgQueueSec ?? 0)) * r.ended)), sum(inClass.map((j) => j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} execution time vs elapsed`);
           }
           for (const rc of new Set(mine.map((j) => j.cls.reportClass).filter((x): x is string => x !== null))) {
             if (workloadRcs.has(rc)) continue;
@@ -949,6 +974,7 @@ export const IDENTITIES: Identity[] = [
             const rows = (o.iv.wlmRc ?? []).filter((r) => r.lparId === lparId && r.serviceClass === rc);
             c.close(sum(rows.map((r) => r.ended)), inRc.length, ROUNDING, () => `${at(o)} ${lparId} report class ${rc} ENDED vs jobs ended`);
             c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inRc.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} report class ${rc} response time vs queue + elapsed`);
+            c.close(sum(rows.map((r) => (r.avgQueueSec ?? 0) * r.ended)), sum(inRc.map((j) => j.queuedSec)), ROUNDING, () => `${at(o)} ${lparId} report class ${rc} QUEUED vs initiator wait`);
           }
         }
       }
@@ -1410,6 +1436,7 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
   'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
   'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
+  'a batch period reporting initiator queue time': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => (r.avgQueueSec ?? 0) > 0)),
   'batch jobs ended in a class': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
     const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick);
     const sc = rt && classify(o.def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;

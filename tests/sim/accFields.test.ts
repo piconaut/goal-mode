@@ -50,7 +50,7 @@ const SCP_ACC_FIELDS = {
   workManager: { ...ALL, value: v() },
   completions: { ...ALL, value: v() },
   rtSumSec: { ...ALL, value: v() },
-  rtQueueSumSec: { ...WLM_ACC_ONLY, value: v() },
+  rtQueueSumSec: { ...ALL, value: v() },
   buckets: { ...ALL, value: v() },
   using: { ...ALL, value: v() },
   delay: { ...ALL, value: v() },
@@ -119,10 +119,6 @@ const OMIT_REASONS: Partial<Record<keyof Required<ScpAcc>, Partial<Record<Fn, st
       'reportedTicks() subtracts CICS transaction samples from a tick and attributes them to its region classes before addScp(), so an RMF interval accumulator has none.',
     sumAcc:
       'moved samples are attribution metadata; their work is already in using/delay/cpuEngines, and reportedAccs() attributes it to region classes before a sysplex sum.',
-  },
-  rtQueueSumSec: {
-    addScp:
-      "WLM's batch queue-time figure (WT-12); the sim's WLMGL row (rmf.ts wlmRecord) reports no queue time yet, though real SMF 72.3 does (R723CQDT, z/OS 3.1 MVS SMF SA38-0667-60 PDF p.646 (printed 618); RF-13).",
   },
   ziipEnginesView: {
     addScp: "Monitor III's decayed zIIP view (PR-21); the RMF interval record reads ziipEngines (APPL% IIP).",

@@ -13,6 +13,7 @@ const rec = (over: Partial<WlmRecord>): WlmRecord => ({
   endPerSec: 616.2,
   failed: 0,
   avgRtSec: 0.054,
+  avgQueueSec: null,
   execVelocity: 82.8,
   pi: 12.62,
   applCpPct: 616.2,
@@ -40,6 +41,15 @@ describe('WLMGL layout', () => {
     const delayCpuEnd = ends([...h2.matchAll(/CPU/g)])[1]!;
     expect(row.slice(delayCpuEnd - 2, delayCpuEnd)).toBe('69');
   });
+});
+
+it('prints the queue part of response time beside ACTUAL (TRANS-TIME QUEUED, R723CQDT)', async () => {
+  const { renderWlmDetail } = await import('../../src/sim/measure/reports');
+  const iv = { startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P', wlm: [rec({ avgRtSec: 60, avgQueueSec: 20 })] } as unknown as RmfInterval;
+  const row = renderWlmSummary(iv).split('\n').find((l) => l.startsWith('ONLRETL'))!;
+  // A job that waited 20 s for an initiator and ran 40 s: ACTUAL 60, QUEUED 20, side by side.
+  expect(row).toMatch(/60\.0 +20\.0/);
+  expect(renderWlmDetail(iv, 'ONLRETL#1')).toContain('QUEUED 20.0000s');
 });
 
 it('shows CICS work manager states and region sample owners without invented transaction resource percentages', async () => {

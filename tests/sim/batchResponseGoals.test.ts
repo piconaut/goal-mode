@@ -131,15 +131,17 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     const acc = measured(next);
     // ENDED has no goal-type condition (RMF Report Analysis 3.1 p.530-531): the job is one ended transaction.
     expect([acc.completions, acc.rtSumSec]).toEqual([1, 60]);
-    // The queue split and the buckets stay with response-time goals (RMF's velocity distribution is not modelled).
-    expect(acc.rtQueueSumSec).toBeUndefined();
+    // The queue split is recorded whatever the goal (R723CQDT, RF-13: SMF carries it for every period); only the
+    // buckets stay with response-time goals (RMF's velocity distribution is not modelled).
+    expect(acc.rtQueueSumSec).toBe(20);
     expect(acc.buckets.every((n) => n === 0)).toBe(true);
     // Neither a velocity nor a discretionary PI reads completions.
     expect(accPi(goal, acc)).toBe(accPi(goal, { ...acc, completions: 0, rtSumSec: 0 }));
     const iv = closeInterval(next.rmf.acc, { def: next.wlm.definition, config: next.config, r4haByLpar: {}, jobs: [], endTick: next.tick });
     for (const system of ['PROD1', '*PLEX']) {
       const row = iv.wlmRc!.find((r) => r.lparId === system && r.scKey === 'BATCHRC')!;
-      expect([row.ended, row.avgRtSec]).toEqual([1, 60]);
+      // The row reports the initiator wait inside its response time (TRANS-TIME QUEUED, RMF Report Analysis p.531).
+      expect([row.ended, row.avgRtSec, row.avgQueueSec]).toEqual([1, 60, 20]);
       expect(row.buckets.every((n) => n === 0)).toBe(true);
     }
   });
