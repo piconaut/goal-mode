@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-27: milestone #504 merged to `main` (PT-20 general operations). Backlog: PR-27 (gateway sources as sim state); RF-10 unblocked (the settlement drain holds off online writers for its wait and run windows; implementer checks the REORG drain phase); RF-12 re-scoped by research: a cancelled RMFGAT leaves Monitor I reports whole and shortens only CF Activity (SMF 74.4).
 - 2026-11-26: PT-57 exposes live operator commands and their targets in the play CLI through the same game path and Operations view as the browser.
 - 2026-11-26: PT-55 bots choose operation targets from player-visible reports and release gateway/HSM protection from offered traffic and recall demand; ambiguous targets stay unresolved, PROCU honors address-space CPU modifiers, and report-only offered-rate accounting keeps old saves readable. Three 20-seed sweeps stayed inside the bands (Midwest 17 / 27 / 40 and 19/20, Harbourline 10 / 32 / 40 and 17/20 (textbook 2/20), Revenue 20.5 / 27 / 40 and 20/20); PT-20's entries are done. [PR #502](https://github.com/piconaut/goal-mode/pull/502)
 - 2026-11-26: PT-54 moves card resolution to operator effects, linked rollouts and inbox replies, retains the CICS/HSM relief footprints, models settlement backout, and migrates legacy saves. The three 20-seed sweeps stayed inside their balance bands. PT-55 is ready. [PR #501](https://github.com/piconaut/goal-mode/pull/501)

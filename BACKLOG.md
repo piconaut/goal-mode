@@ -247,18 +247,31 @@ its usual hours stays about the same. Done when: a realism test shows the excess
 of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
 three-scenario sweep is recorded.
 
-### RF-12 · A stopped Monitor III gatherer leaves holes in its SMF records
-`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
+### RF-12 · A stopped Monitor III gatherer leaves holes in CF Activity (SMF 74.4)
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
-Source: PR review of PT-56 (2026-11-26), docs/research.md "RMF". Monitor III writes SMF records too (Monitor I, II and
-III write types 70–79), and coupling facility structure detail for the CF Activity report is gathered only on the
-master gatherer system, picked among systems whose Monitor III gatherer is active (Data Gatherer User's Guide PDF p.23
-(printed 5), PDF p.99 (printed 81), PDF pp.102–103 (printed 84–85)). In the sim, cancelling RMFGAT gaps only the live
-Monitor III views; the Postprocessor intervals are untouched. Design first: which RMF intervals the sim should treat as
-Monitor III-written (the book's table of record types per monitor is the source), whether the master role moves when
-its gatherer stops (not stated in the pages read; check before modelling), and how a partial interval shows. Done when:
-cancelling RMFGAT on a system leaves the chosen records short for that interval and system, a realism test shows it,
-the report invariants still hold, and SPEC §17 and the ledger row are updated.
+Source: PR review of PT-56 (2026-11-26); research settled 2026-11-27 (docs/research.md "RMF"). The Data Gatherer
+User's Guide's table of monitored activities ([Data Gatherer User's Guide PDF pp.23–24 (printed 5–6)](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=23)) lists, per monitor, the SMF types it writes: Monitor III writes
+74.4 (coupling facility), 74.2 (XCF), 74.3/74.6 (UNIX), 74.9, 74.10, 72.4 and 72.5; Monitor I, which runs in the RMF
+address space and keeps running when RMFGAT is cancelled, writes 70.1, 72.3, 73, 74.1, 74.5, 75 and 78. So a cancelled
+RMFGAT leaves the CPU Activity, Partition Data, WLMGL, Channel and DASD reports whole; of the reports the game has,
+only CF Activity (74.4) comes from Monitor III. CF structure detail is gathered once per sysplex on the master
+gatherer, which the Sysplex Data Server picks automatically among systems whose Monitor III gatherer is active
+([PDF pp.102–103 (printed 84–85)](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=102)). A
+`MODIFY RMF,STOP III` forces an immediate end of interval
+([PDF p.63 (printed 45)](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=63)).
+
+Model: while RMFGAT is down on a system, CF Activity's per-system rows (that system's requests to each CF) carry only
+the samples before the cancel and after the automation restart, with the interval's sampled time shown short; the
+structure detail comes from the master gatherer, which the game picks as the first system by id with an active
+gatherer and re-picks at the next interval when the master's gatherer stops. APPROX (not stated in the books): how
+quickly the master moves, and that a CANCEL ends the interval like `STOP III` does. The other RMF reports stay
+unchanged.
+
+Done when: cancelling RMFGAT on a system shortens that system's CF Activity rows for the affected interval(s), a
+cancel on the master moves structure detail to another system from the next interval, a realism test shows both and
+that CPU Activity/WLMGL/DASD are unchanged, the report invariants still hold, and SPEC §17 and the ledger row are
+updated.
 
 ## balance
 
