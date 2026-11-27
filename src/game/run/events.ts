@@ -1,4 +1,5 @@
 import { MAX_OVERTIME } from '../catalog';
+import { applyCommands } from '../../sim/core/commands';
 import type { Scenario } from '../../sim/core/scenario';
 import { type EventDef } from '../../content/events/midwest-events';
 import { cardMechanisms } from '../../content/footprint';
@@ -181,10 +182,15 @@ export function resolveEvent(run: RunState, event: ActiveEvent, operation?: Card
   const commands = event.started ? event.endCommands.filter((cmd) =>
     operation?.kind !== 'CANCEL_ADDRESS_SPACE' || cmd.kind !== 'CANCEL_ADDRESS_SPACE' ||
     cmd.jobname !== operation.jobname || cmd.lparId !== operation.lparId) : [];
+  // A gateway source split only affects future ticks' shedding, and the card is over now: settle it here rather than
+  // one tick later, so the state the player reads (the BLOCK hint, the sim) stops claiming the attack the instant the
+  // card ends. The other end commands (rate, CPU) keep the ended tick's values, so they still run on the next advance.
+  const settle = commands.filter((cmd) => cmd.kind === 'SET_GATEWAY_SOURCE');
   return {
     ...run,
+    ...(settle.length > 0 ? { sim: applyCommands(run.sim, settle) } : {}),
     events: run.events.map((e) => e.uid === event.uid ? { ...resolved, ended: true, endTick: run.sim.tick } : e),
-    pendingCommands: [...run.pendingCommands, ...commands],
+    pendingCommands: [...run.pendingCommands, ...commands.filter((cmd) => cmd.kind !== 'SET_GATEWAY_SOURCE')],
   };
 }
 

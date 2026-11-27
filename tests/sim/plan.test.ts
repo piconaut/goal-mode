@@ -105,6 +105,7 @@ describe('lookup plan invalidation', () => {
     const cmds: Command[] = [
       { kind: 'SET_ROUTING_POLICY', workloadId: wl.id, policy: { method: 'WLM', distMethod: 'BASEWLM' } },
       { kind: 'SET_MODIFIER', mod: 'rate', key: wl.id, value: 1.2 },
+      { kind: 'SET_GATEWAY_SOURCE', workloadId: wl.id, source: 'attackRateMult', mult: 4 },
       { kind: 'SET_LOCK_BOOST', value: 1 },
       { kind: 'CANCEL_DB2_READERS', members: [base.config.db2[0]!.ssid] },
       { kind: 'NOTE', text: 'x' },

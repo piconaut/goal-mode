@@ -4,11 +4,13 @@
 // different share of the same demand.
 
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { GATEWAY } from '../../src/content/operations';
 import { MIDWEST } from '../../src/content/scenarios';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { ActiveEvent } from '../../src/game/types';
 import { applyOperation } from '../../src/sim/core/operations';
 import { step } from '../../src/sim/core/step';
+import { TICK_SEC } from '../../src/sim/core/units';
 
 const bots = MIDWEST_GAME.events.find((e) => e.id === 'BOT_ATTACK')!;
 // The card must be in the content so `advance` can find its begin/end commands; its minDay keeps the deck empty on
@@ -55,10 +57,18 @@ describe('gateway source state (PR-27)', () => {
     let run = { ...startDay(newRun(MIDWEST, content, 7), content), events: [card(0)] };
     run = advance(run, MIDWEST, content, 2);
     expect(run.sim.mods.gatewaySources?.MOBILE?.attackRateMult).toBeGreaterThan(1);
+    // Keep a protection mode on through the end: the source, not the mode, is what must disappear.
+    const mode = applyOperation(run.sim, MIDWEST, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' });
+    expect(mode.ok).toBe(true);
     // End the card the way the deck does: its end commands clear what its begin set.
-    run = { ...run, sim: { ...run.sim, tick: 2 }, events: run.events.map((e) => ({ ...e, endTick: 2 })) };
+    run = { ...run, sim: { ...mode.state, tick: 2 }, events: run.events.map((e) => ({ ...e, endTick: 2 })) };
     run = advance(run, MIDWEST, content, 1);
     expect(run.sim.mods.gatewaySources).toBeUndefined();
-    expect(step(run.sim, [], MIDWEST)).toEqual(advance(run, MIDWEST, content, 1).sim);
+    const game = advance(run, MIDWEST, content, 1).sim;
+    expect(step(run.sim, [], MIDWEST)).toEqual(game);
+    // With no source left, BLOCK fails the shared-source share of the whole offered rate. A leaked attack source would
+    // strip the attack share first and fail only a quarter as much.
+    const mobile = game.last.workloads.find((w) => w.id === 'MOBILE')!;
+    expect(mobile.failed).toBeCloseTo(GATEWAY.sharedSourceFrac * mobile.offeredRate! * TICK_SEC, 6);
   });
 });

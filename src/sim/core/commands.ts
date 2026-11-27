@@ -46,7 +46,9 @@ export type Command =
   | { kind: 'SET_ROUTING_POLICY'; workloadId: string; policy: RoutingPolicy }
   | { kind: 'SET_MODIFIER'; mod: ModifierKey; key: string; value: number }
   /** A gateway card's source split: the multiplier of a channel's organic demand that is attack traffic or client
-   *  retries (1 = none). It lives in sim state so a sim-only replay sheds the same traffic as the game (PT-20). */
+   *  retries (1 = none). It lives in sim state so a sim-only replay sheds the same traffic as the game (PT-20). The
+   *  deck draws a card once a day and never on consecutive days, so no two live cards write the same workload and
+   *  source; an end therefore cannot clear a survivor's multiplier. */
   | { kind: 'SET_GATEWAY_SOURCE'; workloadId: string; source: 'attackRateMult' | 'retryRateMult'; mult: number }
   /** `holder`: the batch stream holding the escalated locks (PT-52); omit it to keep a holder already set. */
   | { kind: 'SET_LOCK_BOOST'; value: number; holder?: { stream: string; object: string } | null }
