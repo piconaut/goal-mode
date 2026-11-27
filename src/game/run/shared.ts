@@ -2,6 +2,7 @@ import type { WorkloadDef } from '../../sim/workload/types';
 import type { Facet } from '../../content/types';
 import {
   facetsOf,
+  type ActiveEvent,
   type RunState
 } from '../types';
 
@@ -10,6 +11,17 @@ export type { GameContent } from '../../content/types';
 export const BASE_HOURS = 8;
 export const FATIGUE_PER_OVERTIME_HOUR = 6;
 export const FACET_WEIGHT: Record<string, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
+
+/** The live query: a card that has started, not ended and not passed its end tick. */
+export const cardLive = (e: Pick<ActiveEvent, 'started' | 'ended' | 'endTick'>, tick: number): boolean =>
+  e.started && !e.ended && (e.endTick === null || e.endTick > tick);
+
+/** The engine's tick-aware form: inside `advance` a card whose `startTick` is this tick has not had `started` written
+ * yet. `advance`'s footprint build uses it, and so does `gatewaySources`, which `advance` calls before that write. */
+export const cardRunning = (
+  e: Pick<ActiveEvent, 'started' | 'ended' | 'startTick' | 'endTick'>,
+  tick: number,
+): boolean => (e.started || e.startTick <= tick) && !e.ended && (e.endTick === null || e.endTick > tick);
 
 export const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
 
