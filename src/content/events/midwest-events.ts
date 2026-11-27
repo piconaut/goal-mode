@@ -7,6 +7,7 @@ import type { WorkloadDef } from '../../sim/workload/types';
 import type { FootprintReach, FootprintResource } from '../footprint';
 import { MIDWEST_DB2_CONTENTION } from '../scenarios/midwest-db2';
 import { CICSXLOG_ENGINES } from '../scenarios/midwest-workloads';
+import { HSM_RECALL_STORM } from '../operations';
 
 /** Roster entities a card loads with its extra demand (PT-52): the culprits an operation can target. */
 export interface CulpritSpec {
@@ -582,7 +583,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 2.5,
     // FICTIONAL magnitude: 60_000 random I/Os per second on LCU 30 roughly doubles its response at day-0 load. The
     // curve is a cliff just above (75k ≈ 15×), and nightly growth moves the cliff closer, so stay below it.
-    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } }],
+    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: HSM_RECALL_STORM.randomIops } }],
     end: [{ kind: 'SET_LCU', lcuId: '30', extraIops: {} }],
     relief: 'HSM_RECALL',
     forewarning: null,

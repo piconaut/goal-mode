@@ -52,5 +52,8 @@ export const GATEWAY_TRAFFIC_CARDS: Readonly<Record<string, 'attackRateMult' | '
 // FICTIONAL: quiesced asynchronous recalls replay at a controlled rate; some scheduled jobs need WAIT recalls.
 export const HSM_RECALL = { lcuId: '30', drainIops: 12_000, waitJobFrac: 0.2 };
 
+// FICTIONAL: the recall storm's extra random I/O on the recall LCU (roughly doubles LCU 30's response at day-0 load).
+export const HSM_RECALL_STORM = { randomIops: 60_000 };
+
 // FICTIONAL: approximate backout time from how long the current batch attempt has run.
 export const SETTLEMENT_BACKOUT_ELAPSED_MULT = 1;

@@ -14,6 +14,7 @@ import type { ProofResult } from './proof';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
 import type { CpuGrant, CpuWait, SimState } from '../sim/core/types';
+import type { GatewayMode } from '../sim/core/operations';
 import type { NightSummary } from '../sim/subsys/batch';
 import type { Facet, DraftOption, Mechanism, Trigger } from '../content/types';
 
@@ -428,6 +429,12 @@ export interface DayReport {
   events: string[];
   /** Worst sysplex PI per service-class period over the day's RMF intervals. */
   piWorst: Record<string, number>;
+  /** External channels still under a gateway protection mode when the day closed, with that mode (PT-20 rule 6).
+   * Absent in reports written before PR-26. */
+  gateway?: { id: string; name: string; mode: GatewayMode }[];
+  /** DFSMShsm recalls at the day's close: held (and since when), and the I/O queued then. Null when recalls were
+   * neither held nor backlogged; absent in reports written before PR-26. */
+  recalls?: { held: boolean; heldSinceTick: number | null; backlogIo: number } | null;
 }
 
 export interface Message {
