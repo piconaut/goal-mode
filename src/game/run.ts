@@ -232,7 +232,9 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       if (!e.started && !e.ended && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.culprits) {
-          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
+          // The card's excess is sized over its own hours (RF-11): an open-ended card over the played day.
+          const toTick = def.durationHours === null ? e.startTick + TICKS_PER_DAY : e.startTick + Math.max(1, Math.round(def.durationHours * TICKS_PER_HOUR));
+          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult, { fromTick: e.startTick, toTick });
           cmds.push(...c.commands);
           resolvedEnd.set(e.uid, [...e.endCommands, { kind: 'CLEAR_ENTITY_LOADS', tag: e.uid }]);
           resolvedCulprits.set(e.uid, c.ids);

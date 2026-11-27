@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST } from '../../src/content/scenarios';
 import type { CulpritSpec } from '../../src/content/events/midwest-events';
-import { dayMeanRefEngines, resolveCulprits } from '../../src/game/culprits';
-import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import { meanRefEngines, playedDayWindow, resolveCulprits } from '../../src/game/culprits';
 import { initState } from '../../src/sim/core/init';
 
 const sim = initState(42, MIDWEST);
@@ -26,13 +25,13 @@ describe('resolveCulprits', () => {
   });
 
   it('splits (cpuMult - 1) x the day-mean sysplex CPU over the culprits, whatever the routing; severity 2 doubles it', () => {
-    const day = Math.floor(sim.tick / TICKS_PER_DAY);
+    const win = playedDayWindow(sim.tick);
     const extras = (sev: number) => {
       const r = resolveCulprits(sim, ws, tsoSpec, 'card-1', sev);
       return r.commands.map((c) => (c.kind === 'SET_ENTITY_LOAD' ? c.load.engines : NaN));
     };
     const one = extras(1);
-    const expected = (7 * dayMeanRefEngines(tso, day)) / one.length;
+    const expected = (7 * meanRefEngines(tso, win.fromTick, win.toTick)) / one.length;
     for (const x of one) expect(x).toBeCloseTo(expected, 12);
     const two = extras(2);
     expect(two).toHaveLength(one.length);
@@ -48,7 +47,8 @@ describe('resolveCulprits', () => {
     if (c.kind === 'SET_ENTITY_LOAD') {
       expect(c.load.kind).toBe('DDF_THREAD');
       expect(adhoc.routing[c.load.lparId]).toBeGreaterThan(0);
-      expect(c.load.engines).toBeCloseTo(9 * dayMeanRefEngines(adhoc, Math.floor(sim.tick / TICKS_PER_DAY)), 9);
+      const win = playedDayWindow(sim.tick);
+      expect(c.load.engines).toBeCloseTo(9 * meanRefEngines(adhoc, win.fromTick, win.toTick), 9);
     }
   });
 

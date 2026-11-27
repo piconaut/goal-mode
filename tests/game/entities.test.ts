@@ -8,8 +8,7 @@ import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
 import { STC_AUTOMATION } from '../../src/content/entities';
 import { HARBOURLINE, MIDWEST, REVENUE } from '../../src/content/scenarios';
 import { CICSXLOG_ENGINES } from '../../src/content/scenarios/midwest-workloads';
-import { dayMeanRefEngines } from '../../src/game/culprits';
-import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import { meanRefEngines } from '../../src/game/culprits';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { db2LockHolder, cicsStorageStats } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
@@ -51,10 +50,11 @@ describe('runaway thread and shadow IT load roster entities, not a workload modi
     const loads = r.sim.entityLoads ?? [];
     expect(loads).toHaveLength(1);
     expect(loads[0]).toMatchObject({ kind: 'DDF_THREAD', workloadId: 'ADHOC', lparId: 'PROD2' });
-    // ADHOC runs only on PROD2 in Midwest, so its one thread carries the whole excess: 9 × the day's mean ADHOC
-    // CPU in reference engines (RF-11), a constant demand rather than a multiple of the image's rate.
+    // ADHOC runs only on PROD2 in Midwest, so its one thread carries the whole excess: 9 × the ADHOC CPU averaged over
+    // the card's own five hours, in reference engines (RF-11), a constant demand rather than a multiple of the image's rate.
     const adhoc = MIDWEST.workloads.find((w) => w.id === 'ADHOC')!;
-    expect(loads[0]!.engines).toBeCloseTo(9 * dayMeanRefEngines(adhoc, Math.floor(r.sim.tick / TICKS_PER_DAY)), 6);
+    const start = r.events[0]!.startTick;
+    expect(loads[0]!.engines).toBeCloseTo(9 * meanRefEngines(adhoc, start, start + 5 * TICKS_PER_HOUR), 6);
     expect(r.sim.mods.cpu.ADHOC).toBeUndefined();
     expect(r.events[0]!.culprits).toEqual([loads[0]!.id]);
     r = { ...r, events: r.events.map((e) => ({ ...e, endTick: r.sim.tick + 1 })) };
