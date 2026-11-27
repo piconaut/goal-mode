@@ -18,12 +18,12 @@ const bots = MIDWEST_GAME.events.find((e) => e.id === 'BOT_ATTACK')!;
 const content = { ...MIDWEST_GAME, events: [bots] };
 
 /** The bot card live from the run's first tick, its begin commands not yet applied. */
-const card = (startTick: number): ActiveEvent => ({
+const card = (startTick: number, endTick: number | null = null): ActiveEvent => ({
   uid: 'BOT_ATTACK@0',
   defId: bots.id,
   name: bots.name,
   startTick,
-  endTick: null,
+  endTick,
   trigger: bots.trigger,
   affects: bots.affects,
   mechanisms: [],
@@ -51,6 +51,16 @@ describe('gateway source state (PR-27)', () => {
     // The attack share was blocked, not admitted; the failed share is the shared-source leak only.
     const mobile = simOnly.last.workloads.find((w) => w.id === 'MOBILE')!;
     expect(mobile.failed).toBeGreaterThan(0);
+  });
+
+  it('drops the source at the end tick, before the end commands run on the next advance', () => {
+    let run = { ...startDay(newRun(MIDWEST, content, 7), content), events: [card(0, 2)] };
+    run = advance(run, MIDWEST, content, 2);
+    expect(run.sim.tick).toBe(2);
+    // The card reached its end tick but its end commands are still pending: `cardLive` says it is over, so its
+    // attack source must already be gone (the old derivation read the cards' liveness, not the state).
+    expect(run.events[0]).toMatchObject({ started: true, ended: false, endTick: 2 });
+    expect(run.sim.mods.gatewaySources).toBeUndefined();
   });
 
   it('stops applying the source when the card ends, so the next replay matches too', () => {

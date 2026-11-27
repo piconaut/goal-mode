@@ -175,6 +175,17 @@ export function eventEndLog(run: RunState, def: EventDef, uid: string): string |
   return t === null ? null : `EVENT end: ${t.named ? def.name : t.text}`;
 }
 
+/** Settle the gateway source of a card that has reached its own end tick but whose end commands run on the next
+ * advance: the source only affects future ticks, and `cardLive` already says the card is over, so the published state
+ * and the BLOCK hint must not keep claiming its attack for that tick. Idempotent with the end command that runs then. */
+export function settleEndedGatewaySources(run: RunState): RunState {
+  const commands = run.events.flatMap((event) =>
+    event.started && !event.ended && event.endTick !== null && event.endTick <= run.sim.tick
+      ? event.endCommands.filter((cmd) => cmd.kind === 'SET_GATEWAY_SOURCE')
+      : []);
+  return commands.length > 0 ? { ...run, sim: applyCommands(run.sim, commands) } : run;
+}
+
 /** Apply card cleanup for a timely resolution. An intercepted card has no begin effects to undo. */
 export function resolveEvent(run: RunState, event: ActiveEvent, operation?: CardOperation): RunState {
   if (event.ended) return run;
