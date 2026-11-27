@@ -68,22 +68,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-57 · Operator commands in the play CLI
-`list: playtest-fixes · status: ready · priority: high · size: M · area: tooling`
-
-Source: PT-56 review (2026-11-26). The operator commands PT-56 adds (cancel a job or started task, log off a TSO user,
-cancel a Db2 thread, terminate a utility, recycle CICS regions, gateway modes, HSM recall hold) are reachable only from
-the browser's Change Desk › Operations (game command `OPERATION`). `tools/play.ts` has no command for them, and its
-`json` passthrough takes only `PlayCommand`, so the headless player agents (`.claude/agents/goal-mode-*.md`) cannot
-use them and agent playtests never exercise PT-56. Add a `PlayCommand` that applies an `Operation` through
-`applyGameCommand` (the path the browser and the day trace use), CLI verbs for each operation, and an `ops` listing of
-what the player can target now: the same rows as `operationsView` (running jobs and cancellable address spaces, TSO
-and DDF thread rosters, active and missed utilities, CICS regions with recycle state, gateway channels and modes,
-recall state), with the ids the verbs take. Refusals print the game's message (IEE838I, subsystem servers). Document
-the verbs in `docs/agents.md` and the player agent definitions. Not in scope: automatic bot strategy changes. Done when: each
-operation can be issued and refused from the CLI, a test applies one of each through `playCore` and matches the
-browser path's result, and a short agent playtest log shows a player agent using one.
-
 ## rca-truth
 
 RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
