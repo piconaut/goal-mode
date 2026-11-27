@@ -5,7 +5,7 @@ import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
 import { AUDIT } from '../content/events/midwest-events';
 import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
-import { chargeHeldRecalls, gatewaySources } from './operations';
+import { chargeHeldRecalls, gatewaySources, gatewayStatus, recallStatus } from './operations';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { initState } from '../sim/core/init';
 import { Rng, streamRng } from '../sim/core/rng';
@@ -497,6 +497,10 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     mlcEstimate: estimateMonth(r.sim.cost, scenario.products),
     events: r.events.filter((e) => e.started && e.startTick < r.sim.tick && e.startTick >= day * TICKS_PER_DAY).map((e) => e.name),
     piWorst: worstPiOfDay(r.sim.rmf.intervals, day),
+    // PT-20 rule 6: the gateway modes and the HSM recall hold in force when the day closed, so a player reading the
+    // report afterwards can see what was still shedding work or holding recalls.
+    gateway: gatewayStatus(r, scenario),
+    recalls: recallStatus(r),
   };
 
   const bonus = r.bonusHours.filter((b) => b.untilDay > day + 1);

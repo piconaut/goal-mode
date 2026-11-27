@@ -1,6 +1,7 @@
 // The identities of the cross-report invariant suite (tests/sim/report-invariants.test.ts). Each one states a
 // relation between figures a player can read (RMF interval reports, Partition Data, Monitor III, the SMF views,
-// Finance) or between a figure and the sim state it is measured from, and walks whatever the run's reports contain:
+// Finance, the day report card) or between a figure and the sim state it is measured from, and walks whatever the
+// run's reports contain:
 // no identity names a scenario, LPAR, service class or workload.
 //
 // `basis` says what the identity is: 'z/OS' = how the real report behaves (book and page in `source`, checked with
@@ -23,6 +24,7 @@ import { billLines, closeMonth, tfpCharge } from '../../src/sim/cost/mlc';
 import { msuPerCp } from '../../src/sim/hw/cpc';
 import { REPORT_KINDS, renderReport, renderScrt } from '../../src/sim/measure/reports';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
+import { gatewayChannels } from '../../src/sim/core/operations';
 import { classify } from '../../src/sim/wlm/classify';
 import { BUCKET_BOUNDS } from '../../src/sim/wlm/goals';
 import { ACC_DECAY, goalInfo } from '../../src/sim/wlm/runtime';
@@ -1307,6 +1309,36 @@ export const IDENTITIES: Identity[] = [
           if (!r) continue;
           c.ok(cell.pi === r.pi || (cell.pi !== null && r.pi !== null && Math.abs(cell.pi - r.pi) <= 1e-9 * Math.max(1, r.pi)), () => `${at(o)} ${cell.scKey} heat map PI ${cell.pi}, SYSSUM ${r.pi}`);
           c.ok(cell.importance === r.importance, () => `${at(o)} ${cell.scKey} importance`);
+        }
+      }
+    },
+  },
+  // ---------------------------------------------------------------- The day report card
+  {
+    id: 'day-report-operations',
+    title: "The day's report card names the gateway protection modes and the DFSMShsm recall hold the sim had when the day closed",
+    basis: 'game',
+    source: 'PT-20 design §2 rule 6 (toggled state is visible in a report), §3 (gateway modes, HSM hold)',
+    check: (run, c) => {
+      for (const { report, end } of run.dayReports) {
+        const where = (x: string) => () => `day ${report.day + 1} ${x}`;
+        const names = new Map(gatewayChannels(end.sim, run.scenario).map((w) => [w.id, w.name]));
+        const modes = end.sim.gatewayModes ?? {};
+        const lines = report.gateway ?? [];
+        c.ok(lines.length === Object.keys(modes).length, where(`${lines.length} gateway lines for ${Object.keys(modes).length} protected channels`));
+        for (const line of lines) {
+          c.ok(line.mode === modes[line.id], where(`${line.id} gateway mode ${line.mode} vs ${modes[line.id] ?? 'off'}`));
+          c.ok(line.name === (names.get(line.id) ?? line.id), where(`${line.id} gateway name`));
+        }
+        const rec = end.sim.hsmRecalls;
+        const held = rec?.heldSinceTick != null;
+        const backlog = rec?.backlogIo ?? 0;
+        if (report.recalls) {
+          c.ok(report.recalls.held === held, where(`recall held ${report.recalls.held} vs ${held}`));
+          c.ok(report.recalls.heldSinceTick === (rec?.heldSinceTick ?? null), where('recall hold start'));
+          c.close(report.recalls.backlogIo, backlog, ROUNDING, where('recall backlog'));
+        } else {
+          c.ok(!held && backlog <= 0, where('no recall line with a hold or a backlog'));
         }
       }
     },

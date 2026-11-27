@@ -1,6 +1,6 @@
 import { GATEWAY_TRAFFIC_CARDS, OPERATION_TRUST, OPERATIONS } from '../content/operations';
 import { STC_AUTOMATION } from '../content/entities';
-import { applyOperation, gatewayChannels, operatorRoster, type Operation } from '../sim/core/operations';
+import { applyOperation, gatewayChannels, operatorRoster, type GatewayMode, type Operation } from '../sim/core/operations';
 import type { Scenario } from '../sim/core/scenario';
 import { effectiveAddressSpaces } from '../sim/core/tick/helpers';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
@@ -52,6 +52,26 @@ const firstFacet = (run: RunState, facets: readonly string[]): string[] => {
   const facet = facets.find((f) => run.trust[f] !== undefined);
   return facet === undefined ? [] : [facet];
 };
+
+/** External channels under a gateway protection mode, for the day's report card (PT-20 rule 6: toggled state is
+ * visible). The mode in force when the report is taken; a channel switched off before the day closed is not listed. */
+export function gatewayStatus(run: RunState, scenario: Scenario): { id: string; name: string; mode: GatewayMode }[] {
+  const modes = run.sim.gatewayModes;
+  if (!modes) return [];
+  return gatewayChannels(run.sim, scenario).flatMap(({ id, name }) => {
+    const mode = modes[id];
+    return mode === undefined ? [] : [{ id, name, mode }];
+  });
+}
+
+/** The DFSMShsm recall state for a report: held (and since when) and the I/O queued. Null when recalls are neither
+ * held nor backlogged, so a released-and-drained queue prints no line. */
+export function recallStatus(run: RunState): { held: boolean; heldSinceTick: number | null; backlogIo: number } | null {
+  const recalls = run.sim.hsmRecalls;
+  if (!recalls) return null;
+  const held = recalls.heldSinceTick != null;
+  return held || recalls.backlogIo > 0 ? { held, heldSinceTick: recalls.heldSinceTick, backlogIo: recalls.backlogIo } : null;
+}
 
 export function chargeHeldRecalls(run: RunState, tick: number): RunState {
   const since = run.sim.hsmRecalls?.heldSinceTick;
