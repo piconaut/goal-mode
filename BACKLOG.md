@@ -181,18 +181,6 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-27 · Gateway traffic sources as sim state, not a fourth `step` input
-`list: pr-followups · status: ready · priority: low · size: S · area: sim`
-
-Source: milestone #504 review (PT-20). `step(state, commands, scenario, sources)` takes the gateway attack and retry
-multipliers that `src/game/run.ts` derives from active cards each tick (`gatewaySources` in `src/game/operations.ts`),
-so they live in neither `SimState` nor the command log. Determinism holds only because `run.ts` is the sole caller
-that sets a gateway mode; a sim-only replay (bench, lab, headless) of a state with `gatewayModes` set sheds
-differently. Have the gateway cards' begin/end commands set and clear the multipliers in sim state (e.g.
-`SimState.mods.gatewaySources`), read them in `step`, and drop the fourth parameter and `gatewaySources`. Done when:
-`step` has three parameters, a test shows a sim-only replay of a gateway run matches the game run, and
-`npm run compare` against `dev` is identical (state-shape changes named with `--drop`).
-
 ## realism-fixes
 
 ### RF-10 · Utility drains on the settlement partition ignore online writers

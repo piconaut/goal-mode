@@ -12,9 +12,9 @@ import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { RoutingPolicy } from '../workload/routing';
 import { STC_AUTOMATION } from '../../content/entities';
-import type { EntityLoad, PoolType, SimModifiers, SimState, UtilityOverrun, ZosSystemConfig } from './types';
+import type { EntityLoad, GatewayTraffic, PoolType, SimModifiers, SimState, UtilityOverrun, ZosSystemConfig } from './types';
 
-type ModifierKey = keyof Omit<SimModifiers, 'lockBoost' | 'lockHolder'>;
+type ModifierKey = keyof Omit<SimModifiers, 'lockBoost' | 'lockHolder' | 'gatewaySources'>;
 
 export type Command =
   | { kind: 'ACTIVATE_POLICY'; definition: ServiceDefinition }
@@ -45,6 +45,12 @@ export type Command =
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
   | { kind: 'SET_ROUTING_POLICY'; workloadId: string; policy: RoutingPolicy }
   | { kind: 'SET_MODIFIER'; mod: ModifierKey; key: string; value: number }
+  /** A gateway card's source split: the multiplier of a channel's organic demand that is attack traffic or client
+   *  retries (1 = none). It lives in sim state so a sim-only replay sheds the same traffic as the game (PT-20). The
+   *  deck draws each card at most once a day (a drawn card leaves the day's pool) and never on consecutive days, and
+   *  each source is set by one card per scenario, so no two live cards write the same workload and source; an end
+   *  therefore cannot clear a survivor's multiplier. */
+  | { kind: 'SET_GATEWAY_SOURCE'; workloadId: string; source: 'attackRateMult' | 'retryRateMult'; mult: number }
   /** `holder`: the batch stream holding the escalated locks (PT-52); omit it to keep a holder already set. */
   | { kind: 'SET_LOCK_BOOST'; value: number; holder?: { stream: string; object: string } | null }
   /** A card's extra demand on a roster entity (PT-52). */
@@ -407,6 +413,20 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
       if (cmd.value === (isFractionMod(cmd.mod) ? 0 : 1)) delete table[cmd.key];
       else table[cmd.key] = cmd.value;
       return ok({ ...s, mods: { ...s.mods, [cmd.mod]: table } }, `${cmd.mod}[${cmd.key}] = ${cmd.value}`);
+    }
+
+    case 'SET_GATEWAY_SOURCE': {
+      const sources = { ...s.mods.gatewaySources };
+      const current: GatewayTraffic = { ...sources[cmd.workloadId] };
+      if (cmd.mult === 1) delete current[cmd.source];
+      else current[cmd.source] = cmd.mult;
+      if (Object.keys(current).length > 0) sources[cmd.workloadId] = current;
+      else delete sources[cmd.workloadId];
+      const { gatewaySources: _previous, ...mods } = s.mods;
+      return ok(
+        { ...s, mods: Object.keys(sources).length > 0 ? { ...mods, gatewaySources: sources } : mods },
+        `Gateway source ${cmd.workloadId} ${cmd.source} = ${cmd.mult}`,
+      );
     }
 
     case 'SET_LOCK_BOOST': {

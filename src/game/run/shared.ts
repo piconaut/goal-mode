@@ -17,9 +17,9 @@ export const cardLive = (e: Pick<ActiveEvent, 'started' | 'ended' | 'endTick'>, 
   e.started && !e.ended && (e.endTick === null || e.endTick > tick);
 
 /** The engine's tick-aware form: inside `advance` a card whose `startTick` is this tick has not had `started` written
- * yet. `advance`'s footprint build uses it, and so does `gatewaySources`, which `advance` calls before that write.
- * Under the engine invariant `started => startTick <= tick` it is the old gateway test `startTick <= tick`; a
- * hand-built state with `started` before its start tick would be counted here, not there. */
+ * yet, and `advance`'s footprint build reads the card before that write. Under the invariant
+ * `started => startTick <= tick` it reduces to `cardLive` at a query taken outside `advance`; a hand-built state with
+ * `started` before its start tick would be counted here, not there. */
 export const cardRunning = (
   e: Pick<ActiveEvent, 'started' | 'ended' | 'startTick' | 'endTick'>,
   tick: number,

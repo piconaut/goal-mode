@@ -5,7 +5,7 @@ import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
 import { AUDIT } from '../content/events/midwest-events';
 import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
-import { chargeHeldRecalls, gatewaySources, gatewayStatus, recallStatus } from './operations';
+import { chargeHeldRecalls, gatewayStatus, recallStatus } from './operations';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { initState } from '../sim/core/init';
 import { Rng, streamRng } from '../sim/core/rng';
@@ -26,7 +26,7 @@ import { emptyPolicyBook, savedPolicy, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
 import { failRisk, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, eventEndLog, eventStartLog, resolveEvent, storyFor } from './run/events';
+import { drawEvents, eventEndLog, eventStartLog, resolveEvent, settleEndedGatewaySources, storyFor } from './run/events';
 import { applyBackout, landRoutineChanges } from './run/otherTeamChanges';
 import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
@@ -266,7 +266,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         if (line) r = logLine(r, line);
       }
     }
-    const sim = step(r.sim, cmds, scenario, r.sim.gatewayModes ? gatewaySources(r, content) : undefined);
+    const sim = step(r.sim, cmds, scenario);
     r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
     // The workloads whose effective routing (pending commands and dynamic routing already applied for this tick)
@@ -327,7 +327,10 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
-    if (sim.hsmRecalls?.heldSinceTick != null) r = chargeHeldRecalls(r, tick);
+    // A card that just reached its end tick is over for the live queries; settle its gateway source now rather than
+    // one advance later, when its other end commands run.
+    r = settleEndedGatewaySources(r);
+    if (r.sim.hsmRecalls?.heldSinceTick != null) r = chargeHeldRecalls(r, tick);
     r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];

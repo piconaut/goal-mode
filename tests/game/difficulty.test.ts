@@ -99,6 +99,7 @@ describe('scaleEventCommands', () => {
       { kind: 'SET_LOCK_BOOST', value: 4 },
       { kind: 'SET_LCU', lcuId: '21', extraIops: { SEQ: 1000 } },
       { kind: 'ABEND_JOB', critical: true },
+      { kind: 'SET_GATEWAY_SOURCE', workloadId: 'MOBILE', source: 'attackRateMult', mult: 4 },
     ];
     expect(scaleEventCommands(cmds, 1)).toEqual(cmds);
     const story = scaleEventCommands(cmds, 0.5);
@@ -107,6 +108,8 @@ describe('scaleEventCommands', () => {
     expect(story[2]).toMatchObject({ value: 2 });
     expect(story[3]).toMatchObject({ extraIops: { SEQ: 500 } });
     expect(story[4]).toEqual(cmds[4]);
+    // A gateway card's source multiplier scales like the demand multiplier it mirrors.
+    expect(story[5]).toMatchObject({ mult: 2.5 });
   });
 
   it('keeps a shrinking multiplier positive when severity rises', () => {

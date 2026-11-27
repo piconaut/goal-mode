@@ -46,6 +46,8 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
     switch (c.kind) {
       case 'SET_MODIFIER':
         return { ...c, value: isFractionMod(c.mod) ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
+      case 'SET_GATEWAY_SOURCE':
+        return { ...c, mult: scaleExcess(c.mult, mult) };
       case 'SET_CF':
         return c.degrade === undefined ? c : { ...c, degrade: scaleExcess(c.degrade, mult) };
       case 'SET_DASD':

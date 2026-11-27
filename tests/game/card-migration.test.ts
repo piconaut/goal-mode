@@ -45,6 +45,18 @@ describe('legacy card save migration', () => {
     expect(live.sim.cancelledAddressSpaces?.some((a) => a.jobname === 'CICSXLOG' && a.lparId === 'PROD1')).toBe(true);
   });
 
+  it("restores a live gateway card's source split into a save written before it lived in sim state", () => {
+    const r = card(fresh(), 'BOT_ATTACK', true);
+    const def = MIDWEST_GAME.events.find((e) => e.id === 'BOT_ATTACK')!;
+    // The old save has the card's rate/CPU modifiers but no `mods.gatewaySources`.
+    const old = { ...r, sim: applyCommands(r.sim, def.begin.filter((c) => c.kind !== 'SET_GATEWAY_SOURCE')) };
+    expect(old.sim.mods.gatewaySources).toBeUndefined();
+    const migrated = migrateRunState(old);
+    expect(migrated.sim.mods.gatewaySources?.MOBILE?.attackRateMult).toBe(4);
+    // A second load finds the values already there and changes nothing (no command-log growth either).
+    expect(migrateRunState(migrated)).toEqual(migrated);
+  });
+
   it('does not replay an already applied historical change', () => {
     const r = card(fresh(), 'XLOG_LOOP', true);
     const old = planned(r, 'CANCEL_XLOG');
