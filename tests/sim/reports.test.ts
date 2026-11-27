@@ -52,6 +52,16 @@ it('prints the queue part of response time beside ACTUAL (TRANS-TIME QUEUED, R72
   expect(renderWlmDetail(iv, 'ONLRETL#1')).toContain('QUEUED 20.0000s');
 });
 
+it('prints QUEUED as - for a row saved before the field existed', async () => {
+  const { renderWlmDetail } = await import('../../src/sim/measure/reports');
+  // RMF intervals persist in v2 saves; a row written before RF-13 has no avgQueueSec at all.
+  const { avgQueueSec: _q, ...old } = rec({});
+  const iv = { startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P', wlm: [old] } as unknown as RmfInterval;
+  const row = renderWlmSummary(iv).split('\n').find((l) => l.startsWith('ONLRETL'))!;
+  expect(row).toMatch(/0\.054 +- +82\.8/);
+  expect(renderWlmDetail(iv, 'ONLRETL#1')).toContain('QUEUED -');
+});
+
 it('shows CICS work manager states and region sample owners without invented transaction resource percentages', async () => {
   const { renderWlmDetail } = await import('../../src/sim/measure/reports');
   const wm = { active: 4, ready: 2, idle: 0, waitingIo: 1, waitingLock: 0.25, waitingProd: 1.5, waitingMisc: 0.5, regionKeys: ['STCHI#1'] };

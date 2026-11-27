@@ -47,8 +47,8 @@ const WLM_COLS: Col[] = [
   { w: 25, h1: ' GOAL', h2: '', left: true, v: (r) => ` ${r.goalText}` },
   { w: 7, h1: 'ACTUAL', h2: 'RESP', v: (r) => (r.avgRtSec === null ? '-' : r.avgRtSec < 10 ? r.avgRtSec.toFixed(3) : r.avgRtSec.toFixed(1)) },
   // TRANS-TIME QUEUED (RMF Report Analysis 3.1 PDF p.531 (printed 491)): the initiator wait inside ACTUAL, from
-  // R723CQDT.
-  { w: 7, h1: 'QUEUED', h2: '', v: (r) => (r.avgQueueSec === null ? '-' : r.avgQueueSec < 10 ? r.avgQueueSec.toFixed(3) : r.avgQueueSec.toFixed(1)) },
+  // R723CQDT. `== null`: rows in a save from before RF-13 carry no such field.
+  { w: 7, h1: 'QUEUED', h2: '', v: (r) => (r.avgQueueSec == null ? '-' : r.avgQueueSec < 10 ? r.avgQueueSec.toFixed(3) : r.avgQueueSec.toFixed(1)) },
   { w: 6, h1: 'EX', h2: 'VEL%', v: (r) => fmt(r.execVelocity, 1) },
   { w: 6, h1: 'PERF', h2: 'INDX', v: (r) => fmt(r.pi, 2) },
   { w: 9, h1: 'ENDED', h2: '', v: (r) => String(Math.round(r.ended)) },
@@ -175,7 +175,7 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
   out.push(`GOAL: ${r.goalText}`);
   out.push('');
   out.push(`-TRANSACTIONS-   ENDED ${Math.round(r.ended)}   END/S ${r.endPerSec.toFixed(2)}   FAILED ${Math.round(r.failed)}`);
-  out.push(`ACTUAL RESP ${r.avgRtSec === null ? '-' : r.avgRtSec.toFixed(4) + 's'}   QUEUED ${r.avgQueueSec === null ? '-' : r.avgQueueSec.toFixed(4) + 's'}   EX VEL% ${f(r.execVelocity, 1, 0)}   PERF INDX ${f(r.pi, 2, 0)}`);
+  out.push(`ACTUAL RESP ${r.avgRtSec === null ? '-' : r.avgRtSec.toFixed(4) + 's'}   QUEUED ${r.avgQueueSec == null ? '-' : r.avgQueueSec.toFixed(4) + 's'}   EX VEL% ${f(r.execVelocity, 1, 0)}   PERF INDX ${f(r.pi, 2, 0)}`);
   if (r.resourceSamples !== false) {
     out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
     out.push(
