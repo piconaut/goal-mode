@@ -181,6 +181,16 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-28 · How far a runaway entity's CPU can reach
+`list: pr-followups · status: blocked: design · priority: low · size: S · area: sim`
+
+Source: review of PR #514 (RF-11, 2026-11-27). A loaded entity may demand up to its image's online CP+zIIP processors
+(`entityEngineCap`), so one DDF thread models as a parallel query: 3.1 engines on a measured Harbourline run. A thread
+without query parallelism is plausibly about one engine, but the books read do not settle it. Options: cap a
+`DDF_THREAD` load at one engine (or a content coefficient for query parallelism); keep the image cap and state the
+parallelism assumption; or make the reach a card/content property. Done when: the user decides and the cap, SPEC §17
+and the realism test match.
+
 ## realism-fixes
 
 ### RF-12 · A stopped Monitor III gatherer leaves holes in CF Activity (SMF 74.4)

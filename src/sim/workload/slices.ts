@@ -292,7 +292,9 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
  * so it competes for CPU like an address space and cannot use more engines than the image has processors (`units`,
  * one per engine of demand, APPROX as elsewhere). Its demand is set when the card begins
  * (`sim/workload/entityDemand.ts`), not by the workload's current arrival rate, so it stays where it is when the
- * workload is routed away.
+ * workload is routed away. The last period is where long-running work ages to: WLM moves an address space or enclave
+ * on as it consumes a period's duration in service units, and only the last period has no duration (WLM Planning 3.1
+ * PDF p.69 (printed 49), PDF p.27 (printed 7)).
  */
 export function entityLoadSlices(def: ServiceDefinition, lpar: LparConfig, workloads: readonly WorkloadDef[], loads: readonly EntityLoad[] | undefined): SliceSpec[] {
   if (!loads?.length) return [];
