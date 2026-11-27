@@ -242,26 +242,6 @@ the strategy bots do (docs/rca-design.md §4.8); tuning before them would be red
 
 ## cleanup
 
-### CL-19 · A guard test for the service-class accumulator fields
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16); design decided 2026-11-23 (user). The per-period accumulator fields are
-handled by hand in four places: `addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and
-`addAccInto`/`sumAcc` in `src/sim/wlm/runtime.ts`. The original entry proposed driving all four from one field
-table, either generated or looped. Declined: the four are not one field list in four layouts. They differ in which
-fields they carry (`addScp` has no `srv*`, `demand*`, `rtQueueSumSec`, `ziipEnginesView`), in formulas
-(`cpuEngines` is `cpEngines` in `addScp` but `cpEngines + iipcpEngines` in `decayInto`; `ziipEngines` and `demand*`
-seed at steady state; `srvDelayCap` has a compatibility fallback) and in presence rules and key order, which the
-state hash reads. A table would need a per-field rules language and would put the hashes at risk on the hot path.
-The real risk is a new field that misses one of the four functions, and a test catches that. Change, test-only:
-- A field list typed with `satisfies Record<keyof Required<ScpAcc>, …>` (and the same for `ScpTick`'s fields), so a
-  field added to either interface fails typecheck until it is listed.
-- A unit test that fills a tick (and two accumulators) with a distinct non-zero value in every field, runs `addScp`,
-  `decayInto`, `mergeAcc` and `sumAcc`, and asserts every listed field reaches each output non-zero, except fields a
-  function deliberately omits, each listed with its reason.
-No sim change. Done when: the test passes; removing any one field from any of the four functions makes it fail
-(checked by hand once, noted in the PR); `npm run typecheck` clean.
-
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
 
