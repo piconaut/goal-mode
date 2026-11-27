@@ -151,8 +151,9 @@ describe('general operator commands', () => {
       offeredArrivals += guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.offeredRate! * TICK_SEC;
     }
     const view = operationsView(guarded, scenario);
-    const offered = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.offeredRate!;
-    const admitted = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!.arrivalRate;
+    const mobile = guarded.sim.last.workloads.find((w) => w.id === 'MOBILE')!;
+    const offered = mobile.offeredRate!;
+    const admitted = mobile.arrivalRate;
     const closed = guarded.smfHours.at(-1)!.workloads.MOBILE!;
     const offeredAvg = offeredArrivals / 3600;
     expect(closed.offeredArrivals).toBeCloseTo(offeredArrivals, 6);

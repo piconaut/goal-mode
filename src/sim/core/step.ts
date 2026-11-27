@@ -78,8 +78,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const burstMult = b && burst ? burst.mult * scheduledBurstMult(b, clock) : 1;
     const organicRate = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop;
     const mode = prev.gatewayModes?.[w.id];
-    rates[w.id] = organicRate + p.retryRate;
-    offeredRates[w.id] = rates[w.id]!;
+    const offered = organicRate + p.retryRate;
+    rates[w.id] = offered;
+    offeredRates[w.id] = offered;
     if (mode && gatewayFailed) {
       const edge = gatewayTraffic(mode, organicRate, p.retryRate, sources?.[w.id]);
       rates[w.id] = edge.admittedRate;

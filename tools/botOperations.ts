@@ -3,15 +3,17 @@
 
 import type { EventDef } from '../src/content/events/midwest-events';
 import { minuteKey } from '../src/sim/core/clock';
+import { median } from '../src/sim/core/math';
 import type { GatewayMode, Operation, RosterTarget } from '../src/sim/core/operations';
 import type { Scenario } from '../src/sim/core/scenario';
+import { effectiveAddressSpaces } from '../src/sim/core/tick/helpers';
 import { classify } from '../src/sim/wlm/classify';
 import { cicsStorageReach, regionKey } from '../src/game/footprint';
 import { buildMon3 } from '../src/game/mon3';
 import { operationsView } from '../src/game/operations';
 import type { GameContent } from '../src/game/run';
 import type { CardOperation } from '../src/game/run/eventEffects';
-import { isOpenStatus, otherTeamChangesView, profileOf } from '../src/game/run/otherTeamChanges';
+import { isOpenStatus, labelFor, otherTeamChangesView, profileOf } from '../src/game/run/otherTeamChanges';
 import { db2LockHolder } from '../src/game/smf';
 import type { ActiveEvent, RunState } from '../src/game/types';
 
@@ -30,13 +32,6 @@ const BASELINE_HOURS = 2;
 
 const textOrder = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
-const median = (xs: readonly number[]): number | undefined => {
-  if (xs.length === 0) return undefined;
-  const sorted = [...xs].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1]! + sorted[mid]!) / 2;
-};
-
 function rosterTargets(run: RunState, scenario: Scenario, def: EventDef): CardOperation[] {
   const spec = def.culprits;
   if (!spec) return [];
@@ -45,12 +40,11 @@ function rosterTargets(run: RunState, scenario: Scenario, def: EventDef): CardOp
     .filter((row) => row.workloadId === spec.workloadId && (!spec.lparIds || spec.lparIds.includes(row.lparId)))
     .sort((a, b) => b.cpuSec - a.cpuSec || textOrder(a.id, b.id));
   if (rows.length === 0 || rows[0]!.cpuSec <= 0) return [];
-  const min = typeof spec.count === 'number' ? spec.count : spec.count[0];
-  const max = typeof spec.count === 'number' ? spec.count : spec.count[1];
+  const [min, max] = typeof spec.count === 'number' ? [spec.count, spec.count] : spec.count;
   const floor = rows[0]!.cpuSec * ROSTER_TOP_SHARE;
-  const picked = rows.filter((row) => row.cpuSec >= floor).slice(0, max);
+  const picked = rows.filter((row) => row.cpuSec >= floor);
   // Too few stand-out entries, or more than the card could explain, means the report does not single out a target.
-  if (picked.length < min || (rows[max] && rows[max]!.cpuSec >= floor)) return [];
+  if (picked.length < min || picked.length > max) return [];
   return picked.map((row): CardOperation => ({
     kind: 'CANCEL_SESSION',
     target: { kind: row.kind, id: row.id, workloadId: row.workloadId, lparId: row.lparId, day: row.day } satisfies RosterTarget,
@@ -60,7 +54,7 @@ function rosterTargets(run: RunState, scenario: Scenario, def: EventDef): CardOp
 function topAddressSpace(run: RunState, scenario: Scenario, def: EventDef): CardOperation[] {
   const effect = def.endedBy;
   if (effect?.kind !== 'CANCEL_ADDRESS_SPACE') return [];
-  const spaces = [...scenario.addressSpaces, ...run.sim.extraAddressSpaces];
+  const spaces = effectiveAddressSpaces(scenario, run.sim);
   // The card's clue names the looping job and its service class ("CICSXLOG ... the top consumer in STCHI"), so
   // that class is the card's visible scope, not the hidden answer: the target itself must still be the class's
   // clear top consumer in the current PROCU report.
@@ -69,9 +63,9 @@ function topAddressSpace(run: RunState, scenario: Scenario, def: EventDef): Card
   const serviceClass = classify(run.sim.wlm.definition, {
     subsystem: expected.subsystem, TN: expected.jobname, SY: expected.lparId,
   }).serviceClass;
-  const offered = new Set(operationsView(run, scenario).addressSpaces.map((row) => `${row.jobname}@${row.lparId}`));
+  const offered = new Set(operationsView(run, scenario).addressSpaces.map((row) => regionKey(row.jobname, row.lparId)));
   const jobs = (buildMon3(run, scenario).procJobs ?? [])
-    .filter((row) => row.cx === 'S' && row.serviceClass === serviceClass && offered.has(`${row.jobname}@${row.system}`))
+    .filter((row) => row.cx === 'S' && row.serviceClass === serviceClass && offered.has(regionKey(row.jobname, row.system)))
     .sort((a, b) => (b.eapplCpEngines + b.eapplZiipEngines) - (a.eapplCpEngines + a.eapplZiipEngines) ||
       textOrder(`${a.system}:${a.jobname}`, `${b.system}:${b.jobname}`));
   const top = jobs[0];
@@ -88,7 +82,7 @@ function changeTarget(run: RunState, content: GameContent, def: EventDef, event:
   const profile = profileOf(content.otherTeamChanges, def.id);
   if (!profile) return [];
   const rows = otherTeamChangesView(run, content).filter((row) => isOpenStatus(row.status) && !row.planned &&
-    row.owner === profile.owner && row.kind === profile.kind && row.label.startsWith(`${profile.label} · `));
+    row.owner === profile.owner && row.kind === profile.kind && row.label === labelFor(profile, row.id));
   const timed = rows.filter((row) => minuteKey(row.startTick) === minuteKey(event.startTick));
   // The board's visible label and minute must single out one rollout; never fall back to its hidden event link.
   return timed.length === 1 ? [{ kind: 'BACKOUT_CHANGE', changeId: timed[0]!.id }] : [];
@@ -129,18 +123,25 @@ function abendTarget(run: RunState, scenario: Scenario): CardOperation[] {
 function arrivalBaseline(run: RunState, workloadId: string): number | undefined {
   const current = run.smfHours.at(-1);
   if (!current) return undefined;
-  const recent = run.smfHours.slice(0, -1).filter((row) => row.day < current.day && row.hourOfDay === current.hourOfDay &&
-    (row.workloads[workloadId]?.offeredArrivals ?? 0) > 0).slice(-BASELINE_HOURS);
-  return median(recent.map((row) => row.workloads[workloadId]!.offeredArrivals! / 3600));
+  const recent = run.smfHours.slice(0, -1)
+    .filter((row) => row.day < current.day && row.hourOfDay === current.hourOfDay)
+    .flatMap((row) => {
+      const offered = row.workloads[workloadId]?.offeredArrivals ?? 0;
+      return offered > 0 ? [offered / 3600] : [];
+    })
+    .slice(-BASELINE_HOURS);
+  return median(recent);
 }
 
-function gatewaySurges(run: RunState, scenario: Scenario) {
-  const current = run.smfHours.at(-1)?.workloads;
-  return operationsView(run, scenario).gateway.map((row) => {
+/** Gateway rows with each channel's offered traffic against its prior-day same-hour baseline. */
+function gatewaySurges(run: RunState, scenario: Scenario, view = operationsView(run, scenario)) {
+  return view.gateway.map((row) => {
     const baseline = arrivalBaseline(run, row.id);
-    const offeredAvg = current?.[row.id]?.offeredArrivals;
-    return { ...row, ratio: baseline !== undefined && offeredAvg !== undefined ? row.offeredAvgPerSec / baseline : undefined };
-  }).sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) || textOrder(a.id, b.id));
+    return {
+      ...row,
+      ratio: row.offeredBasis === 'CLOSED' && baseline !== undefined ? row.offeredAvgPerSec / baseline : undefined,
+    };
+  });
 }
 
 function gatewayTarget(run: RunState, scenario: Scenario, def: EventDef, mode: GatewayMode): CardOperation[] {
@@ -148,7 +149,9 @@ function gatewayTarget(run: RunState, scenario: Scenario, def: EventDef, mode: G
   // channel that happens to surge harder is not what the card's report points at, and protecting it would shed
   // real traffic and leave the card unresolved. A stronger surge elsewhere must not veto the card's own channel.
   const affected = new Set(def.affects);
-  const [top, second] = gatewaySurges(run, scenario).filter((row) => affected.has(row.id));
+  const [top, second] = gatewaySurges(run, scenario)
+    .filter((row) => affected.has(row.id))
+    .sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) || textOrder(a.id, b.id));
   if (!top || top.ratio === undefined || top.ratio < GATEWAY_SURGE_RATIO ||
     (second?.ratio !== undefined && second.ratio >= top.ratio * (1 - GATEWAY_AMBIGUITY_MARGIN))) return [];
   if (top.mode === mode) return [];
@@ -182,11 +185,10 @@ export function protectionReleases(run: RunState, scenario: Scenario): Operation
   const view = operationsView(run, scenario);
   const out: Operation[] = [];
   if (view.recalls.held && view.recalls.incomingIops === 0) out.push({ kind: 'HOLD_HSM_RECALL', held: false });
-  const surges = gatewaySurges(run, scenario);
-  for (const row of view.gateway) {
-    if (row.mode === null) continue;
-    const surge = surges.find((candidate) => candidate.id === row.id);
-    if (surge && surge.ratio !== undefined && surge.ratio <= GATEWAY_CLEAR_RATIO) out.push({ kind: 'SET_GATEWAY', workloadId: row.id, mode: null });
+  for (const row of gatewaySurges(run, scenario, view)) {
+    if (row.mode !== null && row.ratio !== undefined && row.ratio <= GATEWAY_CLEAR_RATIO) {
+      out.push({ kind: 'SET_GATEWAY', workloadId: row.id, mode: null });
+    }
   }
   return out;
 }

@@ -15,6 +15,10 @@ import { operationsForEventReports, protectionReleases } from '../../tools/botOp
 const midwest = PACKS.midwest!;
 const noEvents = { ...midwest.game, events: [] };
 const live = (): RunState => ({ ...startDay(newRun(midwest.scenario, noEvents, 42), noEvents), events: [] });
+const liveWith = (commands: Parameters<typeof applyCommands>[1]): RunState => {
+  const base = live();
+  return { ...base, sim: applyCommands(base.sim, commands) };
+};
 const eventFor = (def: (typeof midwest.game.events)[number], startTick = 0): ActiveEvent => ({
   uid: `${def.id}@test`, defId: def.id, name: def.name, startTick, endTick: null,
   trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end,
@@ -28,9 +32,8 @@ const withGatewayReports = (run: RunState, baselines: Record<string, number>, cu
   const workload = (rate: number): RunState['smfHours'][number]['workloads'][string] => ({
     completions: rate * 3600, withinSla: 0, failed: 0, rtSumSec: 0, parts: {}, offeredArrivals: rate * 3600,
   });
-  const ids = [...new Set([...Object.keys(baselines), ...Object.keys(currents)])].sort();
   const rows = (rates: Record<string, number>, atDay: number): RunState['smfHours'][number] => ({
-    day: atDay, hourOfDay, workloads: Object.fromEntries(ids.filter((id) => rates[id] !== undefined).map((id) => [id, workload(rates[id]!)])),
+    day: atDay, hourOfDay, workloads: Object.fromEntries(Object.entries(rates).map(([id, rate]) => [id, workload(rate)])),
   });
   return { ...run, day: day + 1, smfHours: [rows(baselines, day - 1), rows(currents, day)] };
 };
@@ -57,7 +60,7 @@ describe('report-driven bot operation targets', () => {
 
   it('cancels the started task PROCU identifies as the clear top consumer', () => {
     const def = midwest.game.events.find((row) => row.id === 'XLOG_LOOP')!;
-    let run = { ...live(), sim: applyCommands(live().sim, def.begin) };
+    let run = liveWith(def.begin);
     run = advance(run, midwest.scenario, noEvents, TICKS_PER_HOUR);
     expect(operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def))).toEqual([
       { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' },
@@ -83,7 +86,7 @@ describe('report-driven bot operation targets', () => {
 
   it('terminates the utility whose displayed status is past its scheduled end', () => {
     const def = midwest.game.events.find((row) => row.id === 'REORG_OVERRUN')!;
-    const run = { ...live(), sim: applyCommands(live().sim, def.begin) };
+    const run = liveWith(def.begin);
     const ops = operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def));
     expect(ops).toHaveLength(1);
     expect(ops[0]).toMatchObject({ kind: 'TERM_UTILITY' });
@@ -96,7 +99,7 @@ describe('report-driven bot operation targets', () => {
       { ...reorg, id: 'REORG_A', startHour: 0, durationMin: 1, nightFrac: 1 },
       { ...reorg, id: 'REORG_B', startHour: 0, durationMin: 1, nightFrac: 1 },
     ] };
-    const run = { ...live(), sim: applyCommands(live().sim, def.begin) };
+    const run = liveWith(def.begin);
     expect(operationsForEventReports(run, site, contentWith(def), eventFor(def))).toEqual([]);
   });
 
@@ -126,7 +129,7 @@ describe('report-driven bot operation targets', () => {
     const def = midwest.game.events.find((row) => row.id === 'CICS_SOS')!;
     // CICSAOR1 is short on storage too, but the card is about the PROD2 AORs; it is not a target.
     const leaks = ['CICSAOR2', 'CICSAOR4', 'CICSAOR1'].map((name) => ({ kind: 'SET_CICS' as const, name, leak: { startMb: name === 'CICSAOR1' ? 2000 : 900, mbPerHour: 40 } }));
-    const run = advance({ ...live(), sim: applyCommands(live().sim, leaks) }, midwest.scenario, noEvents, 1);
+    const run = advance(liveWith(leaks), midwest.scenario, noEvents, 1);
     const ops = operationsForEventReports(run, midwest.scenario, contentWith(def), eventFor(def));
     expect(ops).toEqual([{ kind: 'RECYCLE_CICS', targets: [
       { name: 'CICSAOR2', lparId: 'PROD2' }, { name: 'CICSAOR4', lparId: 'PROD2' },
@@ -245,7 +248,8 @@ describe('report-driven protection release', () => {
   });
 
   it('keeps a mode through the 1.25–1.5 band and does not re-block it', () => {
-    const guarded = { ...live(), sim: { ...live().sim, gatewayModes: { MOBILE: 'BLOCK' as const } } };
+    const base = live();
+    const guarded = { ...base, sim: { ...base.sim, gatewayModes: { MOBILE: 'BLOCK' as const } } };
     const def = midwest.game.events.find((row) => row.id === 'BOT_ATTACK')!;
     const band = withMobileReports(guarded, 100, 130);
     expect(operationsForEventReports(band, midwest.scenario, contentWith(def), eventFor(def))).toEqual([]);

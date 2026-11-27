@@ -315,9 +315,10 @@ describe('Monitor III PROCU jobs (RMF Report Analysis p.188–189)', () => {
 
   it('attributes an address-space CPU modifier to the named PROCU job', () => {
     const def = MIDWEST_GAME.events.find((e) => e.id === 'XLOG_LOOP')!;
-    let run = startDay(newRun(MIDWEST, { ...content, events: [] }, 42), { ...content, events: [] });
+    const quiet = { ...content, events: [] };
+    let run = startDay(newRun(MIDWEST, quiet, 42), quiet);
     run = { ...run, sim: applyCommands(run.sim, def.begin) };
-    run = advance(run, MIDWEST, { ...content, events: [] }, TICKS_PER_HOUR);
+    run = advance(run, MIDWEST, quiet, TICKS_PER_HOUR);
     const mon = buildMon3(run, MIDWEST);
     const jobs = mon.procJobs!;
     const xlog = jobs.find((j) => j.system === 'PROD1' && j.jobname === 'CICSXLOG')!;

@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { CANCEL_WARNINGS } from '../../content/operations';
-import { operationHours } from '../../game/operations';
+import { operationHours, type OfferedBasis } from '../../game/operations';
 import type { ViewModel } from '../../game/view';
 import type { Command } from '../../sim/core/commands';
 import type { GatewayMode, Operation } from '../../sim/core/operations';
@@ -84,6 +84,14 @@ const GATEWAY_MODE_LABEL: Record<GatewayMode, string> = {
   BACKOFF: 'Client backoff',
   BLOCK: 'Block source addresses',
 };
+
+const OFFERED_BASIS_LABEL: Record<OfferedBasis, string> = {
+  CLOSED: 'offered avg (last hour)',
+  TICK: 'offered now',
+  ADMITTED: 'admitted now (no offered history)',
+};
+
+const tpsText = (rate: number): string => `${rate >= 10 ? rate.toFixed(0) : rate.toFixed(2)} tps`;
 
 function OperationButton({ op, action, v, game, disabled = false, onSent }: {
   op: Operation | null;
@@ -179,7 +187,7 @@ function OperatorCommands({ v, game }: { v: ViewModel; game: GameHandle }) {
       <div className="row"><span>Back out a change</span><a href="#other-team-changes">Other teams’ changes on the Change board</a></div>
       <details>
         <summary>Gateway status</summary>
-        {gateway.map((g) => <div className="row" key={g.id}><span>{g.name}</span><span>{g.mode ? GATEWAY_MODE_LABEL[g.mode] : 'Off'} · {g.offeredBasis === 'CLOSED' ? 'offered avg (last hour)' : g.offeredBasis === 'TICK' ? 'offered now' : 'admitted now (no offered history)'} {g.offeredAvgPerSec >= 10 ? g.offeredAvgPerSec.toFixed(0) : g.offeredAvgPerSec.toFixed(2)} tps</span></div>)}
+        {gateway.map((g) => <div className="row" key={g.id}><span>{g.name}</span><span>{g.mode ? GATEWAY_MODE_LABEL[g.mode] : 'Off'} · {OFFERED_BASIS_LABEL[g.offeredBasis]} {tpsText(g.offeredAvgPerSec)}</span></div>)}
       </details>
       <OperationPicker v={v} game={game} title="Gateway protection" action="Apply mode" empty="No external channels"
         options={gateway.flatMap((g) => ([null, 'LIMIT', 'BACKOFF', 'BLOCK'] as const)
