@@ -292,6 +292,23 @@ strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the 
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
 
+### CL-64 · One helper for the "card is live" predicate
+`list: cleanup · status: ready · priority: low · size: S · area: game`
+
+Source: PR #502 simplify review (2026-11-26). The predicate "started, not ended, and not past its end tick" is spelled
+out at four sites: `endEventsByOperation` (`src/game/run/events.ts`), the bot chooser (`tools/botOperations.ts`),
+`gatewaySources` (`src/game/operations.ts`, as `!ended && startTick <= tick && …`), and `started && !ended` in
+`obviousHourly` and the fixer's on-sight loop (`tools/strategies.ts`), the regulator audit (`src/game/run.ts`) and
+`blockedHardware` (`src/game/run/changes.ts`), where the caller runs after `advance` has set `ended`. Add one
+`cardLive(event, tick)` helper and use it. Do not fold in `advance`'s local `running()`, which also counts a card whose
+`startTick` is this tick before its `started` flag is written; keep that tick-aware case explicit next to the helper.
+Leave the different questions alone: `inboxReply` (announced, not started), `activeIn`/`markMet`/`counterfactual`
+(window overlap), migration (scheduled today) and the begin/end/recycle triggers.
+
+No behaviour change. Done when: the equivalent sites call the one helper; a test pins a card that starts and another
+that ends in the current tick against both the live query and the engine's tick-aware case; `npm run compare --
+--base origin/dev` reports no differences and `npm run typecheck` is clean.
+
 ## prologue
 
 Source: [docs/prologue-design.md](docs/prologue-design.md) (merged in #490; user decisions in its §14). The prologue
