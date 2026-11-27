@@ -30,6 +30,9 @@ emergency changes, but say in the run log whether each one was worth it.
   BRIEFING. WLM and config changes take effect at the next day's start; emergency changes cost trust.
 - Engineer-hours, capex, the monthly opex budget (MLC) and Insight are all limited; every lever has a cost.
 - Diagnose before changing: name the symptom, the report that shows it and the cause before you act.
+- During LIVE, use `ops` for current operator targets. The live operator commands in `docs/agents.md` use the
+  IDs shown there. Before issuing one, log why that target fits the evidence, then recheck `ops` or the report
+  that led you to act.
 - `finance` (bill, TFP pace per product, overage $ per MSU-hour by LPAR), `capacity` (CPC MSU, LPARs, initiators,
   capacity changes) and `batch` (last night by stream) replace digging through status and smf rows.
 - Read WLM's own decisions with `wlmlog [system] [--grep RCVR]`: which receiver it picked, which donor, which DP

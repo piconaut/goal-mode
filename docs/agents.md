@@ -12,6 +12,7 @@ npm run -s play -- runs/a.json catalog            # hardware, fixes, analytics t
 npm run -s play -- runs/a.json start              # start the day (BRIEFING → LIVE)
 npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 sim hours (stops early when a job abends; lists new mail)
 npm run -s play -- runs/a.json restart SET016     # restart an abended batch job from its checkpoint (only during its batch night)
+npm run -s play -- runs/a.json ops [--json]       # Change Desk Operations targets and current status
 npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, classification rules, LPAR CP/zIIP counts, CICS regions
 npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CPU_ACTIVITY (alias CPU), CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
@@ -50,6 +51,27 @@ lines all use these ids. A
 bare service class name (`ONLHI`) means its first period (`ONLHI#1`). `rca` replies with which half was right,
 the true mechanism/trigger and the trust effect (a wrong RCA costs trust; skipping one earns no points and costs no trust). Shapes: `PlayCommand` in `tools/playCore.ts`, Change Desk commands in
 `src/sim/core/commands.ts`, WLM edits in `src/game/wlmEdit.ts`.
+
+### Live operator commands
+
+Run `ops` to get the current targets, then copy the IDs, day and system or member from the matching row.
+The operator commands take effect during LIVE and print the same result or refusal as Change Desk → Operations.
+`ops` itself is read-only. `ops --json` returns the listing as JSON with numeric days starting at `0` for D1.
+
+```text
+cancel-job <Dn> <jobname> <system>
+cancel-stc <jobname> <system>
+logoff-tso <Dn> <userid> <workload> <system>
+cancel-thread <Dn> <thread-id> <workload> <system>
+terminate-utility <Dn> <utility-id> <member>
+recycle-cics <region> <system> [<region> <system> ...]
+gateway <workload> <limit|backoff|block|off>
+hsm-recall <hold|release>
+```
+
+To script the same actions with `json`, use `{"cmd":"operation","op":{...}}`. For example,
+`{"cmd":"operation","op":{"kind":"HOLD_HSM_RECALL","held":true}}` holds recalls. The `Operation`
+payload uses zero-based days and `null` for gateway off.
 
 ### Command shapes (quick reference)
 
