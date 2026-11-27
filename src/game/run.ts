@@ -31,7 +31,7 @@ import { applyBackout, landRoutineChanges } from './run/otherTeamChanges';
 import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
-import { BASE_HOURS, cardLive, cardRunning, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
+import { BASE_HOURS, cardInForce, cardRunning, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
 import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
 import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
@@ -448,7 +448,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], nightStartTick(r.day), () => batchHosts) };
   }
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
-  const auditing = r.events.some((e) => cardLive(e, r.sim.tick) && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
+  const auditing = r.events.some((e) => cardInForce(e) && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
   if (auditing) {
     const seen = Object.entries(sysotherByLpar(r.sim.rmf.intervals, day)).filter(([, v]) => v > AUDIT.minApplPct);
     if (seen.length > 0) {

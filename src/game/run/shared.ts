@@ -17,11 +17,19 @@ export const cardLive = (e: Pick<ActiveEvent, 'started' | 'ended' | 'endTick'>, 
   e.started && !e.ended && (e.endTick === null || e.endTick > tick);
 
 /** The engine's tick-aware form: inside `advance` a card whose `startTick` is this tick has not had `started` written
- * yet. `advance`'s footprint build uses it, and so does `gatewaySources`, which `advance` calls before that write. */
+ * yet. `advance`'s footprint build uses it, and so does `gatewaySources`, which `advance` calls before that write.
+ * Under the engine invariant `started => startTick <= tick` it is the old gateway test `startTick <= tick`; a
+ * hand-built state with `started` before its start tick would be counted here, not there. */
 export const cardRunning = (
   e: Pick<ActiveEvent, 'started' | 'ended' | 'startTick' | 'endTick'>,
   tick: number,
 ): boolean => (e.started || e.startTick <= tick) && !e.ended && (e.endTick === null || e.endTick > tick);
+
+/** The published state's query: the card is still in force. `advance` writes `ended` from the tick whose commands it
+ * just ran, while `sim.tick` has already moved on, so in the state after it a card at its end tick is `started` and
+ * not yet `ended`; its end commands run on the next advance. Use this where the caller reads that published state
+ * (`blockedHardware`, the regulator audit, the bots' hourly loops) and `cardLive` where the end tick itself decides. */
+export const cardInForce = (e: Pick<ActiveEvent, 'started' | 'ended'>): boolean => e.started && !e.ended;
 
 export const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
 
