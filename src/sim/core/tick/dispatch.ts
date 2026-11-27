@@ -327,7 +327,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
         if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
         // The job queue (initiator wait), which a DP move cannot change: kept apart for the batch RT projection
         // (WT-12) and reported as the period's queue delay time (R723CQDT, RF-13) whatever its goal type. Real SMF
-        // records it for every period, not only a response-time goal's (MVS SMF 3.1 p.646).
+        // records it for every period, not only a response-time goal's (MVS SMF 3.1 PDF p.646 (printed 618)).
         const queueSec = (jr.job.startTick - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
         for (const target of measured) {
           target.completions += 1;

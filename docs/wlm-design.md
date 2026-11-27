@@ -605,9 +605,9 @@ fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keep
   assigned report class, with one exact bucket observation in each (WLM Planning 3.1 p.71, p.113).
 - **Response time** = queue + elapsed, on the same tick-boundary clock as RMF's job-end record.
 - **The queue part** is also kept, as `rtQueueSumSec`, whatever the period's goal type (SMF 72.3 records the
-  period's total queue delay time R723CQDT for every period, MVS SMF 3.1 p.646); the projection below reads it only
-  for AVG/PCT goals. A period that changes from a velocity or discretionary goal to AVG/PCT therefore has the decayed
-  queue/execution split of its earlier completions available at once (RF-13).
+  period's total queue delay time R723CQDT for every period, MVS SMF 3.1 PDF p.646 (printed 618)); the projection
+  below reads it only for AVG/PCT goals. A period that changes from a velocity or discretionary goal to AVG/PCT
+  therefore has the decayed queue/execution split of its earlier completions available at once (RF-13).
 - **Advice.** The JES editor warns on RT goals, and the PI Codex entry gives IBM's three-completions-per-20-minutes
   advice.
 - **Tests:** `tests/sim/batchResponseGoals.test.ts`, `tests/game/batchGoals.test.ts`.

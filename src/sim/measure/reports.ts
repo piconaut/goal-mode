@@ -46,7 +46,8 @@ const WLM_COLS: Col[] = [
   { w: 3, h1: 'IMP', h2: '', v: (r) => String(r.importance ?? '-') },
   { w: 25, h1: ' GOAL', h2: '', left: true, v: (r) => ` ${r.goalText}` },
   { w: 7, h1: 'ACTUAL', h2: 'RESP', v: (r) => (r.avgRtSec === null ? '-' : r.avgRtSec < 10 ? r.avgRtSec.toFixed(3) : r.avgRtSec.toFixed(1)) },
-  // TRANS-TIME QUEUED (RMF Report Analysis 3.1 p.531): the initiator wait inside ACTUAL, from R723CQDT.
+  // TRANS-TIME QUEUED (RMF Report Analysis 3.1 PDF p.531 (printed 491)): the initiator wait inside ACTUAL, from
+  // R723CQDT.
   { w: 7, h1: 'QUEUED', h2: '', v: (r) => (r.avgQueueSec === null ? '-' : r.avgQueueSec < 10 ? r.avgQueueSec.toFixed(3) : r.avgQueueSec.toFixed(1)) },
   { w: 6, h1: 'EX', h2: 'VEL%', v: (r) => fmt(r.execVelocity, 1) },
   { w: 6, h1: 'PERF', h2: 'INDX', v: (r) => fmt(r.pi, 2) },

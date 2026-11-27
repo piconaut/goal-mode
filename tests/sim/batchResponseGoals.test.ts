@@ -157,7 +157,8 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     const iv = closeInterval(next.rmf.acc, { def: next.wlm.definition, config: next.config, r4haByLpar: {}, jobs: [], endTick: next.tick });
     for (const system of ['PROD1', '*PLEX']) {
       const row = iv.wlmRc!.find((r) => r.lparId === system && r.scKey === 'BATCHRC')!;
-      // The row reports the initiator wait inside its response time (TRANS-TIME QUEUED, RMF Report Analysis p.531).
+      // The row reports the initiator wait inside its response time (TRANS-TIME QUEUED, RMF Report Analysis 3.1
+      // PDF p.531 (printed 491)).
       expect([row.ended, row.avgRtSec, row.avgQueueSec]).toEqual([1, 60, 20]);
       expect(row.buckets.every((n) => n === 0)).toBe(true);
     }

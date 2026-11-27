@@ -177,11 +177,12 @@ export const IDENTITIES: Identity[] = [
     title: 'WLMGL: QUEUED is a non-negative part of ACTUAL response time, never more than it',
     basis: 'z/OS',
     // TRANS-TIME ACTUAL includes EXECUTION, QUEUED, R/S AFFIN and INELIGIBLE, and QUEUED "basically includes the
-    // time a job was delayed for initiation" (RMF Report Analysis 3.1 p.531). The SMF field is the period's total
-    // queue delay time R723CQDT, in 1024-microsecond units; for batch it is "the time jobs spent waiting for an
-    // initiator" (MVS SMF 3.1 p.646). That the row's weighted queue is the ended jobs' wait is checked against
-    // SMF 30 by `smf30-vs-wlmgl`; here it only has to be a part of the response time it sits in.
-    source: 'RMF Report Analysis 3.1 p.531 (TRANS-TIME); MVS SMF 3.1 p.646 (R723CQDT)',
+    // time a job was delayed for initiation" (RMF Report Analysis 3.1 PDF p.531 (printed 491)). The SMF field is the
+    // period's total queue delay time R723CQDT, in 1024-microsecond units; for batch it is "the time jobs spent
+    // waiting for an initiator" (MVS SMF 3.1 PDF p.646 (printed 618)). That the row's weighted queue is the ended
+    // jobs' wait is checked against SMF 30 by `smf30-vs-wlmgl`; here it only has to be a part of the response time
+    // it sits in.
+    source: 'RMF Report Analysis 3.1 PDF p.531 (printed 491) (TRANS-TIME); MVS SMF 3.1 PDF p.646 (printed 618) (R723CQDT)',
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const r of [...o.iv.wlm, ...(o.iv.wlmRc ?? [])]) {
