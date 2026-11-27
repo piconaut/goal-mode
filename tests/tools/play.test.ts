@@ -103,7 +103,7 @@ describe('save version', () => {
   });
 
   it('loads a current play file', () => {
-    expect(openPlayFile(encodePlayFile(newPlayFile(7))).version).toBe(2);
+    expect(openPlayFile(encodePlayFile(newPlayFile(7))).version).toBe(SAVE_VERSION);
   });
 });
 
