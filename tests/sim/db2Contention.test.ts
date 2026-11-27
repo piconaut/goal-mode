@@ -86,8 +86,59 @@ describe('PT-51 Db2 reader and drain', () => {
     expect(stats(next)?.claimReleaseWaitSec).toBe(0);
     expect(next.env.db2Contention?.drain?.phase).toBe('DRAINED');
     expect(lock(next, 'CARDAUTH')).toBe(0); // Another object, same members.
+    // RF-10: a writers-only drain still stops the write class; a posting waits out its run window.
+    const rbank = next.last.workloads.find((w) => w.id === 'RBANK')!;
+    expect(rbank.failed).toBe(0);
+    expect((rbank.parts.drainLock ?? 0) / rbank.completions).toBeCloseTo(profile.writes.RBANK! * profile.drain.runSec, 8);
     const outside = step(pressured, [{ kind: 'SET_ROUTING', workloadId: 'RBANK', routing: { DEVT: 1 } }], s);
     expect(lock(outside)).toBe(0); // Same workload, an independent Db2.
+    expect(outside.last.workloads.find((w) => w.id === 'RBANK')!.parts.drainLock ?? 0).toBe(0);
+  });
+
+  it('holds posting claims during an all-class drain and times them out past the resource timeout', () => {
+    const s = scenario('CS');
+    const { state, capped } = fixture(s);
+    const pressured = until(state, startDrain, s, [{ kind: 'ACTIVATE_POLICY', definition: capped }]);
+    const draining = step(pressured, [], s);
+    expect(draining.env.db2Contention?.drain?.phase).toBe('WAITING');
+    const blocked = draining.last.workloads.find((w) => w.id === 'RBANK')!;
+    // The remaining wait exceeds IRLMRWT's 30 s: the posting share fails instead of completing late.
+    expect(blocked.failed).toBeGreaterThan(0);
+    expect(blocked.parts.drainLock ?? 0).toBe(0);
+    const other = draining.last.workloads.find((w) => w.id === 'CARDAUTH')!;
+    expect(other.failed).toBe(0);
+    expect(other.parts.drainLock ?? 0).toBe(0);
+    // In the drain's last wait ticks a posting's hold is under the timeout, so it commits and SMF 101 shows the wait.
+    const late = until(pressured, startDrain + 10, s);
+    expect(late.env.db2Contention?.drain?.phase).toBe('WAITING');
+    const rbank = late.last.workloads.find((w) => w.id === 'RBANK')!;
+    expect(rbank.failed).toBe(0);
+    expect((rbank.parts.drainLock ?? 0) / rbank.completions)
+      .toBeCloseTo(profile.writes.RBANK! * profile.claimTimeoutSec, 8);
+    const hour = newHour(late.tick - 1);
+    const run = accumulateHour({ ...newRun(s, MIDWEST_GAME, 42), sim: late, hour }, hour);
+    expect(db2Accounting(run, s, 'current').find((r) => r.workloadId === 'RBANK')?.drainLockMs ?? 0)
+      .toBeGreaterThan(20000);
+    expect(stats(late)?.drainLockWaitSec ?? 0).toBeGreaterThan(0);
+  });
+
+  it('waits for a write claim held over the tick boundary before granting a writers-only drain', () => {
+    const s = scenario('CS', 'WRITERS');
+    const { state } = fixture(s);
+    const before = until(state, startDrain, s);
+    // A slow posting granted last tick still holds its write claim when the drain starts.
+    const slow = {
+      ...before,
+      env: { ...before.env, db2Contention: { ...before.env.db2Contention!, writerClaims: { heldUntilTick: startDrain + 1 } } },
+    };
+    const waiting = step(slow, [], s);
+    expect(waiting.env.db2Contention?.drain?.phase).toBe('WAITING');
+    expect(waiting.last.workloads.find((w) => w.id === 'RBANK')!.failed).toBeGreaterThan(0);
+    const granted = step(waiting, [], s);
+    expect(granted.env.db2Contention?.drain?.phase).toBe('DRAINED');
+    const rbank = granted.last.workloads.find((w) => w.id === 'RBANK')!;
+    expect((rbank.parts.drainLock ?? 0) / rbank.completions)
+      .toBeCloseTo(profile.writes.RBANK! * profile.drain.runSec, 8);
   });
 
   it('releases active claims when the runaway query is cancelled', () => {

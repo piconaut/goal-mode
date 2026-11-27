@@ -166,6 +166,29 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
       const ddfLock = profile ? content!.lockSec * (profile.writes[w.id] ?? 0) : 0;
       if (ddfLock > 0) parts.ddfLock = ddfLock;
       extra += parts.cf + parts.lock + ddfLock;
+      // RF-10: a settled posting holds a write claim on the shared partition. A drain stops new claims in the write
+      // class for its whole window, so the posting waits it out; a wait past the resource timeout fails it.
+      const writeFrac = profile ? (profile.writes[w.id] ?? 0) : 0;
+      if (writeFrac > 0) {
+        const drain = content!.drain;
+        if (drain) {
+          const remainSec = Math.max(0, (drain.untilTick - prev.tick) * TICK_SEC);
+          if (remainSec > profile!.claimTimeoutSec) {
+            failFrac = Math.max(failFrac, writeFrac);
+          } else {
+            const holdSec = writeFrac * remainSec;
+            extra += holdSec;
+            parts.drainLock = (parts.drainLock ?? 0) + holdSec;
+          }
+        } else {
+          // The claim lasts the posting's own transaction. Keep its release so a drain that starts before then
+          // waits for it (the drain's claim-release wait, Db2 13 Managing Performance PDF p.108 (printed 88)).
+          const rt = prev.workloads.find((x) => x.id === w.id)?.lastRtSec ?? 0;
+          const untilTick = prev.tick + Math.max(profile!.writerClaimFloorSec, rt) / TICK_SEC;
+          const held = content!.writerClaims;
+          if (!held || held.heldUntilTick < untilTick) content!.writerClaims = { heldUntilTick: untilTick };
+        }
+      }
       cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
     }
     let outside = 0;
@@ -175,7 +198,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
       extra += parts.qr;
       outside += mxt.waitSec;
       outsideRef += mxt.refSec;
-      failFrac = Math.max(qr.failFrac, mxt.failFrac);
+      failFrac = Math.max(failFrac, qr.failFrac, mxt.failFrac);
     }
     if (w.subsystem === 'DDF') {
       outside += dbat.waitSec;

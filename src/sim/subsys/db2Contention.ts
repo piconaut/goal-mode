@@ -16,6 +16,9 @@ export interface Db2ContentionProfile {
   lockSecPerReader: Readonly<Record<Db2Isolation, number>>;
   maxLockSec: Readonly<Record<Db2Isolation, number>>;
   claimTimeoutSec: number;
+  /** FICTIONAL: an online posting's write claim lasts its own transaction; the floor keeps a fast posting's claim
+   * alive to its commit. A utility drain waits for a held claim to pass (RF-10). */
+  writerClaimFloorSec: number;
   drain: {
     name: string;
     member: string;
@@ -55,9 +58,16 @@ export interface Db2Drain {
   untilTick: number;
 }
 
+/** The write claim class a drain also stops. A claim is released within its unit of work, so the state holds only
+ * the end of the last granted claim: a drain that starts before it waits for it. (RF-10) */
+export interface Db2WriterClaims {
+  heldUntilTick: number;
+}
+
 export interface Db2ContentionState {
   readers: Record<string, Db2Reader>;
   drain?: Db2Drain;
+  writerClaims?: Db2WriterClaims;
 }
 
 /** Interval deltas. Claim-release waits are utility seconds; drain-lock waits are reader-seconds. */
@@ -88,6 +98,8 @@ export interface Db2ContentionTick {
   before: Db2ContentionState | undefined;
   readers: Record<string, Db2Reader>;
   drain: Db2Drain | undefined;
+  /** A write claim held over the tick boundary; a drain waits for it. */
+  writerClaims?: Db2WriterClaims;
   counters: Record<string, Db2ContentionCounters>;
   lockSec: number;
   availableClientSlots: number;
@@ -112,8 +124,10 @@ export function startDb2Contention(
     count += reader.count;
     outstanding += reader.count + reader.pending + reader.dbatQueued;
   }
+  const heldWriters = before?.writerClaims;
   const t: Db2ContentionTick = {
     profile, before, readers: {}, drain: before?.drain, counters: {},
+    ...(heldWriters && heldWriters.heldUntilTick > tick ? { writerClaims: { ...heldWriters } } : {}),
     lockSec: Math.min(profile.maxLockSec[profile.isolation], count * profile.lockSecPerReader[profile.isolation]),
     availableClientSlots: Math.max(0, profile.clientConcurrency - outstanding),
   };
@@ -126,7 +140,10 @@ export function startDb2Contention(
   }
   const drain = t.drain;
   if (drain?.phase === 'WAITING') {
-    if (d.kind === 'WRITERS' || count <= 1e-9) {
+    // A writers-only drain needs no reader release, but either kind stops the write claim class and waits for a
+    // claim already held. (Db2 13 Utility Guide and Reference PDF p.589 (printed 567), PDF p.628 (printed 606).)
+    const released = d.kind === 'WRITERS' || count <= 1e-9;
+    if (released && !t.writerClaims) {
       t.drain = { ...drain, phase: 'DRAINED', untilTick: tick + Math.ceil(d.runSec / TICK_SEC) };
     } else if (tick >= drain.untilTick) {
       db2Counters(t, d.member).failedDrains++;
