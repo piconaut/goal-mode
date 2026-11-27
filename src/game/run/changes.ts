@@ -6,7 +6,7 @@ import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { COD_DEACTIVATE_HOURS, DASD_REBALANCE } from '../../content/hardware-catalog';
-import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { CHANGE_DESK_KINDS, failRiskFor, hardwareItem, previewChange, type BackoutCost } from '../catalog';
 import { engineerHoursMult, slowInternalOf } from '../staff';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
@@ -15,9 +15,8 @@ import {
   type PlannedChange,
   type RunState
 } from '../types';
-import { armableEvents, endEventByFix, fixIdsOf, hasEventForFix } from './events';
 import type { GameContent } from './shared';
-import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
+import { FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
 export interface ChangeRequest {
   label: string;
@@ -25,7 +24,6 @@ export interface ChangeRequest {
   hardwareId?: string;
   /** Target CPC of a per-CPC hardware item (default the first). */
   cpcId?: string;
-  fixId?: string;
   /** Pre-approved automation: no engineer-hours, no emergency trust cost, a misfire chance instead. */
   automated?: { misfireFrac: number };
 }
@@ -37,10 +35,6 @@ export interface ChangeOutcome {
   /** The policy a cancelled activation would have installed, so the caller can keep it as pending edits. */
   restoredPolicy?: ServiceDefinition;
 }
-
-export const NO_TARGET = 'no active event matched this fix';
-/** A fix whose forewarned card has not started yet: it ends when the card starts. */
-export const ARMED = 'armed against the forewarned change; it ends when it lands';
 
 export function failRisk(run: RunState): number {
   return failRiskFor(run.fatigue, run.perks);
@@ -60,27 +54,17 @@ export function previewContext(run: RunState, content?: GameContent) {
     constraints: run.constraints,
     blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
     cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
-    ...(content ? { fixIds: fixIdsOf(content) } : {}),
     ...(slow ? { staffSurcharge: { mult: slow.hoursMult, rtSec: slow.rtSec, goalSec: slow.goalSec, missedHours: slow.missedHours } } : {}),
   };
 }
 
 /** Plan (BRIEFING) or make an emergency change (LIVE). */
-export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
-  const live = run.phase === 'LIVE';
-  const preview = previewChange(previewContext(run, content), req);
+export function requestChange(run: RunState, content: GameContent, req: ChangeRequest, backout?: BackoutCost & { id: string }): ChangeOutcome {
+  const preview = previewChange(previewContext(run, content), req, backout);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
-  // Only the player's own plan is checked here: refusing a fix because no event matches would let the Change Desk
-  // be probed for hidden events at no cost. A fix with no target is charged and reports "no effect" once it runs.
-  const plannedFix = req.fixId ? run.changes.find((c) => c.status === 'PLANNED' && c.endsEvent === req.fixId) : undefined;
-  if (plannedFix) {
-    const hint = live ? ` for day ${plannedFix.activateDay + 1}; cancel ${idText('change', plannedFix.id)} to apply it now` : '';
-    return { run, ok: false, message: `This fix is already planned${hint}; no hours or trust spent.` };
-  }
-  const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
+  const refused = !req.hardwareId ? dryRunRefusal(run, req.commands ?? []) : null;
   if (refused) return { run, ok: false, message: refused };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
-  const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const commands = hw ? hw.commands(run.sim, req.cpcId) : (req.commands ?? []);
   const hours = req.automated ? 0 : preview.hours;
   const { capex } = preview;
@@ -100,7 +84,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     status: 'PLANNED',
     revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
     revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
-    endsEvent: fix?.id ?? null,
+    ...(backout ? { backoutChangeId: backout.id } : {}),
   };
   r = { ...r, nextId: r.nextId + 1 };
 
@@ -108,11 +92,10 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     // Emergency change board: costs trust, more when no incident justifies it.
     const trustCost = req.automated ? 0 : preview.trustCostEach;
     r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
-    if (fix?.trustCost && fix.trustCost.facet in r.trust) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet]! - fix.trustCost.amount) } };
     const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
     const attempt = r.changes.filter((x) => x.plannedDay === r.day && x.label === req.label).length;
     const failed = streamRng(r.seed, 'live-change', r.day, req.label, attempt).chance(risk);
-    if (failed && !fix) {
+    if (failed) {
       r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
       return {
         run: logLine(r, `${req.automated ? 'Automation MISFIRED' : 'Emergency change FAILED'}: ${req.label}`),
@@ -120,16 +103,10 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
         message: `${req.automated ? 'Automation misfired' : 'Change failed during implementation'} (risk ${(100 * risk).toFixed(0)}%): ${req.label}`,
       };
     }
-    const noTarget = fix !== undefined && !hasEventForFix(r, content, fix.id);
-    // The forewarned card has not started yet: the fix is ready and ends it when it lands that day.
-    const arms = fix !== undefined && noTarget ? armableEvents(r, content, fix.id, r.day) : [];
     if (change.activateDay === r.day) {
-      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED', ...(arms.length > 0 ? { armedEvents: arms } : {}) }] };
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
     } else r = { ...r, changes: [...r.changes, change] };
-    if (fix) r = endEventByFix(r, content, fix.id);
     const what = `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`;
-    if (arms.length > 0) return { run: logLine(r, `${what} (${ARMED})`), ok: true, message: `Applied: ${req.label}; ${ARMED}` };
-    if (noTarget) return { run: logLine(r, `${what} (${NO_TARGET})`), ok: true, message: `Applied with no effect: ${req.label}; ${NO_TARGET}` };
     return { run: logLine(r, what), ok: true, message: `Applied: ${req.label}` };
   }
   return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned ${idText('change', change.id)} for day ${change.activateDay + 1}: ${req.label}` };
@@ -143,7 +120,7 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
   for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
   for (const cmd of commands) {
     // Only player commands: the JSON change path accepts any Command shape, including event-only ones.
-    if (!CHANGE_DESK_KINDS.has(cmd.kind)) return `${cmd.kind} is not a change-desk command; hardware, fixes and events keep their own paths`;
+    if (!CHANGE_DESK_KINDS.has(cmd.kind)) return `${cmd.kind} is not a change-desk command; hardware and events keep their own paths`;
     const field = eventOnlyField(cmd) ?? hotSkewRefusal(s, cmd);
     if (field) return field;
     const placement = placementOf(scenario, s, cmd);

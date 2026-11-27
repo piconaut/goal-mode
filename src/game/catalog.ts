@@ -3,8 +3,8 @@
 
 import { DASD_REBALANCE, HARDWARE, type HardwareItem } from '../content/hardware-catalog';
 import { DRAFT_TUNING } from '../content/draft';
+import type { OtherTeamChangeDef } from '../content/otherTeamChanges';
 import type { Command } from '../sim/core/commands';
-import type { Facet } from './types';
 
 const HOURS: Partial<Record<Command['kind'], number>> = {
   ACTIVATE_POLICY: 1.5,
@@ -49,43 +49,6 @@ export function hoursFor(commands: readonly Command[], perks: readonly string[])
   return h;
 }
 
-export interface FixDef {
-  id: string;
-  name: string;
-  hours: number;
-  /** Trust cost to the facet that owns the affected work (e.g. cancelling a user's query). */
-  trustCost: { facet: Facet; amount: number } | null;
-  description: string;
-  /** An operator or DBA command under the incident procedure, not a change: no change-board trust cost when live. */
-  operational?: true;
-}
-
-export const FIXES: FixDef[] = [
-  { id: 'CANCEL_RUNAWAY', name: 'Cancel the runaway DDF thread', hours: 0.5, trustCost: null, description: '-CANCEL THREAD on the looping BI query.', operational: true },
-  { id: 'REBIND_REVERT', name: 'REBIND with APREUSE / switch back', hours: 1.5, trustCost: null, description: 'Restore the previous access path for the retail package.' },
-  { id: 'EFILE_REBIND_REVERT', name: 'REBIND with APREUSE / switch back', hours: 1.5, trustCost: null, description: 'Restore the previous access path for the e-filing package.' },
-  { id: 'BLOCK_BOTS', name: 'Block bot traffic at the edge', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Rate-limit the credential-stuffing source addresses.' },
-  { id: 'BLOCK_FILING_BOTS', name: 'Block bot traffic at the edge', hours: 1, trustCost: { facet: 'Taxpayers', amount: 1 }, description: 'Rate-limit the credential-stuffing source addresses on the taxpayer login.' },
-  { id: 'MOBILE_BACKOFF', name: 'Turn on retry backoff in the API gateway', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Exponential backoff and a circuit breaker for the mobile app; customers see "try again later" instead of retrying.' },
-  { id: 'REFSTAT_BACKOFF', name: 'Back off refund-status retries', hours: 1, trustCost: { facet: 'Refunds', amount: 1 }, description: 'The status page says "check back tomorrow" and the client backs off; taxpayers see a delay message instead of retrying.' },
-  { id: 'TERM_UTILITY', name: 'Terminate the overrunning REORG', hours: 0.5, trustCost: { facet: 'Finance', amount: 1 }, description: '-TERM UTILITY: stops the I/O storm; the REORG has to be rescheduled.', operational: true },
-  { id: 'CANCEL_XLOG', name: 'Cancel the looping CICSXLOG job', hours: 0.5, trustCost: { facet: 'Regulator', amount: 1 }, description: 'C CICSXLOG: the loop stops; the CICS journals are archived late and audit asks why.', operational: true },
-  { id: 'SCOPE_ENCRYPTION', name: 'Agree a narrower encryption scope', hours: 2, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Encrypt only the regulated customer data sets; the online CPU overhead goes away, the regulator notes the exception.' },
-  { id: 'NEGOTIATE_MLC_PRICE', name: 'Negotiate the MLC price rise', hours: 3, trustCost: { facet: 'Finance', amount: 1 }, description: 'Sign a multi-year enterprise agreement: the 8% rise is waived, but Finance gives up the flexibility to drop products.' },
-  { id: 'ROLLBACK_MONITOR', name: 'Roll back the monitoring agent', hours: 1, trustCost: null, description: 'Revert to the previous agent release.' },
-  { id: 'COMMIT_SETTLEMENT_OFTEN', name: 'Commit more often in the batch programs', hours: 1, trustCost: { facet: 'Finance', amount: 1 }, description: 'Have the affected batch programs commit every few hundred rows instead of at step end: locks are held for less time and the escalation stops.' },
-  { id: 'STOP_SHADOW_IT', name: 'Stop the unapproved TSO workload', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Find the users behind the TSO CPU and have the model training moved off the mainframe.' },
-  { id: 'ROLLBACK_TELLER_RELEASE', name: 'Roll back the teller release', hours: 1.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'Back out release 4.2 from the PROD1 CICS regions until it is made threadsafe.' },
-  { id: 'NATIVE_SQL_PROCS', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Digital', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
-  { id: 'NATIVE_SQL_PROCS_REV', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Taxpayers', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
-  { id: 'RECYCLE_PROD2_AORS', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Retail', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight teller work on them fails over.' },
-  { id: 'RECYCLE_PROD2_AORS_REV', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Agents', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight call-centre work on them fails over.' },
-  { id: 'RECYCLE_SICK_AOR', name: 'Recycle CICSAOR3 on PRDC', hours: 1, trustCost: { facet: 'Markets', amount: 1 }, description: 'Restart the abending CICS region (CICSAOR3) on PRDC; in-flight orders on it fail and the traders notice.' },
-  { id: 'SCOPE_SMF_AUDIT', name: 'Negotiate the SMF audit scope', hours: 1, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Agree with the regulator to keep sampled SMF 101/110 records only; the SMF address space drops back to normal.' },
-  { id: 'HOLD_HSM_RECALLS', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'HOLD RECALL until the storm drains; users wait for their data sets.', operational: true },
-  { id: 'HOLD_HSM_RECALLS_REV', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Agents', amount: 1 }, description: 'HOLD RECALL until the storm drains; case workers wait for their data sets.', operational: true },
-];
-
 export const hardwareItem = (id: string): HardwareItem | undefined => HARDWARE.find((h) => h.id === id);
 
 export const MAX_OVERTIME = 4;
@@ -103,8 +66,6 @@ export interface PreviewContext {
   blockedHardware?: readonly string[];
   /** The CPCs, for per-CPC hardware (target exists, item not pointless on it). */
   cpcs?: readonly { id: string; capacitySetting: 4 | 5 | 6 | 7; generation: string }[];
-  /** Fixes this scenario's event cards call for; other scenarios' fixes are refused. */
-  fixIds?: readonly string[];
   /** The slow-internal-work surcharge in force (PT-50), absent or null when hands-on work costs its base hours. */
   staffSurcharge?: { mult: number; rtSec: number; goalSec: number; missedHours: number } | null;
 }
@@ -123,6 +84,9 @@ export interface ChangePreview {
   ok: boolean;
   reason: string | null;
 }
+
+/** What a backout costs, taken from the change's content definition. */
+export type BackoutCost = Pick<OtherTeamChangeDef, 'hours' | 'kind'>;
 
 /** Hardware capex after perks (the zIIP promotion discounts specialty engines). */
 function capexFor(hardwareId: string, capex: number, perks: readonly string[]): number {
@@ -143,43 +107,40 @@ export function failRiskFor(fatigue: number, perks: readonly string[]): number {
 }
 
 /** What a change would cost and whether it is allowed, without making it (UI and requestChange share this). */
-export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; cpcId?: string; fixId?: string }): ChangePreview {
+export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; cpcId?: string }, backout?: BackoutCost): ChangePreview {
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
-  const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const live = ctx.phase === 'LIVE';
   const staffMult = ctx.staffSurcharge?.mult ?? 1;
-  const hours = (fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks)) * staffMult;
+  const dbaCommand = backout?.kind === 'REBIND';
+  const hours = (backout?.hours ?? (hw ? 2 : hoursFor(req.commands ?? [], ctx.perks))) * staffMult;
   const capex = hw ? capexFor(hw.id, hw.capex, ctx.perks) : 0;
   const leadDays = leadDaysFor(hw?.leadDays ?? 0, ctx.perks);
   // A lead-time order placed during the live day arrives later, so it is a plan for a future day, not an emergency
   // change made now (PT-11). Only changes that take effect this day pay the trust and failure cost.
-  const emergency = live && leadDays === 0;
+  const emergency = live && leadDays === 0 && !dbaCommand;
   const base: ChangePreview = {
     hours,
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
     leadDays,
     emergency,
-    trustCostEach: emergency && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
-    failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
+    trustCostEach: emergency ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
+    failRisk: dbaCommand ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
     staffMult,
     ok: true,
     reason: null,
   };
   const no = (reason: string): ChangePreview => ({ ...base, ok: false, reason });
   if (ctx.phase !== 'BRIEFING' && ctx.phase !== 'LIVE') return no('Changes are made during the briefing or the live day');
-  if (!emergency && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
+  if (!emergency && ctx.constraints.includes('FREEZE') && !dbaCommand) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
-  if (req.fixId && (!fix || (ctx.fixIds && !ctx.fixIds.includes(fix.id)))) return no(`Unknown fix ${req.fixId}`);
-  // A fix or a hardware order is a self-contained action: picture the fix on a live day that also sneaks in
-  // ADD_CPC_ENGINES, and the commands ride along on the fix's hours, past the change-desk allowlist.
-  if ((req.fixId || req.hardwareId) && (req.commands ?? []).length > 0) return no('A fix or hardware order cannot also carry change commands');
+  if (req.hardwareId && (req.commands ?? []).length > 0) return no('A hardware order cannot also carry change commands');
   const target = hw?.perCpc && ctx.cpcs ? (req.cpcId ? ctx.cpcs.find((c) => c.id === req.cpcId) : ctx.cpcs[0]) : undefined;
   if (hw?.perCpc && ctx.cpcs && !target) return no(`Unknown CPC ${req.cpcId}`);
   const pointless = target && hw?.unavailable?.(target);
   if (pointless) return no(`${target.id}: ${pointless}`);
   if (hw && ctx.blockedHardware?.includes(hw.id)) return no(`${hw.name} is refused: the data centre power budget forbids it for now`);
-  if (!hw && !fix && (req.commands ?? []).length === 0) return no('Nothing to change');
+  if (!hw && !backout && (req.commands ?? []).length === 0) return no('Nothing to change');
   if (hours > ctx.hoursLeft + MAX_OVERTIME) return no(`Needs ${hours}h; only ${ctx.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)`);
   if (capex > ctx.capexRemaining) return no(`Capex $${capex.toLocaleString()} exceeds the $${ctx.capexRemaining.toLocaleString()} left`);
   return base;

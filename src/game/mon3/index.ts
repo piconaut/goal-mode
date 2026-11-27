@@ -16,6 +16,7 @@ import { classify } from '../../sim/wlm/classify';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../../sim/wlm/goals';
 import { ACC_DECAY, accPi, goalInfo, sumAcc, velDelay, velUsing, type ScpAcc } from '../../sim/wlm/runtime';
 import type { RunState } from '../types';
+import { mon3GatherersDown } from '../tools';
 import { allWorkloads } from '../workloads';
 import { primaryReasons, procuJobs } from './procu';
 import type { Mon3Cpc, Mon3CpcHeader, Mon3CpcPhysical, Mon3DelayResource, Mon3Enclave, Mon3Exception, Mon3Row, Mon3Server, Mon3Speed, Mon3System, Mon3View, Mon3Wkm } from './types';
@@ -137,12 +138,17 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const workloads = allWorkloads(scenario, run);
   const ddfClasses = new Set(workloads.filter((w) => w.subsystem === 'DDF').map((w) => classify(def, w.work).serviceClass));
   const reported = reportedBySystem(sim);
+  // A system whose gatherer is down has no samples: its rows go, and the sysplex rows are built from the systems that
+  // still gather (RMF User's Guide SC27-4936 PDF p.93 (printed 69)). APPROX: the CPC section keeps every partition,
+  // since another gatherer on the CPC still reads the PR/SM data.
+  const down = mon3GatherersDown(run);
+  const gathering = sim.wlm.systems.filter((s) => !down.includes(s.lparId));
   const rows: Mon3Row[] = [];
-  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!));
+  for (const s of gathering) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
   const keys = [...new Set(rows.map((r) => r.scKey))].sort();
   for (const k of keys)
-    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : [])))));
+    rows.push(row(run, '*PLEX', k, sumAcc(gathering.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : [])))));
   primaryReasons(run, scenario, rows, ddfClasses);
   const procJobs = procuJobs(run, scenario, rows, ddfClasses);
 
@@ -258,7 +264,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     });
 
   const systems: Mon3System[] = sim.config.lpars
-    .filter((l) => l.kind === 'ZOS')
+    .filter((l) => l.kind === 'ZOS' && !down.includes(l.id))
     .map((l) => {
       const rt = sim.lpars.find((x) => x.id === l.id);
       const cp = rt?.pools.find((p) => p.pool === 'CP');
@@ -330,10 +336,11 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     logicalToPhysicalByCpc: Object.fromEntries(sim.config.cpcs.map((c) => [c.id, c.engines.CP > 0 ? (logicalByCpc[c.id] ?? 0) / c.engines.CP : 0])),
     logicalToPhysical: cpcEngines > 0 ? totalLogical / cpcEngines : 0,
     enclaves,
-    wkm: wkmSection(run, scenario, rows),
+    wkm: wkmSection(run, scenario, rows, down),
     procJobs,
     speed: speedSection(rows, systems),
     exceptions: exceptions(run, rows, systems, cpc, totalLogical, cpcEngines),
+    ...(down.length ? { missingSystems: down.map((system) => ({ system, reason: 'Gatherer not active' as const })) } : {}),
   };
 }
 
@@ -423,7 +430,7 @@ function exceptions(run: RunState, rows: Mon3Row[], systems: Mon3System[], cpc: 
  * in the WLMGL attribution). Their samples are WLM's own view of the transactions (the management accumulators), split
  * by the class's share of the system's CICS CPU for Service %.
  */
-function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[]): Mon3Wkm[] {
+function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[], down: readonly string[]): Mon3Wkm[] {
   const sim = run.sim;
   const def = sim.wlm.definition;
   const plex = rows.filter((r) => r.system === '*PLEX' && r.workManager);
@@ -433,6 +440,7 @@ function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[])
   // Per system: CICS samples (WLM's view) summed over the transaction classes, and each class's CPU.
   const bySys: Record<string, { acc: ScpAcc; cpuByKey: Record<string, number>; cpu: number }> = {};
   for (const s of sim.wlm.systems) {
+    if (down.includes(s.lparId)) continue;
     const accs = s.scps.filter((p) => cicsKeys.has(p.scKey));
     if (accs.length === 0) continue;
     const cpuByKey: Record<string, number> = {};

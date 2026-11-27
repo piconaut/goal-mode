@@ -2,7 +2,7 @@
 // CPC; filing season then grows e-filing and refund enquiries ~2%/day toward the deadline week.
 
 import type { AddressSpaceDef, ArrivalShape, WorkloadDef } from '../../sim/workload/types';
-import { cics, cicsServers, db2, db2Servers, mq, zosBase } from './midwest-workloads';
+import { as, CICSXLOG_ENGINES, cics, cicsServers, db2, db2Servers, mq, zosBase } from './midwest-workloads';
 
 const WEEKDAY: ArrivalShape['weekly'] = [1, 1, 1, 1, 1, 0.3, 0.2];
 // Taxpayers file in the evenings and at weekends.
@@ -183,6 +183,7 @@ export const REVENUE_WORKLOADS: WorkloadDef[] = [
 
 export const REVENUE_ADDRESS_SPACES: AddressSpaceDef[] = [
   ...zosBase('PROD1', 1),
+  as('PROD1', 'CICSXLOG', null, CICSXLOG_ENGINES),
   ...db2('PROD1', 'DB1A'),
   ...cics('PROD1', '1', ['1', '3']),
   ...mq('PROD1', 'MQ1A'),

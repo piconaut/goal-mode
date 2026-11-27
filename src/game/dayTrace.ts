@@ -22,16 +22,24 @@ import { cancelChange, requestChange, submitRca, activateSavedPolicy, deactivate
 import { applyReportClassAdvice } from './rcAdvisor';
 import { applyWlmEdit, pendingBase, playerWlmEditError, serviceClassGoalIssues, type WlmEdit } from './wlmEdit';
 import { askAround } from './inquiries';
+import { requestOperation } from './operations';
+import { replayLegacyRequest } from './run/migrate';
+import { requestEventReply } from './run/events';
+import { requestBackout } from './run/otherTeamChanges';
 import { workOnProject } from './projects';
 import { buyTool, noteReportOpened, normalizeDefinition, setToolActive } from './tools';
 import { decideTfp } from './tfp';
 import type { Mechanism, RunState, Trigger } from './types';
 import type { ServiceDefinition } from '../sim/wlm/types';
+import type { Operation } from '../sim/core/operations';
 
 /** One player action the browser applied during the live day, as the worker's message handler received it.
  *  The payloads are the worker's own (`ToWorker`), not the play CLI's text forms. */
 export type DayTraceCommand =
   | { cmd: 'change'; req: ChangeRequest }
+  | { cmd: 'operation'; op: Operation }
+  | { cmd: 'backoutChange'; changeId: string }
+  | { cmd: 'eventReply'; eventUid: string }
   | { cmd: 'cancel'; changeId: number }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
@@ -110,8 +118,18 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceStat
   const run = st.run;
   const settled = (out: { run: RunState }): TraceState => ({ ...st, run: out.run });
   switch (c.cmd) {
-    case 'change':
-      return settled(requestChange(run, contentOf(run), c.req));
+    case 'change': {
+      const migrated = replayLegacyRequest(run, scOf(run), contentOf(run), c.req);
+      return migrated ? settled({ run: migrated }) : settled(requestChange(run, contentOf(run), c.req));
+    }
+    case 'eventReply':
+      return { ...st, run: requestEventReply(run, contentOf(run), c.eventUid).run };
+    case 'backoutChange':
+      return settled(requestBackout(run, contentOf(run), c.changeId));
+    case 'operation': {
+      const out = requestOperation(run, scOf(run), contentOf(run), c.op);
+      return out.ok ? settled(out) : corrupt(`a recorded operation was refused: ${out.message}`);
+    }
     case 'cancel': {
       const o = cancelChange(run, c.changeId);
       return { run: o.run, pendingPolicy: o.restoredPolicy && !st.pendingPolicy ? o.restoredPolicy : st.pendingPolicy };

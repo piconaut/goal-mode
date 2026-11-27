@@ -10,6 +10,14 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-26: PT-57 exposes live operator commands and their targets in the play CLI through the same game path and Operations view as the browser.
+- 2026-11-26: PT-55 bots choose operation targets from player-visible reports and release gateway/HSM protection from offered traffic and recall demand; ambiguous targets stay unresolved, PROCU honors address-space CPU modifiers, and report-only offered-rate accounting keeps old saves readable. Three 20-seed sweeps stayed inside the bands (Midwest 17 / 27 / 40 and 19/20, Harbourline 10 / 32 / 40 and 17/20 (textbook 2/20), Revenue 20.5 / 27 / 40 and 20/20); PT-20's entries are done. [PR #502](https://github.com/piconaut/goal-mode/pull/502)
+- 2026-11-26: PT-54 moves card resolution to operator effects, linked rollouts and inbox replies, retains the CICS/HSM relief footprints, models settlement backout, and migrates legacy saves. The three 20-seed sweeps stayed inside their balance bands. PT-55 is ready. [PR #501](https://github.com/piconaut/goal-mode/pull/501)
+- 2026-11-26: PT-53 adds other teams’ rollouts and backouts to the Change board. Paired rollouts share a title and get distinct references. Routine rollouts save CPU while live. All three review sweeps passed. PT-54 is ready. [PR #500](https://github.com/piconaut/goal-mode/pull/500)
+- 2026-11-26: PT-56 adds targeted operator commands, live Db2 thread and utility views, and gateway and DFSMShsm status in Change Desk → Operations. PT-53 is unblocked for change backout on the board; PT-54 will connect these operations to card endings. Db2 lock release on rollback is verified for PT-54. The three-scenario comparison against `dev` with the PT-52 refactor is identical.
+- 2026-11-26: PT-56 review decision (user): RMFGAT is the Monitor III gatherer and its cancel gaps that system only; MONAGENT runs the alert rules and its cancel pauses alerting. SMF-side gap queued as RF-12.
+- 2026-11-26: PR #496 cleanup (simplify): one shared played-hour helper, CPU-slice scaling, fraction-modifier predicate, command-log line/cap and lock-holder rule; culprits resolve on the effective workloads' routing. No behaviour change (goldens unchanged).
+- 2026-11-26: PT-52 the world's entities: daily DDF-thread and TSO-userid rosters (RUNAWAY and SHADOW_IT load their culprits), a permanent CICSXLOG STC with CANCEL and automation restart, a nightly Db2 utility schedule (REORG_OVERRUN overruns its REORG), the settlement lock holder in Db2 blockers, SICK_AOR abends per region; cards still end by fix id (RF-11 queued).
 - 2026-11-26: PT-20 decided ([docs/pt-20-design.md](docs/pt-20-design.md); user: Q1–Q7 yes; revised after an adversarial review): seven general operations with real wrong-target costs on entities in always-present rosters, 21 cards end or are relieved through one, 4 business cards through inbox replies; five entries: PT-52 (entities, ready), PT-56 (operations), PT-53, PT-54, PT-55.
 - 2026-11-26: Design call (user): D1's proof gate (RT-24) dropped, Q8b no; PT-20 becomes a design note for general operations, followed by PT-52 … PT-55; PT-19 folds into PT-53.
 - 2026-11-25: Shadow week prologue designed ([docs/prologue-design.md](docs/prologue-design.md), #490) and scoped into BACKLOG list `prologue` (PRO-01 … PRO-07).
@@ -170,12 +178,12 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest reference, PT-51 (2026-11-24, #488, remote, Normal). Median end day for do-nothing / textbook / expert,
-  then expert wins. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347621450), seeds 1–20,
-  17 / 27 / 40 and 20/20. Seeds 1–5 [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45347615358)
-  16 / 27 / 40 and 5/5, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45342988016)
-  21 / 29 / 40 and 5/5, [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45342756292)
-  11 / 29 / 40 and 3/5. All inside the CI bands. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
+- Latest reference, PT-55 (2026-11-26, remote, Normal, seeds 1–20). Median end day for do-nothing / textbook / expert,
+  then expert wins. Midwest 17 / 27 / 40 and 19/20, Revenue 20.5 / 27 / 40 and 20/20, Harbourline 10 / 32 / 40
+  and 17/20 (textbook wins 2/20). All inside the CI bands. The medians held against PT-54, moving at most 2.5 days
+  and one expert win. [Midwest](https://github.com/piconaut/goal-mode/actions/runs/45914762124),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/45914776981), [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/45914770298).
+- I13 quick reversals for S-1 through S-3 were 1/0/8, accepted by the user (2026-11-13, #331).
 - Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
   17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) 10 / 31 / 15 of 20 (expert losses

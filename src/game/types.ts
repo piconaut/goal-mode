@@ -42,11 +42,19 @@ export interface PlannedChange {
   /** Temporary changes (On/Off CoD) revert at the start of this day. */
   revertDay: number | null;
   revertCommands: Command[];
-  /** Game-level fix that ends an active event (e.g. cancel a runaway query). */
-  endsEvent: string | null;
-  /** Applied fixes only: cards of this fix that the player could see and that had not started yet when the fix
-   * applied. They end when they start that day (a forewarned change met by the fix already in place). */
-  armedEvents?: string[];
+  /** An in-flight request imported from a save made before operator commands replaced fixes. */
+  migratedEventId?: string;
+  /** Other-team rollout targeted by this Change Desk request. */
+  backoutChangeId?: string;
+}
+
+export interface OtherTeamChange {
+  id: string;
+  eventId: string;
+  eventUid?: string;
+  startTick: number;
+  endTick: number | null;
+  status: 'SCHEDULED' | 'APPLIED' | 'COMPLETE' | 'BACKED_OUT';
 }
 
 export interface ActiveEvent {
@@ -80,6 +88,12 @@ export interface ActiveEvent {
   /** Start tick of the hour whose union `affects` (a power cap's scope follows the routing) and `reach` hold. */
   affectsHour?: number;
   endCommands: Command[];
+  /** Windows of LCU I/O from queued recalls that replayed after the storm. */
+  footprintReplays?: { startTick: number; endTick: number }[];
+  /** A matching rolling recycle takes effect when the target shutdowns have started. */
+  endOnRecycleTick?: number;
+  /** Roster entities the card loaded when it began (thread tokens or userids), for its truth and later operations. */
+  culprits?: string[];
   started: boolean;
   ended: boolean;
 }
@@ -89,6 +103,8 @@ export interface WorkloadHour {
   withinSla: number;
   failed: number;
   rtSumSec: number;
+  /** Offered arrival count before gateway protection; absent on old saved hours. */
+  offeredArrivals?: number;
   parts: Record<string, number>;
   /** Units of work that ended in rollback rather than commit (RT-23); absent when every unit committed. */
   rolledBack?: number;
@@ -119,6 +135,8 @@ export interface CicsStorageHour {
   limitMb: number;
   /** Seconds the region spent short on storage. */
   sosSec: number;
+  /** Transactions that abended in this region (the region's transaction statistics, XMRAENDC); absent when none. */
+  abends?: number;
 }
 
 /** One played day's capacity peaks (hourly averages), kept for the capacity planner. */
@@ -417,6 +435,7 @@ export interface Message {
   from: string;
   subject: string;
   body: string;
+  replyToEventUid?: string;
 }
 
 export interface RunState {
@@ -489,6 +508,7 @@ export interface RunState {
   /** Critical batch deadline, seconds after the played day's 06:00 start. */
   batchDeadlineSec: number;
   changes: PlannedChange[];
+  otherTeamChanges?: OtherTeamChange[];
   nextId: number;
   events: ActiveEvent[];
   pendingCommands: Command[];

@@ -16,12 +16,12 @@ import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
 import { monthElapsedFrac } from '../src/sim/cost/mlc';
 import { msuPerCp } from '../src/sim/hw/cpc';
-import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { MON3_HISTORY } from '../src/content/tools';
 
 import { clockAt, hhmm, pad2, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads } from '../src/game/workloads';
+import { migrateDayTrace, migrateRunState } from '../src/game/run/migrate';
 import { SAVE_VERSION, assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
 import { inquiriesView } from '../src/game/inquiries';
@@ -34,6 +34,8 @@ import type { WlmEdit } from '../src/game/wlmEdit';
 import { plannedPolicy } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { problemsView } from '../src/game/problems';
+import { operationsView } from '../src/game/operations';
+import type { Operation } from '../src/sim/core/operations';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import { rcaGroupOf } from '../src/game/run/rca';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
@@ -50,6 +52,8 @@ export type PlayCommand =
   | { cmd: 'start' }
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
+  | { cmd: 'operation'; op: Operation }
+  | { cmd: 'reply'; eventUid: string }
   /** Withdraw a planned change (ids in status); capex back, hours back on the day they were spent. */
   | { cmd: 'cancel'; changeId: number }
   /** End an active On/Off CoD lease at 06:00 tomorrow. */
@@ -120,7 +124,7 @@ export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => {
   const f = decodeRunFileText<PlayFile>(text);
   assertSaveVersion(f);
-  return f;
+  return { ...f, run: migrateRunState(f.run), ...(f.dayTrace ? { dayTrace: migrateDayTrace(f.dayTrace)! } : {}) };
 };
 
 /** Load a play file as the CLI does: the current save version, decoded and checked. */
@@ -134,6 +138,25 @@ export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', s
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
   const out = apply(file, c);
   return out.ok ? { ...out, file: { ...out.file, log: [...file.log, c] } } : out;
+}
+
+/** The `json` verb also accepts PlayCommands, so check the shape before handing it to the game. */
+function validOperation(op: Operation): boolean {
+  const id = (value: string) => typeof value === 'string' && value.length > 0;
+  const day = (value: number) => Number.isSafeInteger(value) && value >= 0;
+  switch (op?.kind) {
+    case 'CANCEL_JOB': return day(op.day) && id(op.jobname) && id(op.lparId);
+    case 'CANCEL_ADDRESS_SPACE': return id(op.jobname) && id(op.lparId);
+    case 'CANCEL_SESSION': {
+      const t = op.target;
+      return (t?.kind === 'TSO_USER' || t?.kind === 'DDF_THREAD') && day(t.day) && id(t.id) && id(t.workloadId) && id(t.lparId);
+    }
+    case 'TERM_UTILITY': return day(op.day) && id(op.id) && id(op.member);
+    case 'RECYCLE_CICS': return Array.isArray(op.targets) && op.targets.every((r) => r && id(r.name) && id(r.lparId));
+    case 'SET_GATEWAY': return id(op.workloadId) && (op.mode === null || op.mode === 'LIMIT' || op.mode === 'BACKOFF' || op.mode === 'BLOCK');
+    case 'HOLD_HSM_RECALL': return typeof op.held === 'boolean';
+    default: return false;
+  }
 }
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
@@ -177,6 +200,15 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'change': {
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'CHANGE', req: c.req }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
+    case 'operation': {
+      if (!validOperation(c.op)) return fail('Invalid operation. See the operator verbs in the play usage.');
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'OPERATION', op: c.op }, content, sc(run));
+      return o.ok ? done(o.run, o.message, true, o.pending) : fail(o.message);
+    }
+    case 'reply': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'EVENT_REPLY', eventUid: c.eventUid }, content, sc(run));
       return done(o.run, o.message, o.ok, o.pending);
     }
     case 'restart': {
@@ -431,10 +463,13 @@ export function statusText(file: PlayFile): string {
     out.push('  ' + r.sla.map((s) => `${s.workloadId} ${s.attainmentPct.toFixed(1)}%`).join('  '));
   }
   // Yesterday's mail stays (night-time alerts land on the played day before); only today's hints are shown.
-  const today = v.inbox.filter((m) => m.day >= v.day - 1 && (m.from !== HINT_SENDER || m.day >= v.day));
+  const today = v.inbox.filter((m) => m.reply || (m.day >= v.day - 1 && (m.from !== HINT_SENDER || m.day >= v.day)));
   if (today.length) {
     out.push('inbox:');
-    for (const m of today) out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
+    for (const m of today) {
+      out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
+      if (m.reply) out.push(`    reply ${m.replyToEventUid}: ${m.reply.label} (${m.reply.hours}h, ${m.reply.facet} trust −${m.reply.trust})`);
+    }
   }
   const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
@@ -630,6 +665,36 @@ function table(rows: object[], omit: string[] = []): string {
   return [line(cols), ...flat.map((o) => line(cols.map((c) => o[c] ?? '')))].join('\n');
 }
 
+/** Live target ids and status from the same Operations view the browser uses. */
+export function opsText(file: PlayFile, json = false): string {
+  const { run } = file;
+  const { tso, threads, ...view } = operationsView(run, sc(run));
+  if (json) {
+    const publicRow = ({ shareFrac: _shareFrac, ...row }: (typeof tso)[number]) => row;
+    return JSON.stringify({ ...view, tso: tso.map(publicRow), threads: threads.map(publicRow) }, null, 2);
+  }
+
+  const withDay = <T extends { day: number }>(row: T) => ({ ...row, day: `D${row.day + 1}` });
+  const session = ({ day, id, workloadId, lparId, cpuSec }: (typeof tso)[number]) => ({ day: `D${day + 1}`, id, workloadId, lparId, cpuSec: cpuSec.toFixed(2) });
+  return [
+    run.phase === 'LIVE' ? `Operations · ${clockText(run.sim.tick)}` : 'Operator commands run during the live day.',
+    '', 'Running jobs (cancel-job <day> <jobname> <lparId>)', table(view.jobs.map(withDay)),
+    '', 'Cancellable address spaces (cancel-stc <jobname> <lparId>)', table(view.addressSpaces),
+    '', 'TSO users (logoff-tso <day> <id> <workloadId> <lparId>, CPU s/tick)', table(tso.map(session)),
+    '', 'Db2 threads (cancel-thread <day> <id> <workloadId> <lparId>, CPU s/tick)', table(threads.map((e) => ({
+      ...session(e), member: e.member ?? e.lparId, authid: e.authid, corrid: e.corrid,
+    }))),
+    '', 'Active Db2 utilities (terminate-utility <day> <id> <member>)', table(view.utilities.map(({ overrun, ...u }) => ({ ...withDay(u), status: overrun ? 'Past scheduled end' : 'Active' }))),
+    '', 'Missed Db2 utilities', table(view.missedUtilities.map((u) => ({ ...withDay(u), status: view.utilities.some((a) => a.id === u.id) ? 'Replacement running' : 'Awaiting next scheduled run' }))),
+    '', 'CICS regions (recycle-cics <name> <lparId> [<name> <lparId> ...])', table(view.regions.map(({ name, lparId, recycle }) => ({
+      name, lparId, status: recycle ? (recycle.startTick > run.sim.tick ? 'Queued' : 'Restarting') : 'Ready',
+      restartAt: recycle ? clockText(recycle.restartTick) : null,
+    }))),
+    '', 'Gateway channels (gateway <id> <limit|backoff|block|off>)', table(view.gateway.map((g) => ({ ...g, mode: g.mode ?? 'OFF' }))),
+    '', `DFSMShsm recalls ${view.recalls.held ? 'HELD' : 'RELEASED'} · ${Math.round(view.recalls.backlogIo)} queued I/Os · ${Math.round(view.recalls.incomingIops)} incoming IOPS (hsm-recall <hold|release>)`,
+  ].join('\n');
+}
+
 /** The WLM activity log as the Monitor shows it (last 60 lines; live only with Monitor III, else after the day).
  * system: lines for one LPAR; grep: lines containing that text (case-insensitive). */
 export function wlmLogText(file: PlayFile, opts: { system?: string; grep?: string } = {}): string {
@@ -711,8 +776,6 @@ export function catalogText(file: PlayFile): string {
   const v = buildView(file.run, sc(file.run));
   const out = ['hardware (change {"label":..,"hardwareId":ID}):'];
   for (const h of HARDWARE) out.push(`  ${h.id}: ${h.name}. capex $${h.capex.toLocaleString()}, opex $${h.opexPerDay.toLocaleString()}/day, lead ${h.leadDays}d${h.durationDays ? `, lasts ${h.durationDays}d` : ''}. ${h.description}`);
-  out.push('fixes (change {"label":..,"fixId":ID}):');
-  for (const f of FIXES.filter((x) => v.fixIds.includes(x.id))) out.push(`  ${f.id}: ${f.name}. ${f.hours}h${f.trustCost ? `, ${f.trustCost.facet} trust -${f.trustCost.amount}` : ''}${f.operational ? ', operator command (no change-board trust cost)' : ''}. ${f.description}`);
   out.push(`batch restart (restart JOB; 0.5h; from the last checkpoint, only during its batch night): abended now: ${v.batch.abended.map((a) => `${a.name}${a.critical ? ' (critical path)' : ''}`).join(' ') || 'none'}`);
   out.push(`tools (buy ID; insight ${v.insight}):`);
   for (const t of v.tools) out.push(`  ${t.id}${t.trialLastDay !== null ? ` [free trial to end of day ${t.trialLastDay + 1}; buy to keep]` : t.owned ? ' [owned]' : ''}${t.comingSoon ? ' [coming soon]' : ''}: ${t.name}, tier ${t.tier}, ${t.insightCost} insight${t.prereqs.length ? `, needs ${t.prereqs.join('+')}` : ''}. ${t.reveals}`);

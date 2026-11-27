@@ -229,6 +229,13 @@ export interface Mon3View {
   wkm?: Mon3Wkm[];
   /** PROCU: jobs using a processor, by descending EAppl % CP (absent from the CLI's trimmed history, like SYSWKM). */
   procJobs?: Mon3ProcJob[];
+  /** Systems with no samples in this range, as the Data Index marks them (absent when every gatherer runs). */
+  missingSystems?: Mon3MissingSystem[];
+}
+
+export interface Mon3MissingSystem {
+  system: string;
+  reason: 'Gatherer not active';
 }
 
 /** One PROCU line (RMF Report Analysis p.188–189). Engines: the report's percentages ÷ 100. */

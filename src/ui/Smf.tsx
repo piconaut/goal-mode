@@ -12,8 +12,8 @@ import { AnalyticsLink, Empty } from './Empty';
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and the rollback share of units of work (QWACABRT).' },
   { kind: 'DB2_STATS', label: 'Db2 statistics', help: 'Per member, during the selected hour. DBAT waited counts requests queued at MAXDBAT. Claim and drain counts cover the modeled object.' },
-  { kind: 'DB2_BLOCKERS', label: 'Db2 blockers', help: 'Live DISPLAY BLOCKERS DETAIL view of the modeled object. Workload IDs, holder counts and mean ages describe simulated cohorts.' },
-  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share. Per region: EDSA peak against EDSALIM and time short on storage (SOS).' },
+  { kind: 'DB2_BLOCKERS', label: 'Db2 blockers', help: 'Live DISPLAY BLOCKERS DETAIL view of the modeled object, and any batch job holding escalated table space locks. Workload IDs, holder counts and mean ages describe simulated cohorts.' },
+  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share. Per region: EDSA peak against EDSALIM, time short on storage (SOS) and transaction abends.' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
 ];
@@ -182,6 +182,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
           {d.view.drain && <p>{d.view.drain.name} · {d.view.drain.member} · {d.view.drain.object} · {
             d.view.drain.phase === 'WAITING' ? 'Waiting for claim release' : 'Drain held'
           } · {f1(d.view.drain.pendingReaders)} readers waiting for a drain lock</p>}
+          {d.view.lockHolder && <p>Table space locks escalated · {d.view.lockHolder.object} · holder {d.view.lockHolder.job} (batch, {d.view.lockHolder.member ?? 'no member'} / {d.view.lockHolder.lparId}) · {d.view.lockHolder.backoutUntilTick !== undefined ? "Db2 is backing out the cancelled unit of work" : "online work waits for its commit"}</p>}
           {d.view.rows.length ? (
             <table>
               <thead><tr>
@@ -200,7 +201,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                 </tr>
               ))}</tbody>
             </table>
-          ) : <div className="muted">No current tracked locks or claims.</div>}
+          ) : !d.view.lockHolder && <div className="muted">No current tracked locks or claims.</div>}
         </>}
         {d?.kind === 'CICS' &&
           (d.rows.length === 0 ? (
@@ -255,7 +256,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
           ))}
         {d?.kind === 'CICS' && (d.storage?.length ?? 0) > 0 && (
           <>
-            <h4>Region storage (storage manager statistics)</h4>
+            <h4>Per region (storage manager and transaction statistics)</h4>
             <table>
               <thead>
                 <tr>
@@ -263,6 +264,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <th className="num">EDSA peak MB</th>
                   <th className="num">EDSALIM MB</th>
                   <th className="num">SOS time</th>
+                  <th className="num">Abends</th>
                 </tr>
               </thead>
               <tbody>
@@ -275,6 +277,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                       {r.sosSec > 0 ? `${(r.sosSec / 60).toFixed(0)} min (DFHSM0133)` : '0'}
                       <PinButton game={game} req={{ source: 'CICS_STORAGE', hour: h, region: r.region }} label={`${r.region} SOS time`} />
                     </td>
+                    <td className={`num${(r.abends ?? 0) > 0 ? ' bad' : ''}`}>{Math.round(r.abends ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -68,66 +68,6 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
 for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
-### PT-52 · The world's entities: rosters, CICSXLOG, utility schedule
-`list: playtest-fixes · status: ready · priority: low · size: L · area: sim`
-
-Source: PT-20, decided 2026-11-26 ([docs/pt-20-design.md](docs/pt-20-design.md) §2 rule 7, §3, §4, §10). Add the
-entities the general operations will target, and move the cards onto them, so every build stays coherent: daily
-DDF-thread and TSO-userid rosters with a heavy-tailed CPU spread; a permanent low-CPU CICSXLOG STC that matches the
-`CICS*` rule; each scenario's nightly utility schedule (REORG, COPY, RUNSTATS on most nights); site automation that
-restarts a cancelled STC after N minutes (FICTIONAL), with cancel of base address spaces in the sim. Re-point the cards
-built from modifiers: RUNAWAY's extra CPU goes on one roster thread, SHADOW_IT's on two or three userids, XLOG_LOOP
-makes the permanent CICSXLOG loop (no more `ADD_ADDRESS_SPACE`), REORG_OVERRUN overruns the night's scheduled REORG.
-Add the clues that come with it: a lock-holder clue naming the settlement job during LOCK_ESCALATION, and SICK_AOR's
-abends reported per region. Cards still end by fix id. Done when: each entity and re-pointed card has a unit or realism
-test, goldens are regenerated with a "Behaviour change" note, and a three-scenario sweep is recorded.
-
-### PT-56 · General operations as real levers
-`list: playtest-fixes · status: blocked: after PT-52 · priority: low · size: M · area: sim`
-
-Source: PT-20 (docs/pt-20-design.md §3). Add the seven general operations to Change Desk › Operations with their real
-effects and wrong-target costs: cancel a job/STC/TSO user, cancel a Db2 thread, terminate a Db2 utility, recycle CICS
-regions (`RECYCLE_CICS`), back out a change (wired to the Change board in PT-53), gateway protection (rate limit,
-backoff, block sources) and the HSM recall hold with its backlog. Add the DISPLAY THREAD and DISPLAY UTILITY views,
-report lines for held recalls and gateway modes, and Codex entries. Check the backout lock hold of a cancelled job
-with zos-docs before PT-54 models it. Cards and fix buttons are unchanged and nothing uses the operations yet.
-Coefficients FICTIONAL in `content/`. Done when: each operation's effect and wrong-target cost has a unit or realism
-test, and `npm run compare` against `dev` shows no sim difference (`--drop` for reporting-only fields).
-
-### PT-53 · Other teams' changes on the Change board
-`list: playtest-fixes · status: blocked: after PT-56 · priority: low · size: M · area: game`
-
-Source: PT-20 (docs/pt-20-design.md §6); absorbs PT-19 (inbox change notices were always bad news, so the player
-rolled back any announced change on sight by D26). Add a section for changes made by application teams, DBAs and
-vendors to the existing Change board (`src/ui/changeDesk/Requests.tsx`), beside the player's own: the changes cards
-bring in (the overnight REBIND, teller release 4.2, the monitoring agent, the external SQL procedures) and harmless
-or helpful entries from each scenario's content that match them in owner, timing and frequency. Helpful changes have a
-real benefit. "Back out a change" targets an entry (a REBIND immediately, a release or deployment through the Change
-Desk); backing out a harmless one costs its benefit or feature and trust. Forewarnings post their entry. Done when:
-every card-introduced change and at least as many harmless ones per scenario appear with their time and owner, a
-back-out of a harmless entry has a tested cost, and goldens are regenerated with a "Behaviour change" note.
-
-### PT-54 · Cards end on effect, not on a fix id
-`list: playtest-fixes · status: blocked: after PT-53 · priority: low · size: M · area: game`
-
-Source: PT-20 (docs/pt-20-design.md §4, §5, §7). Give each card an operation ends an `endedBy`
-effect, matched in place of `endEventByFix`, including Harbourline's BOT_ATTACK, RETRY_STORM and ZIIP_LOSS. CICS_SOS
-and HSM_RECALL_STORM are relieved, not ended, with the per-region footprint rule of §5. LOCK_ESCALATION ends by
-cancelling the running settlement job, with its backout lock hold. The four business cards answer through their inbox thread. Delete `FIXES`, `visibleFixIds`,
-`armableEvents`, each card's `fix`, COMMIT_SETTLEMENT_OFTEN and the `NO_TARGET`/`ARMED` lines. Bots' `ON_SIGHT_FIXES`
-map a card to its operation and target, still from truth. Migrate old saves (§7). Rewrite SPEC §9 and §10. Done when:
-no card ends by fix id, goldens are regenerated, and a three-scenario sweep shows each band move is one §7 lists.
-
-### PT-55 · Bots choose operation targets from report data
-`list: playtest-fixes · status: blocked: after PT-54 · priority: low · size: M · area: tooling`
-
-Source: PT-20 (docs/pt-20-design.md §7). Bots pick targets from what a player can read (the Monitor III top consumer,
-DISPLAY THREAD, the Change board, the regions short on storage, the channel with the arrival surge), not from
-`inc.truth`, and release their toggles (HSM hold, gateway modes) when the reports show the storm over. A target the
-data doesn't single out shows in sweeps as a card that is never ended. Done when: no bot reads truth to choose a
-target, a three-scenario sweep is recorded in PROGRESS.md, and the bands are restored or re-decided (a balance call
-on the main agent).
-
 ## rca-truth
 
 RCA judging and incident truth: the work that makes RCA verdicts fair and evidence discriminating. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
@@ -241,6 +181,17 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-26 · Report lines for held recalls and gateway modes
+`list: pr-followups · status: ready · priority: low · size: S · area: game`
+
+Source: PR #497 review (PT-56). PT-56 asked for report lines for held DFSMShsm recalls and gateway protection
+modes; the PR shows both only in Change Desk › Operations (`operationsView`), so a player reading the reports after
+the fact can't see why a channel shed work or why batch jobs failed with `HSM RECALL HELD`. Add a line for each to
+the day's reports (the gateway mode per channel while enabled, the recall hold and its queued backlog), join a
+report identity in `tests/helpers/reportIdentities.ts`, and point the `hsm-recall-hold` and `gateway-protection`
+Codex entries at them. Done when: both lines render from sim state, an identity ties each to it, and
+`npm run compare` against `dev` shows no sim difference.
+
 ## realism-fixes
 
 ### RF-10 · Utility drains on the settlement partition ignore online writers
@@ -257,6 +208,31 @@ delay online postings (an SLA cost the player then has to diagnose) and how long
 Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims, the writers'
 SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 drops the APPROX note, goldens are
 regenerated with a behaviour note and the three-scenario sweep is recorded.
+
+### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
+CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
+So the excess rises and falls with the image's arrival rate, and routing the workload off the culprit's image removes
+it, though a real runaway thread keeps running where it is. Model a loaded entity as its own constant demand (one
+enclave or address space in the workload's last period, at most its engines), sized so the card's average excess over
+its usual hours stays about the same. Done when: a realism test shows the excess independent of the arrival rate and
+of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
+three-scenario sweep is recorded.
+
+### RF-12 · A stopped Monitor III gatherer leaves holes in its SMF records
+`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
+
+Source: PR review of PT-56 (2026-11-26), docs/research.md "RMF". Monitor III writes SMF records too (Monitor I, II and
+III write types 70–79), and coupling facility structure detail for the CF Activity report is gathered only on the
+master gatherer system, picked among systems whose Monitor III gatherer is active (Data Gatherer User's Guide PDF p.23
+(printed 5), PDF p.99 (printed 81), PDF pp.102–103 (printed 84–85)). In the sim, cancelling RMFGAT gaps only the live
+Monitor III views; the Postprocessor intervals are untouched. Design first: which RMF intervals the sim should treat as
+Monitor III-written (the book's table of record types per monitor is the source), whether the master role moves when
+its gatherer stops (not stated in the pages read; check before modelling), and how a partial interval shows. Done when:
+cancelling RMFGAT on a system leaves the chosen records short for that interval and system, a realism test shows it,
+the report invariants still hold, and SPEC §17 and the ledger row are updated.
 
 ## balance
 
@@ -299,6 +275,23 @@ workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE
 strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
+
+### CL-64 · One helper for the "card is live" predicate
+`list: cleanup · status: ready · priority: low · size: S · area: game`
+
+Source: PR #502 simplify review (2026-11-26). The predicate "started, not ended, and not past its end tick" is spelled
+out at four sites: `endEventsByOperation` (`src/game/run/events.ts`), the bot chooser (`tools/botOperations.ts`),
+`gatewaySources` (`src/game/operations.ts`, as `!ended && startTick <= tick && …`), and `started && !ended` in
+`obviousHourly` and the fixer's on-sight loop (`tools/strategies.ts`), the regulator audit (`src/game/run.ts`) and
+`blockedHardware` (`src/game/run/changes.ts`), where the caller runs after `advance` has set `ended`. Add one
+`cardLive(event, tick)` helper and use it. Do not fold in `advance`'s local `running()`, which also counts a card whose
+`startTick` is this tick before its `started` flag is written; keep that tick-aware case explicit next to the helper.
+Leave the different questions alone: `inboxReply` (announced, not started), `activeIn`/`markMet`/`counterfactual`
+(window overlap), migration (scheduled today) and the begin/end/recycle triggers.
+
+No behaviour change. Done when: the equivalent sites call the one helper; a test pins a card that starts and another
+that ends in the current tick against both the live query and the engine's tick-aware case; `npm run compare --
+--base origin/dev` reports no differences and `npm run typecheck` is clean.
 
 ## prologue
 

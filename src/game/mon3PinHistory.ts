@@ -4,7 +4,7 @@
 
 import { MON3_HISTORY } from '../content/tools';
 import { TICKS_PER_HOUR } from '../sim/core/units';
-import type { Mon3Cpc, Mon3ProcJob, Mon3Row, Mon3View, Mon3Wkm } from './mon3';
+import type { Mon3Cpc, Mon3MissingSystem, Mon3ProcJob, Mon3Row, Mon3View, Mon3Wkm } from './mon3';
 
 /** What `addPin` reads from a Monitor III view: the full view (browser) or this trimmed one (CLI). */
 export interface Mon3PinView {
@@ -18,6 +18,8 @@ export interface Mon3PinView {
   wkm?: { scKey: string; servers: Pick<Mon3Wkm['servers'][number], 'system' | 'jobname' | 'velocity'>[] }[];
   /** PROCU job rows (RT-11; full view only, like SYSWKM: the CLI's history keeps no job rows). */
   procJobs?: Pick<Mon3ProcJob, 'system' | 'jobname' | 'serviceClass' | 'eapplCpEngines'>[];
+  /** Systems whose gatherer was down in the range (both histories keep them). */
+  missingSystems?: Mon3MissingSystem[];
 }
 
 /** The interval ending at or before a tick, or null when history doesn't reach back that far. */
@@ -28,6 +30,8 @@ interface KeySet {
   rows: [string, string][];
   cpc: string[];
   resources?: (boolean | undefined)[];
+  /** Systems whose gatherer was down (absent when every gatherer ran). */
+  missing?: string[];
 }
 
 export interface Mon3PinHistory {
@@ -46,7 +50,7 @@ const round = (x: number) => Math.round(x * 1e4) / 1e4;
 export const emptyMon3PinHistory = (): Mon3PinHistory => ({ version: 1, keySets: [], entries: [] });
 
 export function recordMon3Pins(h: Mon3PinHistory, tick: number, view: Mon3View): Mon3PinHistory {
-  const keys: KeySet = { rows: view.rows.map((r) => [r.system, r.scKey]), cpc: view.cpc.map((c) => c.lparId), resources: view.rows.map((r) => r.resourceSamples) };
+  const keys: KeySet = { rows: view.rows.map((r) => [r.system, r.scKey]), cpc: view.cpc.map((c) => c.lparId), resources: view.rows.map((r) => r.resourceSamples), ...(view.missingSystems ? { missing: view.missingSystems.map((x) => x.system) } : {}) };
   let keySets = h.keySets;
   let k = keySets.length - 1;
   if (k < 0 || JSON.stringify(keySets[k]) !== JSON.stringify(keys)) {
@@ -75,7 +79,8 @@ export function mon3PinsAt(h: Mon3PinHistory, tick: number): { tick: number; vie
     return { system, scKey, ...(keys.resources?.[i] != null ? { resourceSamples: keys.resources[i] } : {}), pi: e!.r[o] ?? null, cpuEngines: n(o + 1), endedPerSec: n(o + 2), delay: { cpu: n(o + 3), ziip: n(o + 4), io: n(o + 5), stor: n(o + 6), cap: n(o + 7), other: n(o + 8) } };
   });
   const cpc = keys.cpc.map((lparId, i) => ({ lparId, prsmDelayPct: e!.c[2 * i]!, cappedPct: e!.c[2 * i + 1]! }));
-  return { tick: e.tick, view: { rows, cpc } };
+  const missing = keys.missing?.map((system) => ({ system, reason: 'Gatherer not active' as const }));
+  return { tick: e.tick, view: { rows, cpc, ...(missing ? { missingSystems: missing } : {}) } };
 }
 
 export const mon3PinRange = (h: Mon3PinHistory): { firstTick: number; lastTick: number } | null =>

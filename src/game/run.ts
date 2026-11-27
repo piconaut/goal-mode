@@ -5,6 +5,7 @@ import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
 import { AUDIT } from '../content/events/midwest-events';
 import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
+import { chargeHeldRecalls, gatewaySources } from './operations';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { initState } from '../sim/core/init';
 import { Rng, streamRng } from '../sim/core/rng';
@@ -14,7 +15,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import { classify } from '../sim/wlm/classify';
-import { emptyAlerts, evaluateAlerts } from './alerts';
+import { emptyAlerts, evaluateAlerts, suspendAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { opexBudgetFor } from './catalog';
 import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
@@ -23,9 +24,10 @@ import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { emptyPolicyBook, savedPolicy, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { ARMED, failRisk, NO_TARGET, policyFailuresWithLaterToday, requestChange } from './run/changes';
+import { failRisk, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
+import { drawEvents, eventEndLog, eventStartLog, resolveEvent, storyFor } from './run/events';
+import { applyBackout, landRoutineChanges } from './run/otherTeamChanges';
 import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
@@ -35,7 +37,7 @@ import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
 import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
 import { nightStartTick } from './night';
 import { tfpAtDayEnd } from './tfp';
-import { expireToolTrials, measurementCommands, trialTool } from './tools';
+import { alertingAgentDown, expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
   FACETS,
   facetsOf,
@@ -47,9 +49,13 @@ import {
   type RunState
 } from './types';
 import { SAVE_VERSION } from './runFile';
+import { applyMigratedRequest } from './run/migrate';
+import { packOf } from '../content/packs';
 import { allWorkloads } from './workloads';
-import { hourUnion, resolveReach, type ReachWorld } from './footprint';
+import { resolveCulprits } from './culprits';
+import { cicsStorageReach, hourUnion, recordReplayTick, regionKey, resolveReach, type ReachWorld } from './footprint';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
+import { recallIncomingIops } from '../sim/core/tick/operatorEffects';
 
 export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
@@ -149,13 +155,13 @@ export function startDay(run: RunState, content: GameContent): RunState {
         continue;
       }
       r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
-      const noTarget = c.endsEvent !== null && !hasEventForFix(r, content, c.endsEvent);
-      // A forewarned card that has not started yet: the fix arms against it and ends it when it lands that day.
-      const arms = noTarget ? armableEvents(r, content, c.endsEvent!, r.day) : [];
-      changes.push({ ...c, status: 'APPLIED', ...(arms.length > 0 ? { armedEvents: arms } : {}) });
-      const why = arms.length > 0 ? ` (${ARMED})` : noTarget ? ` (${NO_TARGET})` : '';
-      r = logLine(r, `Planned change applied: ${c.label}${why}`);
-      if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
+      changes.push({ ...c, status: 'APPLIED' });
+      r = logLine(r, `Planned change applied: ${c.label}`);
+      if (c.backoutChangeId) r = applyBackout(r, content, c.backoutChangeId);
+      if (c.migratedEventId) {
+        const scenario = scenarioFor(packOf(r.scenarioId).scenario, r.difficulty);
+        r = { ...applyMigratedRequest({ ...r, phase: 'LIVE' }, scenario, content, c.migratedEventId), phase: 'BRIEFING' };
+      }
     } else {
       if (c.status === 'APPLIED' && c.revertDay === r.day) {
         r = { ...r, pendingCommands: [...r.pendingCommands, ...c.revertCommands] };
@@ -198,6 +204,12 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   let hour: ReturnType<typeof copyHourForAdvance> | undefined;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
+    r = landRoutineChanges(r, content);
+    for (const event of r.sim.cicsRecycles?.length ? r.events : []) {
+      if (!event.ended && event.endOnRecycleTick === tick && (event.endTick === null || event.endTick > tick)) {
+        r = resolveEvent(r, event);
+      }
+    }
     // The hour's scheduled switch is issued before the tick's queued commands (PR-01): a queued activation is the
     // later act, so it wins the tick and the editor's "Queued for next tick" is what the player gets. A scheduled
     // switch that the queue overrides still shows in the log, so it never disappears silently.
@@ -212,16 +224,19 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     }
     cmds.push(...r.pendingCommands);
     let events = r.events;
-    // Fixes applied earlier today whose forewarned card had not started yet: they end the card when it starts.
-    const armed = new Map<string, string>();
-    for (const c of r.changes) if (c.status === 'APPLIED' && c.armedEvents) for (const uid of c.armedEvents) armed.set(uid, c.label);
-    const armedEnded = new Set<string>();
     const resolvedEnd = new Map<string, Command[]>();
     const resolvedCpcs = new Map<string, Set<string>>();
+    const resolvedCulprits = new Map<string, string[]>();
     for (const e of events) {
       const def = defs.get(e.defId);
-      if (!e.started && e.startTick <= tick) {
-        cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
+      if (!e.started && !e.ended && e.startTick <= tick) {
+        cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
+        if (def?.culprits) {
+          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
+          cmds.push(...c.commands);
+          resolvedEnd.set(e.uid, [...e.endCommands, { kind: 'CLEAR_ENTITY_LOADS', tag: e.uid }]);
+          resolvedCulprits.set(e.uid, c.ids);
+        }
         if (def?.capacityDrop) {
           // A site power cap throttles every CPC on the floor; the end restores each one's setting.
           const restore: Command[] = [];
@@ -244,13 +259,6 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         // Only cards the player was told about may appear in the log (and its chart markers).
         const line = def ? eventStartLog(r, def, e.uid) : null;
         if (line) r = logLine(r, line);
-        const armedLabel = armed.get(e.uid);
-        if (armedLabel !== undefined) {
-          // The fix was ready before the card landed: begin and end apply in the same tick, so it never takes hold.
-          cmds.push(...(resolvedEnd.get(e.uid) ?? e.endCommands));
-          armedEnded.add(e.uid);
-          r = logLine(r, `Armed change ${armedLabel}: the forewarned change has been backed out`);
-        }
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
         cmds.push(...e.endCommands);
@@ -258,7 +266,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         if (line) r = logLine(r, line);
       }
     }
-    const sim = step(r.sim, cmds, scenario);
+    const sim = step(r.sim, cmds, scenario, r.sim.gatewayModes ? gatewaySources(r, content) : undefined);
     r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
     // The workloads whose effective routing (pending commands and dynamic routing already applied for this tick)
@@ -277,19 +285,33 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const hourStartTick = tick - (tick % TICKS_PER_HOUR);
     const affectsHour = new Map<string, number>();
     const running = (e: RunState['events'][number]) =>
-      (e.started || e.startTick <= tick) && !e.ended && !armedEnded.has(e.uid) && (e.endTick === null || e.endTick > tick);
+      (e.started || e.startTick <= tick) && !e.ended && (e.endTick === null || e.endTick > tick);
     // Every running card's footprint reach follows the routing and address spaces the same way, with the hour keeping
     // the union of what it reached in it (RT-14). The world is built only on a tick with such a card.
     const resolvedReach = new Map<string, string[]>();
+    const backlogged = (r.sim.hsmRecalls?.backlogIo ?? 0) > (sim.hsmRecalls?.backlogIo ?? 0);
+    const recallReplay = backlogged ? [...events].reverse().find((e) => e.started && defs.get(e.defId)?.relief === 'HSM_RECALL') : undefined;
     let world: ReachWorld | undefined;
     for (const e of events) {
-      const reach = defs.get(e.defId)?.reach;
-      if ((!e.capacityCpcs && !reach) || !running(e)) continue;
+      const def = defs.get(e.defId);
+      const reach = def?.reach;
+      if ((!e.capacityCpcs && !reach) || (!running(e) && e !== recallReplay)) continue;
       const sameHour = e.affectsHour === hourStartTick;
       if (e.capacityCpcs) resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, scopeOf(new Set(e.capacityCpcs))));
       if (reach) {
         world ??= { sim, workloads: effectiveWorkloads(scenario, sim), addressSpaces: effectiveAddressSpaces(scenario, sim) };
-        const now = resolveReach(reach, world, reach === 'capacityCpcs' ? [...(resolvedCpcs.get(e.uid) ?? e.capacityCpcs ?? [])] : []);
+        let now = resolveReach(reach, world, reach === 'capacityCpcs' ? [...(resolvedCpcs.get(e.uid) ?? e.capacityCpcs ?? [])] : []);
+        if (def.relief === 'CICS_STORAGE' && typeof reach === 'object' && 'regions' in reach) {
+          now = cicsStorageReach(reach.regions, sim.last.lpars);
+          const hits = new Set(sim.config.cics.filter((c) => now.includes(regionKey(c.name, c.lparId))).map((c) => c.lparId));
+          const direct = world.workloads.filter((w) => def.affects.includes(w.id) &&
+            Object.entries(sim.routing[w.id] ?? w.routing).some(([lparId, share]) => share > 0 && hits.has(lparId))).map((w) => w.id);
+          resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, direct));
+        } else if (def.relief === 'HSM_RECALL') {
+          const stormIo = recallIncomingIops(sim);
+          if (sim.hsmRecalls?.heldSinceTick != null || (e !== recallReplay && stormIo <= 0)) now = [];
+          resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, now.length ? def.affects : []));
+        }
         resolvedReach.set(e.uid, hourUnion(e.reach, sameHour, now).sort());
       }
       affectsHour.set(e.uid, hourStartTick);
@@ -299,17 +321,19 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       affects: resolvedAffects.get(e.uid) ?? e.affects,
       ...(resolvedReach.has(e.uid) ? { reach: resolvedReach.get(e.uid) } : {}),
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
-      started: e.started || e.startTick <= tick,
-      ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
-      ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
+      started: e.started || (!e.ended && e.startTick <= tick),
+      ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
+      ...(e === recallReplay && !running(e) ? { footprintReplays: recordReplayTick(e.footprintReplays, tick) } : {}),
+      ...(resolvedCulprits.has(e.uid) ? { culprits: resolvedCulprits.get(e.uid) } : {}),
       ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
+    if (sim.hsmRecalls?.heldSinceTick != null) r = chargeHeldRecalls(r, tick);
     r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];
-      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
+      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = alertingAgentDown(r) ? suspendAlerts(r) : evaluateAlerts(r, scenario);
       if (toolOn(r, 'AUTOMATION') && r.phase === 'LIVE') {
         const fired = (r.alerts?.firing ?? []).filter((id) => !before.includes(id));
         r = runAutomation(r, content, fired, requestChange);
@@ -618,7 +642,6 @@ export type { ChangeRequest } from './run/changes';
 
 export type { ChangeOutcome } from './run/changes';
 
-export { fixIdsOf, visibleFixIds } from './run/events';
 
 export { previewContext } from './run/changes';
 

@@ -113,6 +113,19 @@ export function evaluateAlerts(run: RunState, scenario: Scenario): RunState {
   return { ...run, fatigue, alerts: { ...st, breachSince, firing, log: log.slice(-ALERTS.logKept), pauseRequested: pause } };
 }
 
+/**
+ * The alerting agent is down (MONAGENT cancelled, a game rule): no rule can be evaluated, so firing rules clear and
+ * every `forMin` count starts again when it returns, rather than resuming from before the gap.
+ */
+export function suspendAlerts(run: RunState): RunState {
+  const st = run.alerts;
+  if (!st || (st.firing.length === 0 && Object.keys(st.breachSince).length === 0)) return run;
+  const tick = run.sim.tick;
+  const cleared = st.rules.filter((r) => st.firing.includes(r.id));
+  const log = [...st.log, ...cleared.map((r) => ({ tick, ruleId: r.id, kind: 'CLEARED' as const, text: `${hhmm(tick)} no data (MONAGENT down): ${ruleText(r)}` }))];
+  return { ...run, alerts: { ...st, breachSince: {}, firing: [], log: log.slice(-ALERTS.logKept) } };
+}
+
 export function addAlertRule(run: RunState, rule: Omit<AlertRule, 'id'>): { run: RunState; ok: boolean; message: string } {
   const st = run.alerts ?? emptyAlerts();
   const d = ALERT_METRICS[rule.metric];

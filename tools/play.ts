@@ -8,6 +8,11 @@
 //   npm run play -- runs/a.json problem [list] | problem show REC<n> | problem open <workload|class|image|job> <id> --from "D2 10:00" --to "D2 12:00"
 //   npm run play -- runs/a.json problem file REC<n> <MECHANISM> <TRIGGER> [--evidence PIN<n>,PIN<n>]   (RT-22 records)
 //   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | cod-deactivate CHG<n> | restart <JOB>
+//   npm run play -- runs/a.json ops [--json]   (live operator targets and ids)
+//   npm run play -- runs/a.json cancel-job <Dn> <jobname> <system> | cancel-stc <jobname> <system>
+//   npm run play -- runs/a.json logoff-tso <Dn> <userid> <workload> <system> | cancel-thread <Dn> <thread-id> <workload> <system>
+//   npm run play -- runs/a.json terminate-utility <Dn> <utility-id> <member> | recycle-cics <region> <system> [<region> <system> ...]
+//   npm run play -- runs/a.json gateway <workload> <limit|backoff|block|off> | hsm-recall <hold|release>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
@@ -32,7 +37,8 @@ import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
 import { SAVE_VERSION } from '../src/game/runFile';
-import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, problemsText, statusText, tickOfClock, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
+import type { CicsTarget, Operation } from '../src/sim/core/operations';
+import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, opsText, policyText, problemsText, statusText, tickOfClock, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -114,7 +120,7 @@ function wlmLogOpts(a: string[]): { system?: string; grep?: string } {
   return { ...(system ? { system } : {}), ...(grep ? { grep } : {}) };
 }
 
-type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog' | 'finance' | 'capacity' | 'batch' | 'problem';
+type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog' | 'finance' | 'capacity' | 'batch' | 'problem' | 'ops';
 
 function flagValue(a: string[], name: string): string | undefined {
   const i = a.indexOf(name);
@@ -152,6 +158,53 @@ function problemCommand(a: string[]): PlayCommand {
   throw new Error('usage: problem [list] | problem show REC1 | problem open <kind> <id> --from "D2 10:00" --to "D2 12:00" | problem file REC1 <MECHANISM> <TRIGGER> [--evidence PIN1,PIN2]');
 }
 
+function operationDay(arg: string): number {
+  const day = Number(/^D([1-9]\d*)$/i.exec(arg)?.[1]);
+  if (!Number.isSafeInteger(day)) throw new Error('Use a day like D1 from ops.');
+  return day - 1;
+}
+
+type OperationVerb = 'cancel-job' | 'cancel-stc' | 'logoff-tso' | 'cancel-thread' | 'terminate-utility' | 'recycle-cics' | 'gateway' | 'hsm-recall';
+
+function operatorRequest(verb: OperationVerb, args: string[]): Operation {
+  const [first = '', second = '', third = '', fourth = ''] = args;
+  switch (verb) {
+    case 'cancel-job':
+      if (args.length !== 3) throw new Error('usage: cancel-job <Dn> <jobname> <system>');
+      return { kind: 'CANCEL_JOB', day: operationDay(first), jobname: second, lparId: third };
+    case 'cancel-stc':
+      if (args.length !== 2) throw new Error('usage: cancel-stc <jobname> <system>');
+      return { kind: 'CANCEL_ADDRESS_SPACE', jobname: first, lparId: second };
+    case 'logoff-tso':
+    case 'cancel-thread': {
+      if (args.length !== 4) throw new Error(`usage: ${verb} <Dn> <id> <workload> <system>`);
+      const kind = verb === 'logoff-tso' ? 'TSO_USER' : 'DDF_THREAD';
+      return { kind: 'CANCEL_SESSION', target: { kind, day: operationDay(first), id: second, workloadId: third, lparId: fourth } };
+    }
+    case 'terminate-utility':
+      if (args.length !== 3) throw new Error('usage: terminate-utility <Dn> <utility-id> <member>');
+      return { kind: 'TERM_UTILITY', day: operationDay(first), id: second, member: third };
+    case 'recycle-cics': {
+      if (!args.length || args.length % 2 !== 0) throw new Error('usage: recycle-cics <region> <system> [<region> <system> ...]');
+      const targets: CicsTarget[] = [];
+      for (let i = 0; i < args.length; i += 2) targets.push({ name: args[i]!, lparId: args[i + 1]! });
+      return { kind: 'RECYCLE_CICS', targets };
+    }
+    case 'gateway': {
+      const mode = second.toUpperCase();
+      if (args.length !== 2 || (mode !== 'LIMIT' && mode !== 'BACKOFF' && mode !== 'BLOCK' && mode !== 'OFF')) {
+        throw new Error('usage: gateway <workload> <limit|backoff|block|off>');
+      }
+      return { kind: 'SET_GATEWAY', workloadId: first, mode: mode === 'OFF' ? null : mode };
+    }
+    case 'hsm-recall': {
+      const action = first.toLowerCase();
+      if (args.length !== 1 || (action !== 'hold' && action !== 'release')) throw new Error('usage: hsm-recall <hold|release>');
+      return { kind: 'HOLD_HSM_RECALL', held: action === 'hold' };
+    }
+  }
+}
+
 function parse(): PlayCommand | ReadOnly {
   switch (verb) {
     case 'status': return 'status';
@@ -162,6 +215,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'finance': return 'finance';
     case 'capacity': return 'capacity';
     case 'batch': return 'batch';
+    case 'ops': return 'ops';
     case 'problem': return rest.length === 0 || rest[0] === 'list' || rest[0] === 'show' ? 'problem' : problemCommand(rest);
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': {
@@ -181,11 +235,20 @@ function parse(): PlayCommand | ReadOnly {
       const trigger = (rest[2] ?? '') as Trigger;
       return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
     }
+    case 'reply': return { cmd: 'reply', eventUid: rest[0] ?? '' };
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
     case 'unpin': return { cmd: 'unpin', id: parseIdText('pin', rest[0] ?? '') };
     case 'restart': return { cmd: 'restart', name: rest[0] ?? '' };
     case 'cancel': return { cmd: 'cancel', changeId: parseIdText('change', rest[0] ?? '') };
+    case 'cancel-job':
+    case 'cancel-stc':
+    case 'logoff-tso':
+    case 'cancel-thread':
+    case 'terminate-utility':
+    case 'recycle-cics':
+    case 'gateway':
+    case 'hsm-recall': return { cmd: 'operation', op: operatorRequest(verb, rest) };
     case 'cod-deactivate': return { cmd: 'cod-deactivate', changeId: parseIdText('change', rest[0] ?? '') };
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
@@ -230,6 +293,7 @@ if (typeof c === 'string') {
     finance: () => financeText(file!),
     capacity: () => capacityText(file!),
     batch: () => batchStreamsText(file!),
+    ops: () => opsText(file!, json),
     problem: () => rest[0] === 'show' && rest[1] === undefined ? 'usage: problem show REC1' : problemsText(file!, rest[0] === 'show' ? parseIdText('record', rest[1]!) : undefined),
   };
   console.log(c === 'mon3' ? mon3Text(file!, { system: rest[0], json, at }) : readOnly[c]());

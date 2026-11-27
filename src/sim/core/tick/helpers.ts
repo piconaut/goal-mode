@@ -12,7 +12,8 @@ import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../../content/wlm/tuning';
 import { ACC_DECAY, goalPi, goalInfo, type ScpState } from '../../wlm/runtime';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
-import type { CpcConfig, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
+import type { CancelledAddressSpace, CpcConfig, EntityLoad, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
+import { entityLoadMult } from '../../workload/rosters';
 import { TICK_SEC } from '../units';
 
 // A running job is classified every tick; remember the last answer per job definition (the service
@@ -152,6 +153,8 @@ export function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef
 }
 
 const asCache = new WeakMap<Scenario, WeakMap<readonly AddressSpaceDef[], AddressSpaceDef[]>>();
+const downCache = new WeakMap<AddressSpaceDef[], WeakMap<readonly CancelledAddressSpace[], AddressSpaceDef[]>>();
+/** The address spaces running on the sysplex: the scenario's and the run's extras, less any ended by CANCEL. */
 export function effectiveAddressSpaces(scenario: Scenario, s: SimState): AddressSpaceDef[] {
   let a = asCache.get(scenario);
   if (!a) asCache.set(scenario, (a = new WeakMap()));
@@ -160,7 +163,45 @@ export function effectiveAddressSpaces(scenario: Scenario, s: SimState): Address
     out = [...scenario.addressSpaces, ...s.extraAddressSpaces];
     a.set(s.extraAddressSpaces, out);
   }
-  return out;
+  const down = s.cancelledAddressSpaces;
+  if (!down?.length) return out;
+  let b = downCache.get(out);
+  if (!b) downCache.set(out, (b = new WeakMap()));
+  let up = b.get(down);
+  if (!up) {
+    up = out.filter((x) => !down.some((d) => d.jobname === x.jobname && d.lparId === x.lparId));
+    b.set(down, up);
+  }
+  return up;
+}
+
+/** A CICS workload's fast-fail share on an image from its sick regions (`workload@REGION` keys): each region fails its
+ *  own share of the image's work, so the image fails the mean over its AORs. */
+export function aorFailFrac(table: Readonly<Record<string, number>>, workloadId: string, aors: readonly { name: string }[]): { imageFrac: number; byRegion: [string, number][] } {
+  const byRegion: [string, number][] = [];
+  let sum = 0;
+  for (const a of aors) {
+    const f = table[`${workloadId}@${a.name}`];
+    if (f === undefined || f <= 0) continue;
+    const frac = Math.min(1, f);
+    byRegion.push([a.name, frac]);
+    sum += frac;
+  }
+  return { imageFrac: aors.length ? sum / aors.length : 0, byRegion };
+}
+
+/** A slice's CPU-side fields scaled by `m` (1 returns the same object). */
+export function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
+  return m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
+}
+
+/** Multiply each transaction slice of a loaded workload by its entity loads on this image (PT-52). */
+export function applyEntityLoads(slices: SliceSpec[], loads: readonly EntityLoad[] | undefined, lparId: string): SliceSpec[] {
+  if (!loads?.some((l) => l.lparId === lparId)) return slices;
+  return slices.map((s) => {
+    if (s.kind !== 'TXN' || !s.workloadId) return s;
+    return scaleSliceCpu(s, entityLoadMult(loads, s.workloadId, lparId));
+  });
 }
 
 export function addParts(into: Record<string, number>, p: NonNullable<import('../../wlm/evaluate').SliceResult['parts']>, n: number): void {
@@ -181,6 +222,7 @@ export function addParts(into: Record<string, number>, p: NonNullable<import('..
 
 export function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSpec[] {
   const measure = mods.measureCpu ?? {};
+  const rollout = mods.rolloutCpu ?? {};
   const eff = mods.efficiency ?? {};
   const io = mods.ioPerTxn ?? {};
   const shift = mods.ziipShift ?? {};
@@ -188,18 +230,20 @@ export function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): 
   const hasCpu = Object.keys(mods.cpu).length > 0;
   const hasAs = Object.keys(mods.asCpu).length > 0;
   const hasProj = Object.keys(eff).length + Object.keys(io).length + Object.keys(shift).length + Object.keys(elig).length > 0;
-  if (!hasCpu && !hasAs && !hasProj && Object.keys(measure).length === 0) return slices;
+  if (!hasCpu && !hasAs && !hasProj && Object.keys(measure).length === 0 && Object.keys(rollout).length === 0) return slices;
   return slices.map((s) => {
-    const m = s.workloadId
+    const change = rollout[s.workloadId ?? s.jobname ?? ''] ?? 1;
+    const base = s.workloadId
       ? (mods.cpu[s.workloadId] ?? 1) * (measure[s.workloadId] ?? 1) * (eff[s.workloadId] ?? 1)
       : s.jobname
         ? (mods.asCpu[s.jobname] ?? 1) * (measure[s.jobname] ?? 1)
         : 1;
+    const m = base * change;
     const ioM = s.workloadId ? (io[s.workloadId] ?? 1) : 1;
     const z = s.workloadId ? (shift[s.workloadId] ?? 0) : 0;
     const e = s.workloadId ? (elig[s.workloadId] ?? 1) : 1;
     if (m === 1 && ioM === 1 && z === 0 && e === 1) return s;
-    let out = m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
+    let out = scaleSliceCpu(s, m);
     if (ioM !== 1) out = { ...out, ioPerTxn: out.ioPerTxn * ioM, ioRate: out.ioRate * ioM };
     if (z > 0) {
       // Newly zIIP-eligible: that share of general-CP time moves to the zIIP side (it can still overflow back).

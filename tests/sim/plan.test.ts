@@ -21,6 +21,7 @@ const keyObjects = (s: SimState) => ({
   routing: s.routing,
   extraWorkloads: s.extraWorkloads,
   extraAddressSpaces: s.extraAddressSpaces,
+  cancelledAddressSpaces: s.cancelledAddressSpaces,
 });
 
 let base = initState(42, scenario);
@@ -37,6 +38,7 @@ const structure = base.config.cfStructures.find((x) => x.cfLparId === 'CF01')!;
 
 /** Commands that change one of the plan's key objects, with what they change. */
 const EDITS: { cmd: Command; changes: (keyof ReturnType<typeof keyObjects>)[] }[] = [
+  { cmd: { kind: 'CANCEL_ADDRESS_SPACE', jobname: 'MONAGENT', lparId: zos.id }, changes: ['cancelledAddressSpaces'] },
   { cmd: { kind: 'ACTIVATE_POLICY', definition: { ...base.wlm.definition, policyName: 'OTHER' } }, changes: ['definition'] },
   { cmd: { kind: 'SET_WEIGHT', lparId: zos.id, pool: 'CP', weight: 451 }, changes: ['config'] },
   { cmd: { kind: 'SET_LOGICAL', lparId: zos.id, pool: 'CP', logical: 6 }, changes: ['config'] },
@@ -67,7 +69,7 @@ const EDITS: { cmd: Command; changes: (keyof ReturnType<typeof keyObjects>)[] }[
 ];
 /** Commands that touch none of the plan's key objects. SET_ROUTING_POLICY only edits `routingPolicies`; the shares it
  * produces arrive as a new `routing` object from `updateRouting`. */
-const NO_PLAN_INPUT: Command['kind'][] = ['SET_ROUTING_POLICY', 'SET_MODIFIER', 'SET_LOCK_BOOST', 'ABEND_JOB', 'RESTART_JOB', 'SET_MQ', 'SET_PRICING', 'SET_MLC_PRICE', 'CANCEL_DB2_READERS', 'NOTE'];
+const NO_PLAN_INPUT: Command['kind'][] = ['SET_ROUTING_POLICY', 'SET_MODIFIER', 'SET_LOCK_BOOST', 'ABEND_JOB', 'RESTART_JOB', 'SET_MQ', 'SET_PRICING', 'SET_MLC_PRICE', 'CANCEL_DB2_READERS', 'NOTE', 'SET_ENTITY_LOAD', 'CLEAR_ENTITY_LOADS', 'SET_UTILITY_OVERRUN'];
 
 describe('lookup plan invalidation', () => {
   it('covers every command kind', () => {

@@ -68,7 +68,8 @@ describe('scaleEventCommands', () => {
     const sick = HARBOURLINE_EVENTS.find((e) => e.id === 'SICK_AOR')!;
     const values = scaleEventCommands(sick.begin, mult);
     expect(values).toHaveLength(2);
-    for (const c of values) expect(c).toMatchObject({ mod: 'regionFailFrac', value: expect.closeTo(failure, 12) });
+    // Per region (PT-52): CICSAOR3 fails twice the image's share, since PRDC's other region is healthy.
+    for (const c of values) expect(c).toMatchObject({ mod: 'aorFailFrac', value: expect.closeTo(2 * failure, 12) });
     const multipliers = scaleEventCommands([
       { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 3 },
       { kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 0.3 },

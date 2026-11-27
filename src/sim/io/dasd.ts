@@ -69,9 +69,13 @@ export interface DasdResult {
   lcus: LcuResult[];
 }
 
-export function evaluateDasd(cfg: DasdConfig, iops: Record<IoClass, number>): DasdResult {
+/** `utilityIops`: scheduled Db2 utility I/O per LCU id, which lands on the hot volumes like `extraIops`. */
+export function evaluateDasd(cfg: DasdConfig, iops: Record<IoClass, number>, utilityIops?: Readonly<Record<string, Partial<Record<IoClass, number>>>>): DasdResult {
   const CLASSES = ['RANDOM', 'SEQ'] as const;
-  const extraOf = (l: LcuConfig) => ({ RANDOM: l.extraIops?.RANDOM ?? 0, SEQ: l.extraIops?.SEQ ?? 0 });
+  const extraOf = (l: LcuConfig) => {
+    const u = utilityIops?.[l.id];
+    return { RANDOM: (l.extraIops?.RANDOM ?? 0) + (u?.RANDOM ?? 0), SEQ: (l.extraIops?.SEQ ?? 0) + (u?.SEQ ?? 0) };
+  };
   const lcuIops = cfg.lcus.map((l) => ({ RANDOM: iops.RANDOM * l.ioShare.RANDOM + extraOf(l).RANDOM, SEQ: iops.SEQ * l.ioShare.SEQ + extraOf(l).SEQ }));
   const byClass = { RANDOM: lcuIops.reduce((a, x) => a + x.RANDOM, 0), SEQ: lcuIops.reduce((a, x) => a + x.SEQ, 0) };
   const total = byClass.RANDOM + byClass.SEQ;

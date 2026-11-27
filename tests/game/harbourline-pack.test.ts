@@ -3,7 +3,7 @@ import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from '../../src/content/events/
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { PACKS, packOf } from '../../src/content/packs';
-import { FIXES, previewChange } from '../../src/game/catalog';
+import { previewChange } from '../../src/game/catalog';
 import { describeCommand } from '../../src/game/changeDesk';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
@@ -43,21 +43,18 @@ describe('Harbourline Bank pack', () => {
           const [w, l] = c.key.split('@');
           expect(workloadIds, `${e.id} ${c.key}`).toContain(w);
           expect(lparIds, `${e.id} ${c.key}`).toContain(l);
+        } else if (c.kind === 'SET_MODIFIER' && c.mod === 'aorFailFrac') {
+          const [w, region] = c.key.split('@');
+          expect(workloadIds, `${e.id} ${c.key}`).toContain(w);
+          expect(pack.scenario.world.cics.map((x) => x.name), `${e.id} ${c.key}`).toContain(region);
         } else if (c.kind === 'SET_MODIFIER' && c.mod !== 'asCpu') expect(workloadIds, `${e.id} ${c.key}`).toContain(c.key);
         if ('lparId' in c && typeof c.lparId === 'string') expect(lparIds, `${e.id} ${c.kind}`).toContain(c.lparId);
       }
     }
   });
 
-  it('every fix exists and charges a facet of the run; new cards have rumours and clues', () => {
-    const facets = pack.game.facets!.map((f) => f.id);
-    for (const e of HARBOURLINE_EVENTS) {
-      expect(e.clue.length, e.id).toBeGreaterThan(20);
-      if (!e.fix) continue;
-      const fix = FIXES.find((f) => f.id === e.fix);
-      expect(fix, `${e.id} fix ${e.fix}`).toBeDefined();
-      if (fix!.trustCost) expect(facets, e.fix).toContain(fix!.trustCost.facet);
-    }
+  it('cards have clues and new cards have rumours', () => {
+    for (const e of HARBOURLINE_EVENTS) expect(e.clue.length, e.id).toBeGreaterThan(20);
     const midwest = new Set(MIDWEST_EVENTS.map((e) => e.id));
     for (const id of ['MARKET_OPEN_SURGE', 'HOLIDAY_CARD_SPIKE']) {
       expect(midwest.has(id)).toBe(false);
@@ -73,12 +70,14 @@ describe('Harbourline Bank pack', () => {
 
   it('SICK_AOR fails transactions on one region and its end removes the modifier', () => {
     const card = HARBOURLINE_EVENTS.find((e) => e.id === 'SICK_AOR')!;
+    expect(card.endedBy).toEqual({ kind: 'RECYCLE_CICS', targets: [{ name: 'CICSAOR3', lparId: 'PRDC' }] });
+    expect(pack.scenario.world.cics).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'CICSAOR3', lparId: 'PRDC' })]));
     const s0 = initState(7, pack.scenario);
     const on = applyCommands(s0, card.begin);
-    expect(on.mods.regionFailFrac?.['MKTORD@PRDC']).toBeGreaterThan(0);
-    expect(Object.keys(on.mods.regionFailFrac ?? {}).every((k) => k.endsWith('@PRDC'))).toBe(true);
+    expect(on.mods.aorFailFrac?.['MKTORD@CICSAOR3']).toBeGreaterThan(0);
+    expect(Object.keys(on.mods.aorFailFrac ?? {}).every((k) => k.endsWith('@CICSAOR3'))).toBe(true);
     const off = applyCommands(on, card.end);
-    expect(off.mods.regionFailFrac ?? {}).toEqual({});
+    expect(off.mods.aorFailFrac ?? {}).toEqual({});
   });
 });
 

@@ -185,6 +185,10 @@ function hourlyEvidence(
   return { source, metric: req.metric, subject, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
 }
 
+/** A range with no samples from `system` (its gatherer was down) has nothing to pin there. */
+const gatherGap = (view: Mon3PinView, system: string): string | null =>
+  view.missingSystems?.some((x) => x.system === system) ? `Monitor III gatherer not active on ${system} in that range` : null;
+
 function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
   const mon3 = (tick: number | undefined): { tick: number; view: Mon3PinView } | string => {
@@ -219,6 +223,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     case 'MON3': {
       const m = mon3(req.tick);
       if (typeof m === 'string') return m;
+      if (gatherGap(m.view, req.system)) return gatherGap(m.view, req.system)!;
       if (req.jobname !== undefined) {
         const s = m.view.wkm?.find((w) => w.scKey === req.scKey)?.servers.find((x) => x.system === req.system && x.jobname === req.jobname);
         if (!s) return 'No such SYSWKM server';
@@ -367,6 +372,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     case 'PROCU': {
       const m = mon3(req.tick);
       if (typeof m === 'string') return m;
+      if (gatherGap(m.view, req.system)) return gatherGap(m.view, req.system)!;
       if (!m.view.procJobs) return 'This Monitor III range keeps no job rows: the play CLI\'s --at history keeps classes and LPARs only; pin the job from the current view';
       const j = m.view.procJobs.find((x) => x.system === req.system && x.jobname === req.jobname);
       if (!j) return 'No such job row';

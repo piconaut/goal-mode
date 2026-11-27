@@ -23,6 +23,7 @@ import { buildView } from '../game/view';
 import { cicsTransactionClasses, serviceClassGoalIssues } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
+import { migrateDayTrace, migrateRunState } from '../game/run/migrate';
 import { OLD_SAVE_MESSAGE, SAVE_VERSION, assertSaveVersion, decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
 import { basketAfterFailure } from '../game/changeDesk';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
@@ -257,7 +258,7 @@ function importRun(text: string) {
   const f = decodeRunFileText<{ run?: RunState; pendingPolicy?: ServiceDefinition | null; dayTrace?: DayTrace | null }>(text);
   if (!f?.run?.sim || !f.run.scenarioId) throw new Error('Not a GOAL MODE run file');
   assertSaveVersion(f.run);
-  run = f.run;
+  run = migrateRunState(f.run);
   lastPhase = run.phase;
   speed = 0;
   whatIf = null;
@@ -270,7 +271,7 @@ function importRun(text: string) {
   pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
   basket = [];
   // Keep the imported day's trace when it belongs to this run, so the day stays traceable into its past.
-  dayTrace = f.dayTrace && f.dayTrace.start.seed === run.seed ? f.dayTrace : null;
+  dayTrace = f.dayTrace?.start.seed === run.seed ? migrateDayTrace(f.dayTrace) : null;
   postPolicy();
   post({ type: 'BASKET', basket });
   saveNow();
@@ -280,7 +281,7 @@ void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
   career = c ?? EMPTY_CAREER;
   postCareer();
   if (r && r.version !== SAVE_VERSION) post({ type: 'RESULT', ok: false, message: OLD_SAVE_MESSAGE });
-  saved = r && r.version === SAVE_VERSION ? r : null;
+  saved = r && r.version === SAVE_VERSION ? migrateRunState(r) : null;
   savedDesk = d;
   storageReady = true;
   sendView();
@@ -336,7 +337,7 @@ const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'EXPORT_RUN', 'SPECT
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null; dayTrace?: DayTrace | null }>(text);
   assertSaveVersion(f.run);
-  const next = f.run;
+  const next = migrateRunState(f.run);
   // Same run moving forward: extend the charts; otherwise (new run, earlier file) start them over.
   const sameRun = spectating && next.seed === run.seed && next.sim.tick >= run.sim.tick;
   spectating = true;
@@ -353,7 +354,7 @@ function spectate(text: string) {
   historyDirty = true;
   pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
   // Follow the watched file's own trace (a browser save it may carry), so adopting it keeps its day traceable.
-  dayTrace = f.dayTrace && f.dayTrace.start.seed === run.seed ? f.dayTrace : null;
+  dayTrace = f.dayTrace?.start.seed === run.seed ? migrateDayTrace(f.dayTrace) : null;
   postPolicy();
 }
 
@@ -421,7 +422,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         pendingPolicy = savedDesk?.pendingPolicy ? normalizeDefinition(savedDesk.pendingPolicy) : null;
         basket = savedDesk?.basket ?? [];
         // The resumed day keeps its trace (seed-checked), so a reload does not cost the day its past.
-        dayTrace = savedDesk?.dayTrace && savedDesk.dayTrace.start.seed === run.seed ? savedDesk.dayTrace : null;
+        dayTrace = savedDesk?.dayTrace?.start.seed === run.seed ? migrateDayTrace(savedDesk.dayTrace) : null;
         savedDesk = null;
         postPolicy();
         post({ type: 'BASKET', basket });
@@ -626,6 +627,24 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const before = run;
       settleGame(command({ kind: 'CHANGE', req: m.req }));
       returnFailed(before);
+      break;
+    }
+    case 'OPERATION': {
+      const out = command({ kind: 'OPERATION', op: m.op });
+      if (out.ok) trace({ cmd: 'operation', op: m.op });
+      settleGame(out);
+      break;
+    }
+    case 'BACKOUT_CHANGE': {
+      const out = command({ kind: 'BACKOUT_CHANGE', changeId: m.changeId });
+      if (out.run !== run) trace({ cmd: 'backoutChange', changeId: m.changeId });
+      settleGame(out);
+      break;
+    }
+    case 'EVENT_REPLY': {
+      const out = command({ kind: 'EVENT_REPLY', eventUid: m.eventUid });
+      if (out.ok) trace({ cmd: 'eventReply', eventUid: m.eventUid });
+      settleGame(out);
       break;
     }
     case 'DRAFT': {

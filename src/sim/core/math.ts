@@ -1,5 +1,13 @@
 // Numerical helpers.
 
+/** The middle reading, or the mean of the two middles for an even count; `undefined` when there is none. */
+export function median(xs: readonly number[]): number | undefined {
+  if (xs.length === 0) return undefined;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
 /** erf via W. J. Cody-style rational approximation (Numerical Recipes erfc, |err| < 1.2e-7). */
 export function erf(x: number): number {
   const z = Math.abs(x);

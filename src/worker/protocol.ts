@@ -15,6 +15,7 @@ import type { FinanceView } from '../game/finance';
 import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
+import type { Operation } from '../sim/core/operations';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Db2BlockerView, Db2StatRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
@@ -60,6 +61,9 @@ export type ToWorker =
   /** speed AUTO_SPEED runs the day as fast as the worker can (weekend auto-run); 0 pauses. */
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }
+  | { type: 'OPERATION'; op: Operation }
+  | { type: 'BACKOUT_CHANGE'; changeId: string }
+  | { type: 'EVENT_REPLY'; eventUid: string }
   | { type: 'DRAFT'; optionId: string | null }
   | { type: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { type: 'OPEN_PROBLEM'; subject: ProblemSubject; fromTick: number; toTick: number }

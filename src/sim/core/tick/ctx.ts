@@ -96,6 +96,8 @@ export interface TickCtx {
   dbatWaitedByLpar: Record<string, number>;
   /** CICS region storage per LPAR (reporting only). */
   cicsStorageBy: Record<string, CicsStorageTick[]>;
+  /** Transactions that abended in a sick CICS region, per LPAR and region (reporting only, PT-52). */
+  cicsAbendsBy: Record<string, Record<string, number>>;
 }
 
 /** The part of an image's evaluator input that only depends on last tick's state and this tick's slices. Per-tick

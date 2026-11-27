@@ -228,8 +228,13 @@ export function mq(lparId: string, qm: string): AddressSpaceDef[] {
   return [as(lparId, `${qm}MSTR`, 'MQ.MSTR', 0.006), as(lparId, `${qm}CHIN`, 'MQ.CHIN', 0.008)];
 }
 
+/** FICTIONAL: the CICS journal archiver's everyday CPU, reference engines. Its jobname matches the CICS* STC rule meant
+ *  for the regions, so it runs in the regions' class every day (XLOG_LOOP makes it loop). */
+export const CICSXLOG_ENGINES = 0.004;
+
 export const MIDWEST_ADDRESS_SPACES: AddressSpaceDef[] = [
   ...zosBase('PROD1', 1),
+  as('PROD1', 'CICSXLOG', null, CICSXLOG_ENGINES),
   ...db2('PROD1', 'DB1A'),
   ...cics('PROD1', '1', ['1', '3']),
   ...mq('PROD1', 'MQ1A'),

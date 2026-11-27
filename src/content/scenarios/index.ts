@@ -5,6 +5,7 @@ import { BASEPOL } from '../wlm/basepol';
 import { MIDWEST_BATCH_GROWTH_PER_DAY, generateMidwestNetwork } from '../batch/midwest-batch';
 import { HARBOURLINE_PRODUCTS, MIDWEST_PRODUCTS } from '../pricing';
 import { MIDWEST_CF_BASE_ENGINES, MIDWEST_MEMORY, MIDWEST_WORLD } from './midwest';
+import { HARBOURLINE_UTILITIES, MIDWEST_UTILITIES, REVENUE_UTILITIES } from '../entities';
 import { MIDWEST_ADDRESS_SPACES, MIDWEST_WORKLOADS } from './midwest-workloads';
 import { REVPOL } from '../wlm/revpol';
 import { REVENUE_BATCH_GROWTH_PER_DAY, generateRevenueNetwork } from '../batch/revenue-batch';
@@ -42,6 +43,7 @@ export const MIDWEST: Scenario = {
   products: MIDWEST_PRODUCTS,
   batchNetwork: generateMidwestNetwork,
   batchGrowthPerDay: MIDWEST_BATCH_GROWTH_PER_DAY,
+  utilities: MIDWEST_UTILITIES,
 };
 
 /** State Revenue Agency: tax season. Same CF costs and product list as Midwest (one software stack). */
@@ -57,6 +59,7 @@ export const REVENUE: Scenario = {
   memory: REVENUE_MEMORY,
   batchNetwork: generateRevenueNetwork,
   batchGrowthPerDay: REVENUE_BATCH_GROWTH_PER_DAY,
+  utilities: REVENUE_UTILITIES,
 };
 
 /** Harbourline Bank: two CPCs, six LPARs, spiky markets and dynamic routing (SPEC §13.5). */
@@ -73,6 +76,7 @@ export const HARBOURLINE: Scenario = {
   products: HARBOURLINE_PRODUCTS,
   batchNetwork: generateHarbourlineNetwork,
   batchGrowthPerDay: HARBOURLINE_BATCH_GROWTH_PER_DAY,
+  utilities: HARBOURLINE_UTILITIES,
 };
 
 export const SCENARIOS: Record<string, Scenario> = { midwest: MIDWEST, revenue: REVENUE, harbourline: HARBOURLINE };

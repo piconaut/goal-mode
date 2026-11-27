@@ -5,6 +5,7 @@ import { HARBOURLINE, MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
 import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
+import { resolveCulprits } from '../../src/game/culprits';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
 import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
@@ -781,7 +782,11 @@ describe('event cards (SPEC §9)', () => {
       if (holdPriorities) POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
     }
   };
-  const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
+  // A card's begin, plus the loads on its roster culprits (PT-52), as the game resolves them when it begins.
+  const card = (id: string) => {
+    const d = MIDWEST_EVENTS.find((e) => e.id === id)!;
+    return [...d.begin, ...(d.culprits ? resolveCulprits(base, MIDWEST.workloads, d.culprits, `${id}@0`).commands : [])];
+  };
 
   it('shadow IT on TSO lifts DEVT MSU and slows mobile at fixed priorities', () => {
     const asIs = run([], true);

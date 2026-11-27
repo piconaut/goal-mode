@@ -3,6 +3,7 @@
 
 import { DB2_PACKAGES, lsprCategory, SMF113 } from '../content/smf';
 import { clockAt, hhmm, pad2 } from '../sim/core/clock';
+import { lockHolderJob } from '../sim/subsys/batch';
 import { emptyDb2Counters, type Db2ContentionCounters, type Db2Isolation } from '../sim/subsys/db2Contention';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
@@ -162,9 +163,33 @@ export interface Db2BlockerRow {
   affectedLpars: string[];
 }
 
+/** A batch job holding escalated table space locks (LOCK_ESCALATION, PT-52), as DISPLAY DATABASE LOCKS lists a
+ *  holder: the job's correlation ID, its member and the object. */
+export interface Db2LockHolder {
+  job: string;
+  lparId: string;
+  member: string | null;
+  object: string;
+  backoutUntilTick?: number;
+}
+
 export interface Db2BlockerView {
   rows: Db2BlockerRow[];
   drain?: { name: string; phase: 'WAITING' | 'DRAINED'; startedTick: number; object: string; member: string; pendingReaders: number };
+  lockHolder?: Db2LockHolder;
+}
+
+/** The running job of the stream that holds the lock boost's escalated locks, if the boost is on and one runs. */
+export function db2LockHolder(run: RunState): Db2LockHolder | undefined {
+  const { sim } = run;
+  const backingOut = sim.batch.jobs.find((job) => job.lockBackout && job.lockBackout.untilTick > sim.tick);
+  const job = backingOut ?? lockHolderJob(sim.mods, sim.batch.jobs);
+  const object = backingOut?.lockBackout?.object ?? sim.mods.lockHolder?.object;
+  if (!object || !job?.lparId) return undefined;
+  return {
+    job: job.def.name, lparId: job.lparId, member: sim.config.db2.find((m) => m.lparId === job.lparId)?.ssid ?? null, object,
+    ...(backingOut?.lockBackout ? { backoutUntilTick: backingOut.lockBackout.untilTick } : {}),
+  };
 }
 
 /** DISPLAY BLOCKERS DETAIL snapshot. Game cohorts carry average ages and workload IDs. */
@@ -172,7 +197,8 @@ export function db2Blockers(run: RunState, scenario: Scenario): Db2BlockerView {
   const rows: Db2BlockerRow[] = [];
   const profile = scenario.db2Contention;
   const state = run.sim.env.db2Contention;
-  if (!profile || !state) return { rows };
+  const lockHolder = db2LockHolder(run);
+  if (!profile || !state) return lockHolder ? { rows, lockHolder } : { rows };
   const members = run.sim.config.db2.filter((m) => profile.members.includes(m.ssid));
   const affectedLpars = members.map((m) => m.lparId);
   const workload = allWorkloads(scenario, run).find((w) => w.id === profile.reader);
@@ -195,8 +221,11 @@ export function db2Blockers(run: RunState, scenario: Scenario): Db2BlockerView {
     }
   }
   const drain = state.drain;
-  return drain ? { rows, drain: { name: profile.drain.name, phase: drain.phase, startedTick: drain.startedTick,
-    object: profile.object, member: profile.drain.member, pendingReaders } } : { rows };
+  return {
+    rows,
+    ...(drain ? { drain: { name: profile.drain.name, phase: drain.phase, startedTick: drain.startedTick, object: profile.object, member: profile.drain.member, pendingReaders } } : {}),
+    ...(lockHolder ? { lockHolder } : {}),
+  };
 }
 
 export interface CicsTxnRow {
@@ -251,9 +280,13 @@ export interface CicsStorageRow {
   peakMb: number;
   limitMb: number;
   sosSec: number;
+  /** Transactions that abended in the region during the hour. */
+  abends?: number;
 }
 
-/** CICS storage manager statistics per AOR for an hour (EDSA peak against EDSALIM, time short on storage). */
+/** CICS statistics per AOR for an hour: storage manager (EDSA peak against EDSALIM, time short on storage) and the
+ *  region's transaction abends (Abend Count XMRAENDC, kept per region: CICS TS 6 Statistics Reference PDF p.358
+ *  (printed 348)). */
 export function cicsStorageStats(run: RunState, key: string): CicsStorageRow[] {
   const st = key === 'current' ? run.hour?.cicsStorage : run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key)?.cicsStorage;
   return Object.entries(st ?? {})

@@ -7,6 +7,7 @@ import type { DifficultyId } from './difficulty';
 // Type-only, like every import here: the module emits nothing, so this edge cannot become a runtime cycle
 // (midwest-events and footprint import types back from this file). Keep it type-only.
 import type { EventDef, ScriptedBeat } from './events/midwest-events';
+import type { OtherTeamChangeDef } from './otherTeamChanges';
 
 /** A stakeholder whose trust is tracked. Scenarios name their own; every scenario has Finance and Regulator. */
 export type Facet = string;
@@ -52,6 +53,7 @@ export interface InternalGoal {
 
 export interface GameContent {
   events: EventDef[];
+  otherTeamChanges?: OtherTeamChangeDef[];
   story: ScriptedBeat[];
   opexBudgetMonthly: number;
   capexQuarter: number;

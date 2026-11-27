@@ -2,7 +2,7 @@
 
 import { DIFFICULTIES, type DifficultyDef, type DifficultyId } from '../content/difficulty';
 import type { ScriptedBeat } from '../content/events/midwest-events';
-import type { Command } from '../sim/core/commands';
+import { isFractionMod, type Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
 
 export const difficultyOf = (id: DifficultyId | undefined): DifficultyDef => DIFFICULTIES[id ?? 'NORMAL'];
@@ -36,7 +36,7 @@ export function scenarioFor(given: Scenario, id: DifficultyId | undefined): Scen
   return derived;
 }
 
-const scaleExcess = (value: number, mult: number) => Math.max(0.05, 1 + (value - 1) * mult);
+export const scaleExcess = (value: number, mult: number) => Math.max(0.05, 1 + (value - 1) * mult);
 
 /** An event card's begin commands at this severity (1 = unchanged). Multipliers scale their excess over 1;
  * the absolute fractions (region failures, Db2 rollbacks) scale from zero instead, capped at 1. */
@@ -45,7 +45,7 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
   return cmds.map((c): Command => {
     switch (c.kind) {
       case 'SET_MODIFIER':
-        return { ...c, value: c.mod === 'regionFailFrac' || c.mod === 'rollbackFrac' ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
+        return { ...c, value: isFractionMod(c.mod) ? Math.min(1, c.value * mult) : scaleExcess(c.value, mult) };
       case 'SET_CF':
         return c.degrade === undefined ? c : { ...c, degrade: scaleExcess(c.degrade, mult) };
       case 'SET_DASD':
@@ -54,6 +54,8 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
         return { ...c, value: c.value * mult };
       case 'SET_MLC_PRICE':
         return { ...c, mult: scaleExcess(c.mult, mult) };
+      case 'SET_UTILITY_OVERRUN':
+        return c.seqIops === null ? c : { ...c, seqIops: Math.round(c.seqIops * mult) };
       case 'SET_LCU':
         return c.extraIops === undefined ? c : { ...c, extraIops: Object.fromEntries(Object.entries(c.extraIops).map(([k, v]) => [k, Math.round((v ?? 0) * mult)])) };
       default:

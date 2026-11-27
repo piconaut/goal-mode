@@ -31,7 +31,14 @@ function classUnitsOf(run: RunState, scenario: Scenario): (system: string, servi
       (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
     );
     const cands = [
-      ...own.map((a) => ({ name: a.jobname, cx: 'S' as const, engines: a.baseEnginesRef, server: a.role !== null && hostRoles.has(a.role) })),
+      // PROCU shows the CPU each job consumed in the interval, so a space's CPU modifier (a loop) raises its row
+      // (RMF Report Analysis 3.1 PDF p.188 (printed 148)).
+      ...own.map((a) => ({
+        name: a.jobname,
+        cx: 'S' as const,
+        engines: a.baseEnginesRef * (sim.mods.asCpu[a.jobname] ?? 1),
+        server: a.role !== null && hostRoles.has(a.role),
+      })),
       ...jobs.map((j) => ({ name: j.def.name, cx: 'B' as const, engines: jobShape(j.def, 1, 1, seqRtSec).cpRate * (j.cpPace ?? 1), server: false })),
     ];
     const servers = cands.filter((c) => c.server);
