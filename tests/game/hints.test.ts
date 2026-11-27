@@ -113,10 +113,10 @@ describe('morning hints in a run', () => {
     const { SCENARIOS } = await import('../../src/content/scenarios');
     const { advance, chooseDraft, newRun, startDay } = await import('../../src/game/run');
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
-    // A hint is stamped when the day closes (day + 1). Seed 2 gives a hint at each of two closes with
+    // A hint is stamped when the day closes (day + 1). Seed 1 gives a hint at each of two closes with
     // the settlement partition modeled, so both date checks exercise a real message.
     const hintsOf = (r: typeof run) => r.inbox.filter((m) => m.subject === 'A thought for this morning');
-    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 2, 'NORMAL'), MIDWEST_GAME);
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 1, 'NORMAL'), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     const first = hintsOf(run);
     expect(first.length).toBeGreaterThan(0);
