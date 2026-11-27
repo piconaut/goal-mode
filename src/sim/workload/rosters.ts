@@ -7,6 +7,7 @@
 import { ROSTERS } from '../../content/entities';
 import { streamRng } from '../core/rng';
 import type { EntityLoad } from '../core/types';
+import { TICK_SEC } from '../core/units';
 import type { WorkloadDef } from './types';
 
 export type RosterKind = EntityLoad['kind'];
@@ -90,27 +91,26 @@ function idPool(seed: number, day: number, w: WorkloadDef, kind: RosterKind, n: 
   return nums.map((x) => `${prefix}${String(x).padStart(width, '0')}`);
 }
 
-/** CPU multiplier the entity loads put on workload `workloadId` on image `lparId` (1 = none). */
-export function entityLoadMult(loads: readonly EntityLoad[] | undefined, workloadId: string, lparId: string): number {
-  if (!loads) return 1;
-  let extra = 0;
-  for (const l of loads) if (l.workloadId === workloadId && l.lparId === lparId) extra += l.extraCpuFrac;
-  return 1 + extra;
-}
-
 /**
- * Each entry's CPU (`entries` all of one workload on one image), given the workload's measured CPU on that image (which already includes any entity loads): the
- * workload's own CPU is shared out by `shareFrac`, and a loaded entry adds its extra on top. Sums to `workloadCpuSec`.
+ * Each entry's CPU (`entries` all of one workload on one image). `workloadCpuSec` is the workload's measured CPU on that
+ * image, which includes the loaded entries' constant demand (RF-11): each loaded entry takes its engines over the tick,
+ * and the rest of the workload's CPU is shared out by `shareFrac`. Sums to `workloadCpuSec`.
  */
-export function rosterCpuSec(entries: readonly RosterEntry[], workloadCpuSec: number, loads: readonly EntityLoad[] | undefined): Record<string, number> {
+export function rosterCpuSec(entries: readonly RosterEntry[], workloadCpuSec: number, loads: readonly EntityLoad[] | undefined, tickSec: number = TICK_SEC): Record<string, number> {
   const out: Record<string, number> = {};
   if (entries.length === 0) return out;
   const { workloadId, lparId } = entries[0]!;
-  const ownCpuSec = workloadCpuSec / entityLoadMult(loads, workloadId, lparId);
+  const loadedSec: Record<string, number> = {};
+  let loadedTotal = 0;
   for (const e of entries) {
-    let extra = 0;
-    for (const l of loads ?? []) if (l.id === e.id && l.kind === e.kind && l.workloadId === workloadId && l.lparId === lparId) extra += l.extraCpuFrac;
-    out[e.id] = ownCpuSec * (e.shareFrac + extra);
+    let sec = 0;
+    for (const l of loads ?? []) if (l.id === e.id && l.kind === e.kind && l.workloadId === workloadId && l.lparId === lparId) sec += l.engines * tickSec;
+    loadedSec[e.id] = sec;
+    loadedTotal += sec;
   }
+  // A loaded entry cannot take more than the workload measured (a load not yet running, or a short tick).
+  const scale = loadedTotal > workloadCpuSec && loadedTotal > 0 ? workloadCpuSec / loadedTotal : 1;
+  const ownCpuSec = workloadCpuSec - loadedTotal * scale;
+  for (const e of entries) out[e.id] = ownCpuSec * e.shareFrac + loadedSec[e.id]! * scale;
   return out;
 }

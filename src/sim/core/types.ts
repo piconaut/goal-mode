@@ -308,8 +308,9 @@ export interface GatewayTraffic {
   retryRateMult?: number;
 }
 
-/** Extra demand a card put on one roster entity (PT-52): its workload's CPU on that image is multiplied by
- *  1 + the extraCpuFrac of every load there. `tag` groups the loads one card placed, so its end clears them. */
+/** Extra demand a card put on one roster entity (PT-52, RF-11): a constant CPU demand of `engines` reference engines
+ *  on its image, in the workload's last service-class period, whatever the image's arrival rate or routing share.
+ *  `tag` groups the loads one card placed, so its end clears them. */
 export interface EntityLoad {
   tag: string;
   kind: 'DDF_THREAD' | 'TSO_USER';
@@ -317,7 +318,8 @@ export interface EntityLoad {
   id: string;
   workloadId: string;
   lparId: string;
-  extraCpuFrac: number;
+  /** Constant CPU demand, reference engines. */
+  engines: number;
 }
 
 /** An address space ended by CANCEL (PT-52). A started task comes back when automation restarts it. */

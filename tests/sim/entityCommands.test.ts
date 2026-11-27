@@ -10,7 +10,7 @@ import { TICK_SEC } from '../../src/sim/core/units';
 import type { JobRuntime } from '../../src/sim/subsys/batch';
 
 const fresh = (): SimState => initState(1, MIDWEST);
-const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 'c1', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 1, ...over });
+const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 'c1', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', engines: 1, ...over });
 const base = MIDWEST.addressSpaces;
 
 describe('entity loads', () => {
@@ -18,9 +18,9 @@ describe('entity loads', () => {
     let s = applyCommand(fresh(), { kind: 'SET_ENTITY_LOAD', load: load() }).state;
     s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ id: 'DEV002' }) }).state;
     s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ tag: 'c2' }) }).state;
-    s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ extraCpuFrac: 5 }) }).state;
+    s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ engines: 5 }) }).state;
     expect(s.entityLoads).toHaveLength(3);
-    expect(s.entityLoads!.find((l) => l.tag === 'c1' && l.id === 'DEV001')!.extraCpuFrac).toBe(5);
+    expect(s.entityLoads!.find((l) => l.tag === 'c1' && l.id === 'DEV001')!.engines).toBe(5);
     expect(s.entityLoads!.some((l) => l.id === 'DEV002')).toBe(true);
     expect(s.entityLoads!.some((l) => l.tag === 'c2')).toBe(true);
   });

@@ -1,3 +1,4 @@
+import { generationOf, mpFactor } from '../../hw/cpc';
 import { poolEntitlement } from '../../hw/pools';
 import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
@@ -5,7 +6,7 @@ import { blockedDbats, slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
 import { OPERATIONS } from '../../../content/operations';
 import { bpIoMultiplier, DB2 } from '../../subsys/db2';
-import { buildSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
+import { buildSlices, honorsPriority, lastScKeyOf, scKeyAtService } from '../../workload/slices';
 import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
 import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
@@ -62,7 +63,15 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const lostIds = Object.keys(lostShare);
   const imageRates = lostIds.length ? { ...rates } : rates;
   for (const id of lostIds) imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - lostShare[id]!);
-  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
+  // A card's culprit load (RF-11) is reference-engine work: converted as the workload's own CPU is (MP factor, speed).
+  const cpPool = l.pools.find((p) => p.pool === 'CP');
+  const loadCtx = {
+    lastScKey: (workloadId: string) => lastScKeyOf(def, workloadById[workloadId]!, l.id),
+    refToCpEngines: (1 / mpFactor(cpPool?.logical ?? 1, generationOf(cpc).mpK)) / cpSp,
+    capEngines: cpPool?.logical ?? 1,
+  };
+  const loadedWorkloads = [...new Set((prev.entityLoads ?? []).filter((x) => x.lparId === l.id).map((x) => x.workloadId))].sort();
+  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader, loadedWorkloads }), prev.mods), prev.entityLoads, l.id, loadCtx);
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;

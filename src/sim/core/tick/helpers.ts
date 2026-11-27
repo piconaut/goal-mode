@@ -13,7 +13,6 @@ import { ACC_DECAY, goalPi, goalInfo, type ScpState } from '../../wlm/runtime';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
 import type { CancelledAddressSpace, CpcConfig, EntityLoad, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
-import { entityLoadMult } from '../../workload/rosters';
 import { TICK_SEC } from '../units';
 
 // A running job is classified every tick; remember the last answer per job definition (the service
@@ -196,12 +195,45 @@ export function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
 }
 
 /** Multiply each transaction slice of a loaded workload by its entity loads on this image (PT-52). */
-export function applyEntityLoads(slices: SliceSpec[], loads: readonly EntityLoad[] | undefined, lparId: string): SliceSpec[] {
+/**
+ * A card's culprit loads (RF-11) as CPU demand on this image: each load is one constant slice of its workload, in the
+ * workload's last service-class period, at `engines` reference engines (converted to CP engines by `refToCpEngines`,
+ * capped at the image's logical CPs). Rate 0, so it carries no transactions and no dependency charge; the workload's
+ * measured CPU includes it, so reports show it as that workload's work. Loads for a workload with no slice here are
+ * ignored (the roster gives entries only on images the workload is routed to).
+ */
+export function applyEntityLoads(
+  slices: SliceSpec[],
+  loads: readonly EntityLoad[] | undefined,
+  lparId: string,
+  ctx: { lastScKey: (workloadId: string) => string; refToCpEngines: number; capEngines: number },
+): SliceSpec[] {
   if (!loads?.some((l) => l.lparId === lparId)) return slices;
-  return slices.map((s) => {
-    if (s.kind !== 'TXN' || !s.workloadId) return s;
-    return scaleSliceCpu(s, entityLoadMult(loads, s.workloadId, lparId));
-  });
+  const out = slices.slice();
+  for (const l of loads) {
+    if (l.lparId !== lparId || !(l.engines > 0)) continue;
+    const tpl = slices.find((s) => s.kind === 'TXN' && s.workloadId === l.workloadId);
+    if (!tpl) continue;
+    const scKey = ctx.lastScKey(l.workloadId);
+    out.push({
+      ...tpl,
+      key: `${l.workloadId}@${lparId}${scKey}~${l.kind}:${l.id}`,
+      scKey,
+      rate: 0,
+      cpEngines: Math.min(l.engines * ctx.refToCpEngines, ctx.capEngines),
+      ziipEngines: 0,
+      cpuSecPerTxn: 0,
+      ziipSecPerTxn: 0,
+      ioPerTxn: 0,
+      ioRate: 0,
+      servers: [],
+      ...(tpl.mqQueueFrac !== undefined ? { mqQueueFrac: 0 } : {}),
+      extraOtherSec: 0,
+      failFrac: 0,
+      outsideWaitSec: 0,
+    });
+  }
+  return out;
 }
 
 export function addParts(into: Record<string, number>, p: NonNullable<import('../../wlm/evaluate').SliceResult['parts']>, n: number): void {

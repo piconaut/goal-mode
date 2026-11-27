@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { ROSTERS } from '../../src/content/entities';
 import { MIDWEST } from '../../src/content/scenarios';
 import type { EntityLoad } from '../../src/sim/core/types';
-import { dailyRoster, entityLoadMult, rosterCpuSec } from '../../src/sim/workload/rosters';
+import { dailyRoster, rosterCpuSec } from '../../src/sim/workload/rosters';
 
 const wl = (id: string) => MIDWEST.workloads.find((w) => w.id === id)!;
 const tso = wl('TSO');
 const adhoc = wl('ADHOC');
 const ddfRouting = { PROD1: 0.5, PROD2: 0.5, DEVT: 0 };
 
-const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 't', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 0.5, ...over });
+const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 't', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', engines: 0.5, ...over });
 
 describe('dailyRoster', () => {
   it('is deterministic for (seed, day) and differs by day', () => {
@@ -72,25 +72,34 @@ describe('dailyRoster', () => {
 });
 
 describe('entity loads', () => {
-  it('entityLoadMult is 1 with no loads and 1 + the extra of matching loads', () => {
-    expect(entityLoadMult(undefined, 'TSO', 'DEVT')).toBe(1);
-    expect(entityLoadMult([], 'TSO', 'DEVT')).toBe(1);
-    const loads = [load({ extraCpuFrac: 1 }), load({ id: 'DEV002', extraCpuFrac: 2 }), load({ lparId: 'PROD1', extraCpuFrac: 9 }), load({ workloadId: 'ADHOC', extraCpuFrac: 9 })];
-    expect(entityLoadMult(loads, 'TSO', 'DEVT')).toBeCloseTo(4, 12);
-  });
+  const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
 
-  it('rosterCpuSec sums to the workload CPU and a loaded entry gets own x (share + extra)', () => {
+  it('rosterCpuSec sums to the workload CPU, and a loaded entry takes its engines over the tick plus its share of the rest', () => {
     const entries = dailyRoster(2, 0, tso, { DEVT: 1 }, 'TSO_USER');
     const none = rosterCpuSec(entries, 100, undefined);
-    expect(Object.values(none).reduce((a, b) => a + b, 0)).toBeCloseTo(100, 9);
+    expect(sum(none)).toBeCloseTo(100, 9);
 
+    // 2 engines over a 10 s tick is 20 CPU-seconds, inside the workload's measured 100.
     const target = entries[3]!;
-    const loads = [load({ id: target.id, extraCpuFrac: 3 })];
-    const mult = entityLoadMult(loads, 'TSO', 'DEVT');
-    const out = rosterCpuSec(entries, 100 * mult, loads);
-    expect(Object.values(out).reduce((a, b) => a + b, 0)).toBeCloseTo(100 * mult, 9);
-    expect(out[target.id]).toBeCloseTo(100 * (target.shareFrac + 3), 9);
-    expect(out[entries[0]!.id]).toBeCloseTo(100 * entries[0]!.shareFrac, 9);
-    expect(rosterCpuSec([], 50, loads)).toEqual({});
+    const out = rosterCpuSec(entries, 100, [load({ id: target.id, engines: 2 })]);
+    expect(sum(out)).toBeCloseTo(100, 9);
+    expect(out[target.id]).toBeCloseTo(80 * target.shareFrac + 20, 9);
+    expect(out[entries[0]!.id]).toBeCloseTo(80 * entries[0]!.shareFrac, 9);
+    expect(rosterCpuSec([], 50, [load()])).toEqual({});
+  });
+
+  it('a load larger than the measured CPU is capped so the entries still sum to it', () => {
+    const entries = dailyRoster(2, 0, tso, { DEVT: 1 }, 'TSO_USER');
+    const target = entries[3]!;
+    const out = rosterCpuSec(entries, 5, [load({ id: target.id, engines: 100 })]);
+    expect(sum(out)).toBeCloseTo(5, 9);
+    expect(out[target.id]).toBeCloseTo(5, 9);
+  });
+
+  it('loads on another image or workload, or for another entry, add nothing', () => {
+    const entries = dailyRoster(2, 0, tso, { DEVT: 1 }, 'TSO_USER');
+    const base = rosterCpuSec(entries, 100, undefined);
+    const other = rosterCpuSec(entries, 100, [load({ lparId: 'PROD1' }), load({ workloadId: 'ADHOC' }), load({ id: 'NOPE' })]);
+    expect(other).toEqual(base);
   });
 });

@@ -44,6 +44,15 @@ export interface SliceBuildInput {
   scope?: object;
   /** A profiled reader can still be executing on a member after routing new requests away. */
   residentReader?: string;
+  /** Workloads with a card's constant culprit load on this image (RF-11), sorted: a loaded thread keeps running
+   *  after routing sends the work elsewhere, so its workload keeps a (rate-0) template here. */
+  loadedWorkloads?: readonly string[];
+}
+
+/** Key of the workload's last service-class period on `lparId` (where a card's constant culprit demand runs, RF-11). */
+export function lastScKeyOf(def: ServiceDefinition, w: WorkloadDef, lparId: string): string {
+  const cls = classify(def, { ...w.work, SY: lparId });
+  return scKeyOf(cls.serviceClass, periodsOf(def, cls.serviceClass).length - 1);
 }
 
 function periodsOf(def: ServiceDefinition, sc: string) {
@@ -79,7 +88,7 @@ function templateKey(input: SliceBuildInput): string {
   const { cpc, lpar } = input;
   const cp = lpar.pools.find((p) => p.pool === 'CP');
   const mult = input.cpuMultiplier ? JSON.stringify(input.cpuMultiplier) : '';
-  return `${lpar.id}|${cpc.generation}|${cpc.capacitySetting}|${cp?.logical ?? 0}|${mult}|${input.workloads.length}|${input.addressSpaces.length}|${input.residentReader ?? ''}`;
+  return `${lpar.id}|${cpc.generation}|${cpc.capacitySetting}|${cp?.logical ?? 0}|${mult}|${input.workloads.length}|${input.addressSpaces.length}|${input.residentReader ?? ''}|${(input.loadedWorkloads ?? []).join(',')}`;
 }
 
 function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
@@ -94,7 +103,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
 
   for (const w of input.workloads) {
     const share = w.routing[lpar.id] ?? 0;
-    if (share <= 0 && w.id !== input.residentReader) continue;
+    if (share <= 0 && w.id !== input.residentReader && !input.loadedWorkloads?.includes(w.id)) continue;
     const mult = input.cpuMultiplier?.[w.id] ?? 1;
     for (const srv of w.servers) {
       (roleTerms[srv.role] ??= []).push({ workloadId: w.id, cpuSecRef: (share * srv.cpuMsRef) / 1000 });
@@ -246,6 +255,7 @@ interface LastTemplates {
   addressSpaces: readonly AddressSpaceDef[];
   templates: SliceTemplate[];
   residentReader?: string;
+  loaded: string;
 }
 
 // Per-LPAR shortcut past the key string and nested lookups while every input object is the same
@@ -255,11 +265,12 @@ const lastByLpar = new WeakMap<LparConfig, LastTemplates>();
 function cachedTemplates(input: SliceBuildInput): SliceTemplate[] {
   if (input.cpuMultiplier) return templatesFor(input);
   const last = lastByLpar.get(input.lpar);
-  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces && last.residentReader === input.residentReader) {
+  const loaded = (input.loadedWorkloads ?? []).join(',');
+  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces && last.residentReader === input.residentReader && last.loaded === loaded) {
     return last.templates;
   }
   const templates = templatesFor(input);
-  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates, residentReader: input.residentReader });
+  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates, residentReader: input.residentReader, loaded });
   return templates;
 }
 

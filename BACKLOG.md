@@ -183,18 +183,6 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
-### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
-CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
-So the excess rises and falls with the image's arrival rate, and routing the workload off the culprit's image removes
-it, though a real runaway thread keeps running where it is. Model a loaded entity as its own constant demand (one
-enclave or address space in the workload's last period, at most its engines), sized so the card's average excess over
-its usual hours stays about the same. Done when: a realism test shows the excess independent of the arrival rate and
-of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
-three-scenario sweep is recorded.
-
 ### RF-12 · A stopped Monitor III gatherer leaves holes in CF Activity (SMF 74.4)
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
