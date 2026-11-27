@@ -31,6 +31,8 @@ function classUnitsOf(run: RunState, scenario: Scenario): (system: string, servi
       (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
     );
     const cands = [
+      // PROCU shows the CPU each job consumed in the interval, so a space's CPU modifier (a loop) raises its row
+      // (RMF Report Analysis 3.1 PDF p.188 (printed 148)).
       ...own.map((a) => ({
         name: a.jobname,
         cx: 'S' as const,
