@@ -16,8 +16,9 @@ export interface Db2ContentionProfile {
   lockSecPerReader: Readonly<Record<Db2Isolation, number>>;
   maxLockSec: Readonly<Record<Db2Isolation, number>>;
   claimTimeoutSec: number;
-  /** FICTIONAL: an online posting's write claim lasts its own transaction; the floor keeps a fast posting's claim
-   * alive to its commit. A utility drain waits for a held claim to pass (RF-10). */
+  /** FICTIONAL: an online posting's write claim lasts its own transaction; the floor rounds a fast posting's claim
+   * up. Claims resolve at the model's tick boundary, so only a unit of work longer than a tick holds a later drain
+   * (RF-10). */
   writerClaimFloorSec: number;
   drain: {
     name: string;

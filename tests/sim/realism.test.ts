@@ -1272,12 +1272,16 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     expect(clueLines.length).toBeGreaterThan(0);
     // A period mostly waiting keeps the waiting note instead of a rejection (adjust.ts `waitingNote`): the settlement
     // drain's unmanaged claim wait does that to this fixture for one interval (RF-10). The naming rule applies to the
-    // lines that do report a rejection.
+    // lines that do report a rejection; every other line must be that waiting note.
     const rejected = clueLines.filter((l) => l.includes('rejected:'));
     expect(rejected.length).toBeGreaterThan(0);
-    for (const line of rejected) {
-      expect(line).toContain('rejected: harms ONLHI#1, more important');
-      expect(line).not.toContain('no gain for the receiver');
+    for (const line of clueLines) {
+      if (line.includes('rejected:')) {
+        expect(line).toContain('rejected: harms ONLHI#1, more important');
+        expect(line).not.toContain('no gain for the receiver');
+      } else {
+        expect(line).toContain('mostly waiting, CPU delay');
+      }
     }
     // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
     expect(samples).toHaveLength(3);

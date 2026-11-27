@@ -180,10 +180,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
             extra += holdSec;
             parts.drainLock = (parts.drainLock ?? 0) + holdSec;
           }
-        } else {
-          // The claim lasts the posting's own transaction. Keep its release so a drain that starts before then
-          // waits for it (the drain's claim-release wait, Db2 13 Managing Performance PDF p.108 (printed 88)).
-          const rt = prev.workloads.find((x) => x.id === w.id)?.lastRtSec ?? 0;
+        } else if (s.rate > 0) {
+          // The claim lasts the posting's own transaction on this image. Keep its release so a drain that starts
+          // before then waits for it (the drain's claim-release wait, Db2 13 Managing Performance PDF p.108
+          // (printed 88)). No arrivals, no claim: a stale response time must not hold a later drain.
+          const rt = env.rtByWorkloadLpar[img.wlKey[w.id] ?? wlLparKey(w.id, l.id)] ?? 0;
           const untilTick = prev.tick + Math.max(profile!.writerClaimFloorSec, rt) / TICK_SEC;
           const held = content!.writerClaims;
           if (!held || held.heldUntilTick < untilTick) content!.writerClaims = { heldUntilTick: untilTick };

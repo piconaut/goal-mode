@@ -16,7 +16,7 @@ export const MIDWEST_DB2_CONTENTION: Db2ContentionProfile = {
   // PDF p.284 (printed 266)). APPROX: IRLM detects it on its deadlock timer, so the real wait is rarely exactly this.
   claimTimeoutSec: 30,
   // FICTIONAL: an online posting commits per transaction, so its write claim lasts about its own response time; the
-  // floor keeps a sub-100 ms posting's claim alive to the commit that releases it.
+  // floor rounds a sub-100 ms posting's claim up, though only a claim longer than a tick spans a drain's start.
   writerClaimFloorSec: 0.2,
   // FICTIONAL: a short weekday drain phase during BI hours, with a longer wait budget than a claim attempt.
   // The drain is REORG TABLESPACE SHRLEVEL CHANGE's last log iteration and switch phase (Db2 13 Utility Guide and

@@ -122,6 +122,42 @@ describe('PT-51 Db2 reader and drain', () => {
     expect(stats(late)?.drainLockWaitSec ?? 0).toBeGreaterThan(0);
   });
 
+  it('waits an all-class drain for a posting claim the sim granted over the tick boundary', () => {
+    const s = scenario('CS');
+    const { state } = fixture(s);
+    // Two ticks before the drain, inflate the posting's unit of work; the next tick records its claim.
+    const before = until(state, startDrain - 2, s);
+    const loaded = step(before, [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 5000 }], s);
+    const claimed = step(loaded, [], s);
+    expect(claimed.env.db2Contention?.writerClaims?.heldUntilTick).toBeGreaterThan(claimed.tick);
+    const draining = step(claimed, [], s);
+    expect(draining.env.db2Contention?.drain?.phase).toBe('WAITING');
+    expect(stats(draining)?.claimReleaseWaitSec).toBe(10);
+  });
+
+  it('does not hold a drain for a stale response time when postings are no longer arriving', () => {
+    const s = scenario('CS');
+    const { state } = fixture(s);
+    const before = until(state, startDrain - 2, s);
+    // A previous slow unit of work is still in the per-lpar RT map, but no posting arrives now.
+    const stale = {
+      ...before,
+      env: {
+        ...before.env,
+        rtByWorkloadLpar: { ...before.env.rtByWorkloadLpar, 'RBANK@PROD1': 60, 'RBANK@PROD2': 60 },
+      },
+    };
+    const stopped = step(stale, [
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'RBANK', value: 0 },
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'TELLER', value: 0 },
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 0 },
+    ], s);
+    const idle = step(stopped, [], s);
+    expect(idle.env.db2Contention?.writerClaims).toBeUndefined();
+    const draining = step(idle, [], s);
+    expect(draining.env.db2Contention?.drain?.phase).toBe('DRAINED');
+  });
+
   it('waits for a write claim held over the tick boundary before granting a writers-only drain', () => {
     const s = scenario('CS', 'WRITERS');
     const { state } = fixture(s);
