@@ -3,7 +3,8 @@
 //
 //   npm run sweep:remote -- --bots donothing,textbook,expert --seeds 1-20 [--difficulty hard] [--scenario harbourline]
 //                           [--reader] [--days 40] [--tune k=v,...] [--shards 4] [--name label] [--ref <commit|branch>] [--no-wait]
-//   npm run sweep:remote -- --fetch <commit sha>     # wait for / download a sweep started with --no-wait
+//   npm run sweep:remote -- --fetch <commit sha>     # wait for / download a sweep started with --no-wait (7+ hex chars
+//                                                    # resolve against the last 100 sweep runs)
 //
 // --tune overrides POLICY_ADJUST in every run (tools/tune.ts); refused for a ref without tools/tune.ts, whose
 // tools/sweep.ts would ignore it.
@@ -54,8 +55,28 @@ const log = (s: string) => process.stderr.write(s + '\n');
 const remote = sh('git', ['remote', 'get-url', 'origin']).replace(/\.git$/, '').split('/');
 const repo = `${remote.at(-2)}/${remote.at(-1)}`;
 
-let sha = fetchSha ?? '';
-if (!fetchSha) {
+interface Run { id: number; status: string; conclusion: string | null; html_url: string }
+
+// A bare `--fetch` must not fall through to starting a new sweep.
+if (fetchSha === '') throw new Error('--fetch needs the sweep commit sha (7-40 hex chars)');
+if (fetchSha !== undefined && !/^[0-9a-f]{7,40}$/i.test(fetchSha)) throw new Error(`--fetch: "${fetchSha}" is not a commit sha`);
+
+// Sweep commits live only on the sweep/* branch the workflow deletes, so git can't expand a short sha, and the runs
+// API's head_sha= matches full shas only: match the prefix against recent sweep.yml runs instead.
+function resolveSweepSha(prefix: string): string {
+  const p = prefix.toLowerCase();
+  if (p.length === 40) return p;
+  // --jq keeps the output small: 100 full run objects overflow execFileSync's 1 MB buffer.
+  const all = sh('gh', ['api', `repos/${repo}/actions/workflows/sweep.yml/runs?per_page=100`, '--jq', '.workflow_runs[].head_sha']);
+  const shas = [...new Set(all.split('\n').filter((s) => s.startsWith(p)))];
+  if (shas.length === 1) return shas[0]!;
+  throw new Error(shas.length
+    ? `--fetch ${prefix} is ambiguous: ${shas.join(', ')}`
+    : `--fetch ${prefix}: no sweep run among the last 100 starts with it; pass the full sha`);
+}
+
+let sha = fetchSha !== undefined ? resolveSweepSha(fetchSha) : '';
+if (fetchSha === undefined) {
   const plan = planSweep(sweepArgs, Number(shards) || undefined); // fail fast, same rules as the workflow
   const parent = sh('git', ['rev-parse', '--verify', `${ref}^{commit}`]);
   if (/(^|\s)--tune\s/.test(sweepArgs)) {
@@ -78,12 +99,11 @@ if (!fetchSha) {
   }
 }
 
-interface Run { id: number; status: string; conclusion: string | null; html_url: string }
 let run: Run | undefined;
 for (let tries = 0; !run; tries++) {
   run = gh<{ workflow_runs: Run[] }>(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=5`).workflow_runs[0];
   if (!run) {
-    if (tries > 20) throw new Error(`no workflow run for ${sha} after 5 min: is .github/workflows/sweep.yml in that commit?`);
+    if (tries > 20) throw new Error(`no workflow run for ${sha} after 5 min: wrong sha, or no .github/workflows/sweep.yml in that commit?`);
     await sleep(15_000);
   }
 }
