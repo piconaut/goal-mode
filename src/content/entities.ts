@@ -13,6 +13,9 @@ export const ROSTERS = {
   paretoAlpha: 1.2,
   /** Db2 thread tokens are drawn from this range (DISPLAY THREAD prints them as decimal numbers). */
   tokenRange: [1000, 99_999] as const,
+  /** FICTIONAL: hours a card's excess is averaged over when its definition gives no duration. Shape: a working day
+   *  (RF-11). */
+  sizingHours: 8,
 };
 
 /** The Db2 utilities a nightly schedule runs. */

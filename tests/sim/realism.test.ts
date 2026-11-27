@@ -6,6 +6,7 @@ import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
 import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { resolveCulprits } from '../../src/game/culprits';
+import { entityLoadSlices } from '../../src/sim/workload/slices';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
 import { tickOfClock } from '../../src/sim/core/clock';
@@ -805,6 +806,42 @@ describe('event cards (SPEC §9)', () => {
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
     expect(shadow.prod1MobileRtMs).toBeGreaterThan(asIs.prod1MobileRtMs);
+  }, 60_000);
+
+  it('a runaway entity is its own constant demand when the rate falls and when the work is routed away (RF-11)', () => {
+    // The card's load, as the game places it at 10:00.
+    const def = MIDWEST_EVENTS.find((e) => e.id === 'RUNAWAY')!;
+    const loads = resolveCulprits(base, MIDWEST.workloads, def.culprits!, 'RUNAWAY@0', 1, def.durationHours!).commands.flatMap((c) => (c.kind === 'SET_ENTITY_LOAD' ? [c.load] : []));
+    const prod2 = MIDWEST.world.lpars.find((l) => l.id === 'PROD2')!;
+    const entityDemand = (workloads: readonly WorkloadDef[]) =>
+      entityLoadSlices(MIDWEST.definition, prod2, workloads, loads).reduce((n, s) => n + s.cpEngines + s.ziipEngines, 0);
+    const normal = entityDemand(MIDWEST.workloads);
+    expect(normal).toBeGreaterThan(0.5);
+    // A twentieth of the arrivals, and then the work routed to another image: the entity's demand is unchanged.
+    const quiet = MIDWEST.workloads.map((w) => (w.id === 'ADHOC' ? { ...w, peakRatePerSec: w.peakRatePerSec * 0.05 } : w));
+    expect(entityDemand(quiet)).toBeCloseTo(normal, 12);
+    const elsewhere = MIDWEST.workloads.map((w) => (w.id === 'ADHOC' ? { ...w, routing: { PROD1: 1, PROD2: 0 } } : w));
+    expect(entityDemand(elsewhere)).toBeCloseTo(normal, 12);
+
+    // And it keeps running where it is: after ADHOC is routed off PROD2, that image still runs the thread's CPU.
+    const changes: Record<number, Parameters<typeof step>[1]> = {
+      30: [{ kind: 'SET_ROUTING', workloadId: 'ADHOC', routing: { PROD1: 1, PROD2: 0 } }],
+    };
+    const prodCpu = (s: SimState, lparId: string) => {
+      const g = s.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.ADHOC;
+      return g ? g.cp + g.iipcp + g.ziip : 0;
+    };
+    const series = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      const out: SimState[] = [s];
+      for (let i = 0; i < 40; i++) out.push(s = step(s, changes[i] ?? [], MIDWEST));
+      return out;
+    };
+    const withCard = series([...def.begin, ...resolveCulprits(base, MIDWEST.workloads, def.culprits!, 'RUNAWAY@0', 1, def.durationHours!).commands]);
+    const asIs = series([]);
+    expect(prodCpu(withCard[40]!, 'PROD2')).toBeGreaterThan(0.2);
+    expect(prodCpu(asIs[40]!, 'PROD2')).toBeCloseTo(0, 9);
+    expect(prodCpu(withCard[40]!, 'PROD1')).toBeGreaterThan(0.02);
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {

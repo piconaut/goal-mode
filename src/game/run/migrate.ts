@@ -1,7 +1,7 @@
 import { packOf } from '../../content/packs';
 import type { Scenario } from '../../sim/core/scenario';
 import { TICKS_PER_DAY } from '../../sim/core/units';
-import type { GatewayTraffic } from '../../sim/core/types';
+import type { EntityLoad, GatewayTraffic } from '../../sim/core/types';
 import { difficultyOf, scaleExcess } from '../difficulty';
 import { requestOperation } from '../operations';
 import type { DayTrace } from '../dayTrace';
@@ -77,11 +77,35 @@ function restoreGatewaySources(run: RunState, content: GameContent): RunState {
   return { ...run, sim: { ...run.sim, mods: Object.keys(sources).length > 0 ? { ...mods, gatewaySources: sources } : mods } };
 }
 
+/** RF-11: a save written before an entity load carried its own constant demand has `extraCpuFrac`, the multiplier on
+ * its workload's CPU on the image. Convert it to engines from the save's own last tick, so a live card keeps the CPU
+ * it had (APPROX: a contended image's grants are below its demand, so such a save converts the load a little smaller).
+ * A load that already has `cpEngines` is left as it is, so loading is idempotent. */
+function convertEntityLoads(run: RunState): RunState {
+  const loads = run.sim.entityLoads;
+  if (!loads?.some((l) => (l as { cpEngines?: number }).cpEngines === undefined)) return run;
+  const converted: EntityLoad[] = loads.map((l) => {
+    const legacy = l as Partial<EntityLoad> & { extraCpuFrac?: number };
+    if (legacy.cpEngines !== undefined) {
+      const { extraCpuFrac: _old, ...rest } = legacy;
+      return rest as EntityLoad;
+    }
+    const grant = run.sim.last.lpars.find((x) => x.lparId === l.lparId)?.cpByWorkload?.[l.workloadId];
+    const frac = legacy.extraCpuFrac ?? 0;
+    return {
+      tag: legacy.tag!, kind: legacy.kind!, id: legacy.id!, workloadId: legacy.workloadId!, lparId: legacy.lparId!,
+      cpEngines: frac * ((grant?.cp ?? 0) + (grant?.iipcp ?? 0)),
+      ziipEngines: frac * (grant?.ziip ?? 0),
+    };
+  });
+  return { ...run, sim: { ...run.sim, entityLoads: converted } };
+}
+
 export function migrateRunState(run: RunState): RunState {
   const { game: content } = packOf(run.scenarioId);
   const oldChanges: LegacyChange[] = run.changes;
   const extraAddressSpaces = run.sim.extraAddressSpaces.filter((a) => a.jobname !== 'CICSXLOG');
-  const restored = restoreGatewaySources(run, content);
+  const restored = convertEntityLoads(restoreGatewaySources(run, content));
   let next = extraAddressSpaces.length === run.sim.extraAddressSpaces.length
     ? restored : { ...restored, sim: { ...restored.sim, extraAddressSpaces } };
   const replies = new Map<string, string>();

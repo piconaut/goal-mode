@@ -219,10 +219,11 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   let cpByWorkload: Record<string, CpuGrant> | undefined;
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
-    // Use the same grants as ScpTick, leaving IIPCP separate.
+    // Use the same grants as ScpTick, leaving IIPCP separate. A loaded entity is an address-space slice with its
+    // workload id (RF-11) and counts as that workload's CPU.
     const consumer = s.kind === 'AS' && s.role
       ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0, iipcp: 0 })
-      : s.kind === 'TXN' && s.workloadId
+      : s.workloadId
         ? ((cpByWorkload ??= {})[s.workloadId] ??= { cp: 0, ziip: 0, iipcp: 0 })
         : undefined;
     if (consumer) {

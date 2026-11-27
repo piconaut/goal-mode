@@ -2,7 +2,7 @@
 // address space. Classification and period splitting happen here.
 
 import { mpFactor, cpSpeed, generationOf, suPerCpuSecOf, ziipSpeed } from '../hw/cpc';
-import type { CpcConfig, LparConfig } from '../core/types';
+import type { CpcConfig, EntityLoad, LparConfig } from '../core/types';
 import { classify } from '../wlm/classify';
 import type { ServiceDefinition } from '../wlm/types';
 import { SYSOTHER, SYSSTC, SYSTEM } from '../wlm/types';
@@ -282,6 +282,42 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
       zi += r * term.ziCoef;
     }
     out.push({ ...t.spec, cpEngines: cp, ziipEngines: zi });
+  }
+  return out;
+}
+
+/**
+ * The constant demand of a card's loaded roster entities on one image (RF-11): one address-space-like slice per load in
+ * its workload's last service-class period. An entity is one enclave (a DDF thread) or one address space (a TSO user),
+ * so it competes for CPU like an address space and cannot use more engines than the image has processors (`units`,
+ * one per engine of demand, APPROX as elsewhere). Its demand is set when the card begins
+ * (`sim/workload/entityDemand.ts`), not by the workload's current arrival rate, so it stays where it is when the
+ * workload is routed away.
+ */
+export function entityLoadSlices(def: ServiceDefinition, lpar: LparConfig, workloads: readonly WorkloadDef[], loads: readonly EntityLoad[] | undefined): SliceSpec[] {
+  if (!loads?.length) return [];
+  const out: SliceSpec[] = [];
+  for (const load of loads) {
+    if (load.lparId !== lpar.id) continue;
+    const w = workloads.find((x) => x.id === load.workloadId);
+    if (!w || !(load.cpEngines > 0 || load.ziipEngines > 0)) continue;
+    const cls = classify(def, { ...w.work, SY: lpar.id });
+    const periods = periodsOf(def, cls.serviceClass);
+    const last = periods.length - 1;
+    out.push(sliceSpec({
+      key: `${w.id}@${lpar.id}~${load.kind}:${load.id}:${load.tag}`,
+      scKey: scKeyOf(cls.serviceClass, last),
+      reportClass: cls.reportClass,
+      kind: 'AS',
+      workloadId: w.id,
+      jobname: null,
+      role: null,
+      units: Math.max(1, load.cpEngines + load.ziipEngines),
+      cpEngines: load.cpEngines,
+      ziipEngines: load.ziipEngines,
+      mayOverflow: periods[last]?.honor ?? true,
+      ioClass: 'RANDOM',
+    }));
   }
   return out;
 }

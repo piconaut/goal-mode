@@ -3,7 +3,7 @@ import { cardMechanisms } from '../../src/content/footprint';
 import { MIDWEST } from '../../src/content/scenarios';
 import { failRiskFor } from '../../src/game/catalog';
 import { migrateRunState } from '../../src/game/run/migrate';
-import { newRun, requestChange, startDay } from '../../src/game/run';
+import { advance, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { applyCommands } from '../../src/sim/core/commands';
 import { streamRng } from '../../src/sim/core/rng';
@@ -43,6 +43,22 @@ describe('legacy card save migration', () => {
     expect(live.changes[0]!.status).toBe('APPLIED');
     expect(live.events[0]!.ended).toBe(true);
     expect(live.sim.cancelledAddressSpaces?.some((a) => a.jobname === 'CICSXLOG' && a.lparId === 'PROD1')).toBe(true);
+  });
+
+  it('converts a legacy rate-proportional entity load to the engines the save measured (RF-11)', () => {
+    const content = { ...MIDWEST_GAME, events: [] };
+    const r = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 1);
+    const grant = r.sim.last.lpars.find((l) => l.lparId === 'DEVT')?.cpByWorkload?.TSO;
+    expect(grant).toBeDefined();
+    const legacy = { tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 2 };
+    const old = { ...r, sim: { ...r.sim, entityLoads: [legacy] } } as unknown as RunState;
+    const migrated = migrateRunState(old);
+    expect(migrated.sim.entityLoads).toEqual([{
+      tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT',
+      cpEngines: 2 * (grant!.cp + grant!.iipcp), ziipEngines: 2 * grant!.ziip,
+    }]);
+    // Loading again changes nothing.
+    expect(migrateRunState(migrated)).toEqual(migrated);
   });
 
   it("restores a live gateway card's source split into a save written before it lived in sim state", () => {

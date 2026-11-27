@@ -1,10 +1,11 @@
 // Daily rosters of the entities inside a workload (PT-20 design §2 rules 2 and 7): the DDF threads a Db2 member
 // serves and the TSO userids logged on to an image. The sim is fluid, so a roster entry carries a share of its
-// workload's CPU on that image rather than work of its own; a card puts extra demand on chosen entries through
-// `SimState.entityLoads`. Deterministic in seed and day, and stable within the day: an entry keeps its id and weight
-// when the image's routing share (and so the roster's length) changes.
+// workload's CPU on that image; a card that runs away loads chosen entries with their own constant demand
+// (`SimState.entityLoads`, RF-11). Deterministic in seed and day, and stable within the day: an entry keeps its id and
+// weight when the image's routing share (and so the roster's length) changes.
 
 import { ROSTERS } from '../../content/entities';
+import { TICK_SEC } from '../core/units';
 import { streamRng } from '../core/rng';
 import type { EntityLoad } from '../core/types';
 import type { WorkloadDef } from './types';
@@ -90,27 +91,27 @@ function idPool(seed: number, day: number, w: WorkloadDef, kind: RosterKind, n: 
   return nums.map((x) => `${prefix}${String(x).padStart(width, '0')}`);
 }
 
-/** CPU multiplier the entity loads put on workload `workloadId` on image `lparId` (1 = none). */
-export function entityLoadMult(loads: readonly EntityLoad[] | undefined, workloadId: string, lparId: string): number {
-  if (!loads) return 1;
-  let extra = 0;
-  for (const l of loads) if (l.workloadId === workloadId && l.lparId === lparId) extra += l.extraCpuFrac;
-  return 1 + extra;
-}
-
 /**
- * Each entry's CPU (`entries` all of one workload on one image), given the workload's measured CPU on that image (which already includes any entity loads): the
- * workload's own CPU is shared out by `shareFrac`, and a loaded entry adds its extra on top. Sums to `workloadCpuSec`.
+ * Each entry's CPU (`entries` all of one workload on one image), given the workload's measured CPU on that image (which
+ * already includes the loaded entities' grants): a loaded entry's constant demand is its own, and the rest of the
+ * workload's CPU is shared out by `shareFrac`. Under contention an entity's grant can be below its demand, so the
+ * loaded entries are scaled down to what the image measured: the sum is the workload's CPU.
  */
 export function rosterCpuSec(entries: readonly RosterEntry[], workloadCpuSec: number, loads: readonly EntityLoad[] | undefined): Record<string, number> {
   const out: Record<string, number> = {};
   if (entries.length === 0) return out;
   const { workloadId, lparId } = entries[0]!;
-  const ownCpuSec = workloadCpuSec / entityLoadMult(loads, workloadId, lparId);
+  const extraOf: Record<string, number> = {};
+  let extraTotal = 0;
   for (const e of entries) {
-    let extra = 0;
-    for (const l of loads ?? []) if (l.id === e.id && l.kind === e.kind && l.workloadId === workloadId && l.lparId === lparId) extra += l.extraCpuFrac;
-    out[e.id] = ownCpuSec * (e.shareFrac + extra);
+    let engines = 0;
+    for (const l of loads ?? []) if (l.id === e.id && l.kind === e.kind && l.workloadId === workloadId && l.lparId === lparId) engines += l.cpEngines + l.ziipEngines;
+    const cpuSec = engines * TICK_SEC;
+    extraOf[e.id] = cpuSec;
+    extraTotal += cpuSec;
   }
+  const scale = extraTotal > 0 ? Math.min(1, workloadCpuSec / extraTotal) : 1;
+  const ownCpuSec = Math.max(0, workloadCpuSec - extraTotal * scale);
+  for (const e of entries) out[e.id] = ownCpuSec * e.shareFrac + (extraOf[e.id] ?? 0) * scale;
   return out;
 }

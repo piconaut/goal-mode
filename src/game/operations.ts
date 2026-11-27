@@ -111,7 +111,9 @@ function rosterView(run: RunState, scenario: Scenario, kind: RosterKind) {
   return [...groups.values()].flatMap(({ workloadId, lparId, shareSum, entries }) => {
     const grant = sim.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.[workloadId];
     const measuredCpuSec = grant ? (poolUse(grant, 'CP') + poolUse(grant, 'ZIIP')) * TICK_SEC : 0;
-    const cpuSec = rosterCpuSec(entries.map((e) => ({ ...e, shareFrac: e.shareFrac / shareSum })), measuredCpuSec, sim.entityLoads);
+    // A routed-away entity's group has only the load's synthetic entry (share 0): nothing of its own to share out.
+    const shares = entries.map((e) => ({ ...e, shareFrac: shareSum > 0 ? e.shareFrac / shareSum : 0 }));
+    const cpuSec = rosterCpuSec(shares, measuredCpuSec, sim.entityLoads);
     const member = sim.config.db2.find((m) => m.lparId === lparId)?.ssid;
     return entries.map((e) => ({ ...e, cpuSec: cpuSec[e.id] ?? 0, member }));
   }).sort((a, b) => b.cpuSec - a.cpuSec);

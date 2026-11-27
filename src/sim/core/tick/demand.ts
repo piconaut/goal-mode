@@ -5,7 +5,7 @@ import { blockedDbats, slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
 import { OPERATIONS } from '../../../content/operations';
 import { bpIoMultiplier, DB2 } from '../../subsys/db2';
-import { buildSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
+import { buildSlices, entityLoadSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
 import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
 import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
@@ -15,7 +15,7 @@ import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { prepareDb2Reader } from './db2Contention';
 import { atOrFind } from './plan';
-import { applyCpuModifiers, applyEntityLoads, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
+import { applyCpuModifiers, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
  * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
@@ -62,7 +62,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const lostIds = Object.keys(lostShare);
   const imageRates = lostIds.length ? { ...rates } : rates;
   for (const id of lostIds) imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - lostShare[id]!);
-  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
+  const base = [
+    ...applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods),
+    // RF-11: a loaded entity is its own constant demand, outside the workload's arrival-driven flow and its modifiers.
+    ...entityLoadSlices(def, l, workloads, prev.entityLoads),
+  ];
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;

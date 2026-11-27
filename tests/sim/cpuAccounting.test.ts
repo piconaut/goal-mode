@@ -52,7 +52,7 @@ describe.each(Object.entries(SCENARIOS))('CPU accounting: %s', (_id, scenario) =
             w.backlog += r.parts.backlogWait * r.completions;
             w.completions += r.completions;
           }
-          const key = slice.kind === 'AS' ? slice.role : slice.workloadId;
+          const key = slice.kind === 'AS' && slice.role ? slice.role : slice.workloadId;
           if (key) {
             const rows = slice.kind === 'AS' ? expectedRoles : expectedWork;
             const row = rows[key] ??= { cp: 0, ziip: 0, iipcp: 0 };
