@@ -1,4 +1,3 @@
-import { generationOf, mpFactor } from '../../hw/cpc';
 import { poolEntitlement } from '../../hw/pools';
 import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
@@ -16,7 +15,7 @@ import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { prepareDb2Reader } from './db2Contention';
 import { atOrFind } from './plan';
-import { applyCpuModifiers, applyEntityLoads, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
+import { applyCpuModifiers, applyEntityLoads, entityLoadCtx, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
  * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
@@ -64,12 +63,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const imageRates = lostIds.length ? { ...rates } : rates;
   for (const id of lostIds) imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - lostShare[id]!);
   // A card's culprit load (RF-11) is reference-engine work: converted as the workload's own CPU is (MP factor, speed).
-  const cpPool = l.pools.find((p) => p.pool === 'CP');
-  const loadCtx = {
-    lastScKey: (workloadId: string) => lastScKeyOf(def, workloadById[workloadId]!, l.id),
-    refToCpEngines: (1 / mpFactor(cpPool?.logical ?? 1, generationOf(cpc).mpK)) / cpSp,
-    capEngines: cpPool?.logical ?? 1,
-  };
+  const loadCtx = { ...entityLoadCtx(l, cpc, cpSp), lastScKey: (workloadId: string) => lastScKeyOf(def, workloadById[workloadId]!, l.id) };
   const loadedWorkloads = [...new Set((prev.entityLoads ?? []).filter((x) => x.lparId === l.id).map((x) => x.workloadId))].sort();
   const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader, loadedWorkloads }), prev.mods), prev.entityLoads, l.id, loadCtx);
   const ioMult = db2

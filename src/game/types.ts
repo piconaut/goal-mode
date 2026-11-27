@@ -447,7 +447,7 @@ export interface Message {
 
 export interface RunState {
   /** `SAVE_VERSION` (game/runFile.ts): another version is refused at load. */
-  version: 2;
+  version: 3;
   scenarioId: string;
   difficulty: DifficultyId;
   seed: number;

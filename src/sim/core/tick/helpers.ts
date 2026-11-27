@@ -1,4 +1,5 @@
-import { suPerCpuSecOf } from '../../hw/cpc';
+import { generationOf, mpFactor, suPerCpuSecOf } from '../../hw/cpc';
+import { cpEnginesOfLoad, type EntityLoadCtx } from '../../workload/rosters';
 import { jobShape, type JobRuntime } from '../../subsys/batch';
 import { scKeyAtService, scKeyOf } from '../../workload/slices';
 import { classify } from '../../wlm/classify';
@@ -194,19 +195,24 @@ export function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
   return m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
 }
 
-/** Multiply each transaction slice of a loaded workload by its entity loads on this image (PT-52). */
+/** The conversion from a card's reference engines to CP engines on this image (RF-11): the MP factor and speed the
+ *  workload's own CPU uses, and the image's logical CPs as the cap (one task cannot use more CPs than the image has). */
+export function entityLoadCtx(lpar: LparConfig, cpc: CpcConfig, cpSp: number): EntityLoadCtx {
+  const cpPool = lpar.pools.find((p) => p.pool === 'CP');
+  return { refToCpEngines: (1 / mpFactor(cpPool?.logical ?? 1, generationOf(cpc).mpK)) / cpSp, capEngines: cpPool?.logical ?? 1 };
+}
+
 /**
  * A card's culprit loads (RF-11) as CPU demand on this image: each load is one constant slice of its workload, in the
- * workload's last service-class period, at `engines` reference engines (converted to CP engines by `refToCpEngines`,
- * capped at the image's logical CPs). Rate 0, so it carries no transactions and no dependency charge; the workload's
+ * workload's last service-class period. Rate 0, so it carries no transactions and no dependency charge; the workload's
  * measured CPU includes it, so reports show it as that workload's work. Loads for a workload with no slice here are
- * ignored (the roster gives entries only on images the workload is routed to).
+ * ignored; the workload keeps a template here after routing moves it away (`loadedWorkloads`).
  */
 export function applyEntityLoads(
   slices: SliceSpec[],
   loads: readonly EntityLoad[] | undefined,
   lparId: string,
-  ctx: { lastScKey: (workloadId: string) => string; refToCpEngines: number; capEngines: number },
+  ctx: EntityLoadCtx & { lastScKey: (workloadId: string) => string },
 ): SliceSpec[] {
   if (!loads?.some((l) => l.lparId === lparId)) return slices;
   const out = slices.slice();
@@ -217,16 +223,18 @@ export function applyEntityLoads(
     const scKey = ctx.lastScKey(l.workloadId);
     out.push({
       ...tpl,
-      key: `${l.workloadId}@${lparId}${scKey}~${l.kind}:${l.id}`,
+      key: `${l.workloadId}@${lparId}${scKey}~${l.tag}~${l.kind}:${l.id}`,
       scKey,
       rate: 0,
-      cpEngines: Math.min(l.engines * ctx.refToCpEngines, ctx.capEngines),
+      cpEngines: cpEnginesOfLoad(l.engines, ctx),
       ziipEngines: 0,
       cpuSecPerTxn: 0,
       ziipSecPerTxn: 0,
       ioPerTxn: 0,
       ioRate: 0,
       servers: [],
+      goalRtSec: null,
+      slaRtSec: null,
       ...(tpl.mqQueueFrac !== undefined ? { mqQueueFrac: 0 } : {}),
       extraOtherSec: 0,
       failFrac: 0,

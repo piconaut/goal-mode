@@ -3,7 +3,7 @@
 
 /** The save format this build writes. A file of any other version is refused rather than repaired (user decision
  * 2026-11-16: a save need not load across releases). */
-export const SAVE_VERSION = 2 as const;
+export const SAVE_VERSION = 3 as const;
 
 /** What a file of another version gets: one message, instead of a partial load that breaks later. */
 export const OLD_SAVE_MESSAGE = 'This run was saved by an older build of GOAL MODE; start a new run.';

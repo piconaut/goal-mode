@@ -91,12 +91,29 @@ function idPool(seed: number, day: number, w: WorkloadDef, kind: RosterKind, n: 
   return nums.map((x) => `${prefix}${String(x).padStart(width, '0')}`);
 }
 
+/** Converts a load's reference engines to the CP engines it takes on its image (see `entityLoadCtx`). */
+export interface EntityLoadCtx { refToCpEngines: number; capEngines: number }
+
+/** No conversion: reference engines are taken as given (tests, and images whose speed is not known). */
+export const UNIT_LOAD_CTX: EntityLoadCtx = { refToCpEngines: 1, capEngines: Infinity };
+
+/** CP engines a constant load of `engines` reference engines takes (RF-11). */
+export function cpEnginesOfLoad(engines: number, ctx: EntityLoadCtx): number {
+  return Math.min(engines * ctx.refToCpEngines, ctx.capEngines);
+}
+
 /**
- * Each entry's CPU (`entries` all of one workload on one image). `workloadCpuSec` is the workload's measured CPU on that
- * image, which includes the loaded entries' constant demand (RF-11): each loaded entry takes its engines over the tick,
- * and the rest of the workload's CPU is shared out by `shareFrac`. Sums to `workloadCpuSec`.
+ * Each entry's CPU (`entries` all of one workload on one image). `workloadCpuSec` is the workload's measured CP and zIIP
+ * CPU on that image, which includes the loaded entries' constant demand (RF-11): each loaded entry takes its CP engines
+ * over the tick, and the rest of the workload's CPU is shared out by `shareFrac`. Sums to `workloadCpuSec`.
  */
-export function rosterCpuSec(entries: readonly RosterEntry[], workloadCpuSec: number, loads: readonly EntityLoad[] | undefined, tickSec: number = TICK_SEC): Record<string, number> {
+export function rosterCpuSec(
+  entries: readonly RosterEntry[],
+  workloadCpuSec: number,
+  loads: readonly EntityLoad[] | undefined,
+  ctx: EntityLoadCtx = UNIT_LOAD_CTX,
+  tickSec: number = TICK_SEC,
+): Record<string, number> {
   const out: Record<string, number> = {};
   if (entries.length === 0) return out;
   const { workloadId, lparId } = entries[0]!;
@@ -104,7 +121,7 @@ export function rosterCpuSec(entries: readonly RosterEntry[], workloadCpuSec: nu
   let loadedTotal = 0;
   for (const e of entries) {
     let sec = 0;
-    for (const l of loads ?? []) if (l.id === e.id && l.kind === e.kind && l.workloadId === workloadId && l.lparId === lparId) sec += l.engines * tickSec;
+    for (const l of loads ?? []) if (l.id === e.id && l.kind === e.kind && l.workloadId === workloadId && l.lparId === lparId) sec += cpEnginesOfLoad(l.engines, ctx) * tickSec;
     loadedSec[e.id] = sec;
     loadedTotal += sec;
   }

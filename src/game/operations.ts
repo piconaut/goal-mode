@@ -7,6 +7,8 @@ import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { recallIncomingIops } from '../sim/core/tick/operatorEffects';
 import { activeUtilities } from '../sim/subsys/utilities';
 import { rosterCpuSec, type RosterEntry, type RosterKind } from '../sim/workload/rosters';
+import { cpSpeed } from '../sim/hw/cpc';
+import { entityLoadCtx } from '../sim/core/tick/helpers';
 import { endEventsByOperation } from './run/events';
 import { previewContext, spendHours, type ChangeOutcome } from './run/changes';
 import { poolUse } from './displaceable';
@@ -111,7 +113,10 @@ function rosterView(run: RunState, scenario: Scenario, kind: RosterKind) {
   return [...groups.values()].flatMap(({ workloadId, lparId, shareSum, entries }) => {
     const grant = sim.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.[workloadId];
     const measuredCpuSec = grant ? (poolUse(grant, 'CP') + poolUse(grant, 'ZIIP')) * TICK_SEC : 0;
-    const cpuSec = rosterCpuSec(entries.map((e) => ({ ...e, shareFrac: e.shareFrac / shareSum })), measuredCpuSec, sim.entityLoads);
+    const lpar = sim.config.lpars.find((l) => l.id === lparId);
+    const cpc = lpar && sim.config.cpcs.find((c) => c.id === lpar.cpcId);
+    const ctx = lpar && cpc ? entityLoadCtx(lpar, cpc, cpSpeed(cpc)) : undefined;
+    const cpuSec = rosterCpuSec(entries.map((e) => ({ ...e, shareFrac: shareSum > 0 ? e.shareFrac / shareSum : 0 })), measuredCpuSec, sim.entityLoads, ctx, TICK_SEC);
     const member = sim.config.db2.find((m) => m.lparId === lparId)?.ssid;
     return entries.map((e) => ({ ...e, cpuSec: cpuSec[e.id] ?? 0, member }));
   }).sort((a, b) => b.cpuSec - a.cpuSec);

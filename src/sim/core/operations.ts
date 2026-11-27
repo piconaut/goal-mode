@@ -63,10 +63,24 @@ function sameSession(a: RosterTarget, b: RosterTarget): boolean {
 export function operatorRoster(s: SimState, scenario: Scenario, kind: RosterKind, workloadId?: string): (RosterEntry & { day: number })[] {
   const day = dayAt(s.tick);
   const subsystem = kind === 'DDF_THREAD' ? 'DDF' : 'TSO';
-  return effectiveWorkloads(scenario, s)
+  const effective = effectiveWorkloads(scenario, s);
+  const listed: (RosterEntry & { day: number })[] = effective
     .filter((w) => w.subsystem === subsystem && (workloadId === undefined || workloadId === w.id))
-    .flatMap((w) => dailyRoster(s.seed, day, w, w.routing, kind).map((entry) => ({ ...entry, day })))
-    .filter((entry) => !s.cancelledSessions?.some((old) => sameSession(old, entry)));
+    .flatMap((w) => dailyRoster(s.seed, day, w, w.routing, kind).map((entry) => ({ ...entry, day })));
+  // A loaded entity keeps running on its image after routing moves its workload away (RF-11), so it stays listed there
+  // with no share of the workload's own CPU, until it is cancelled or its card ends.
+  for (const l of s.entityLoads ?? []) {
+    if (l.kind !== kind || (workloadId !== undefined && l.workloadId !== workloadId)) continue;
+    const same = (e: RosterEntry) => e.kind === l.kind && e.id === l.id && e.workloadId === l.workloadId && e.lparId === l.lparId;
+    if (listed.some(same)) continue;
+    const w = effective.find((x) => x.id === l.workloadId);
+    if (!w) continue;
+    listed.push({
+      kind: l.kind, id: l.id, workloadId: l.workloadId, lparId: l.lparId, shareFrac: 0, day,
+      ...(kind === 'DDF_THREAD' ? { authid: w.work.UI ?? w.id, corrid: w.work.CI ?? w.id } : {}),
+    });
+  }
+  return listed.filter((entry) => !s.cancelledSessions?.some((old) => sameSession(old, entry)));
 }
 
 export function gatewayChannels(s: SimState, scenario: Scenario) {

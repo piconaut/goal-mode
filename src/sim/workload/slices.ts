@@ -49,10 +49,20 @@ export interface SliceBuildInput {
   loadedWorkloads?: readonly string[];
 }
 
-/** Key of the workload's last service-class period on `lparId` (where a card's constant culprit demand runs, RF-11). */
+const lastKeyMemo = new WeakMap<ServiceDefinition, Map<string, string>>();
+
+/** Key of the workload's last service-class period on `lparId` (where a card's constant culprit demand runs, RF-11).
+ *  Memoised per definition: classification is pure, and loads ask every tick. */
 export function lastScKeyOf(def: ServiceDefinition, w: WorkloadDef, lparId: string): string {
+  let memo = lastKeyMemo.get(def);
+  if (!memo) lastKeyMemo.set(def, (memo = new Map()));
+  const memoKey = `${w.id}@${lparId}`;
+  const hit = memo.get(memoKey);
+  if (hit !== undefined) return hit;
   const cls = classify(def, { ...w.work, SY: lparId });
-  return scKeyOf(cls.serviceClass, periodsOf(def, cls.serviceClass).length - 1);
+  const key = scKeyOf(cls.serviceClass, periodsOf(def, cls.serviceClass).length - 1);
+  memo.set(memoKey, key);
+  return key;
 }
 
 function periodsOf(def: ServiceDefinition, sc: string) {

@@ -45,3 +45,15 @@ describe('a culprit load is constant demand on its image', () => {
     expect(adhocCpOnProd2(routedAway, true)).toBeCloseTo(excess(adhocScenario(1)), 2);
   });
 });
+
+describe('a loaded entity stays on its image after routing moves the work away (RF-11)', () => {
+  it('is listed in the operator roster on that image, so it can be cancelled and its card can end', async () => {
+    const { operatorRoster } = await import('../../src/sim/core/operations');
+    const sc = adhocScenario(1, { PROD1: 1, PROD2: 0 });
+    let s = initState(7, sc);
+    s = step(s, [load], sc);
+    const listed = operatorRoster(s, sc, 'DDF_THREAD', 'ADHOC').filter((e) => e.lparId === 'PROD2' && e.id === '1234');
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.shareFrac).toBe(0);
+  });
+});

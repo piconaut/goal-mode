@@ -103,3 +103,14 @@ describe('entity loads', () => {
     expect(other).toEqual(base);
   });
 });
+
+describe('rosterCpuSec in CP engines', () => {
+  it('converts a load with the image context before it takes CPU from the workload', () => {
+    const entries = dailyRoster(2, 0, tso, { DEVT: 1 }, 'TSO_USER');
+    const target = entries[3]!;
+    // 2 reference engines at 0.5 CP engines each, capped at 0.8: 0.8 CP engines, 8 CP-seconds over a 10 s tick.
+    const out = rosterCpuSec(entries, 100, [load({ id: target.id, engines: 2 })], { refToCpEngines: 0.5, capEngines: 0.8 }, 10);
+    expect(out[target.id]).toBeCloseTo(92 * target.shareFrac + 8, 9);
+    expect(Object.values(out).reduce((a, b) => a + b, 0)).toBeCloseTo(100, 9);
+  });
+});
