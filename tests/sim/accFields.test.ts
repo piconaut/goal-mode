@@ -134,13 +134,16 @@ const OMIT_REASONS: Partial<Record<keyof Required<ScpAcc>, Partial<Record<Fn, st
     sumAcc: 'sumAcc feeds reported/sysplex figures; sustained demand is management input and has no reported meaning summed.',
   },
   srvUsing: {
-    addScp: 'velocity samples of transaction-server regions are management-only (goalPi) and are not reported.',
+    addScp:
+      "the server-region split of using is reported by Monitor III and the hourly CAP figures, not managed (goalPi subtracts it); addScp's RMF row reports the class total, which already includes it.",
   },
   srvDelay: {
-    addScp: 'velocity samples of transaction-server regions are management-only (goalPi) and are not reported.',
+    addScp:
+      "the server-region split of delay is reported by Monitor III and the hourly CAP figures, not managed (goalPi subtracts it); addScp's RMF row reports the class total, which already includes it.",
   },
   srvDelayCap: {
-    addScp: 'the capping part of server-region delay is management-only (goalPi) and is not reported.',
+    addScp:
+      'the capping part of the server-region split feeds Monitor III and the hourly CAP figures; the RMF row reports the class total.',
   },
 } satisfies Partial<Record<keyof Required<ScpAcc>, Partial<Record<Fn, string>>>>;
 
@@ -230,11 +233,13 @@ const raw = (o: ScpAcc, field: keyof ScpAcc): unknown => (o as unknown as Record
 
 /** A field reached the output: numbers non-zero, buckets all non-zero, sample objects carrying non-zero data. */
 function reachesOutput(value: unknown): boolean {
-  if (typeof value === 'number') return value !== 0;
-  if (Array.isArray(value)) return value.length > 0 && value.every((x) => typeof x === 'number' && x !== 0);
+  if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
+  if (Array.isArray(value)) {
+    return value.length > 0 && value.every((x) => typeof x === 'number' && Number.isFinite(x) && x !== 0);
+  }
   if (value && typeof value === 'object') {
     return Object.values(value).every((x) =>
-      typeof x === 'number' ? x !== 0 : Array.isArray(x) ? x.length > 0 : x === true,
+      typeof x === 'number' ? Number.isFinite(x) && x !== 0 : Array.isArray(x) ? x.length > 0 : x === true,
     );
   }
   return false;
@@ -247,6 +252,10 @@ describe('service-class accumulator fields (CL-19)', () => {
     const values = fields.map(([, spec]) => spec.value);
     expect(new Set(values).size).toBe(values.length);
     expect(values.every((x) => x !== 0)).toBe(true);
+
+    const tickNumbers = Object.values(TICK_VALUES).filter((x): x is number => typeof x === 'number');
+    expect(new Set(tickNumbers).size).toBe(tickNumbers.length);
+    expect(tickNumbers.every((x) => x !== 0)).toBe(true);
 
     for (const [field, spec] of fields) {
       for (const fn of FNS) {
@@ -275,6 +284,8 @@ describe('service-class accumulator fields (CL-19)', () => {
       A.delay + T.delayCpu + T.delayZiip + T.delayIo + T.delayStorage + T.delayCap + (T.delayQueue ?? 0),
     );
     expect(out.cpuEngines).toBe(A.cpuEngines + T.cpEngines);
+    // ScpIntervalAcc's own field, outside the ScpAcc/ScpTick lists.
+    expect(out.failed).toBe(P.failed + T.failed);
   });
 
   it('decayInto carries every field through the decay', () => {
@@ -313,6 +324,7 @@ describe('service-class accumulator fields (CL-19)', () => {
         expect(raw(out, field) as number).toBeCloseTo((raw(P, field) as number) + (raw(Q, field) as number), 9);
       }
     }
+    expect(out.failed).toBe(P.failed + Q.failed);
   });
 
   it('sumAcc sums every field it sums and omits the projection-only ones', () => {
