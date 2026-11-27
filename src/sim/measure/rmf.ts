@@ -120,8 +120,9 @@ export interface WlmRecord {
   endPerSec: number;
   failed: number;
   avgRtSec: number | null;
-  /** Mean queue (initiator) delay inside `avgRtSec`, R723CQDT ÷ completions: null when the period's completions
-   *  queued nowhere (transactions, or no batch job ended), as the record leaves the 1024-microsecond total at zero. */
+  /** Mean queue (initiator) delay inside `avgRtSec`, R723CQDT ÷ completions. Null when no batch completion was
+   *  recorded in the period — transactions, or no job ended — so the SMF total is absent; a job that waited nothing
+   *  reports 0. */
   avgQueueSec: number | null;
   execVelocity: number | null;
   pi: number | null;

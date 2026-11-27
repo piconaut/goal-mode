@@ -174,7 +174,7 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'wlmgl-queue-time',
-    title: 'WLMGL: QUEUED is an initiator wait inside ACTUAL response time, never more than it',
+    title: 'WLMGL: QUEUED is a non-negative part of ACTUAL response time, never more than it',
     basis: 'z/OS',
     // TRANS-TIME ACTUAL includes EXECUTION, QUEUED, R/S AFFIN and INELIGIBLE, and QUEUED "basically includes the
     // time a job was delayed for initiation" (RMF Report Analysis 3.1 p.531). The SMF field is the period's total

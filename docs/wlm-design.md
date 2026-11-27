@@ -286,7 +286,7 @@ State (all plain data, serialised in key order):
 | Field | Where | Meaning |
 |---|---|---|
 | `dp` | `ScpState` | The DP of the period's holder, written from the ladder every interval, so reports and saves show it |
-| `acc` | `ScpState` | Decayed sums (`accDecay` 0.85 per tick): samples, completions, response times and buckets, and also arriving demand in engines without backlog (`demandCp`, `demandZi`), zIIP engines used, and, for batch response-time goals, `rtQueueSumSec` |
+| `acc` | `ScpState` | Decayed sums (`accDecay` 0.85 per tick): samples, completions, response times and buckets, and also arriving demand in engines without backlog (`demandCp`, `demandZi`), zIIP engines used, and the batch completions' queue sum `rtQueueSumSec` (recorded for every goal type, used by the projection only for AVG/PCT goals) |
 | `skipUntilTick` | `ScpState` | The period isn't assessed as a receiver before this tick. Absent means 0 |
 | `servers` | `WlmSystemState` | `[{ key: '$SRMS001', dp }]`, sorted by key. An old save without it gets the highest DP among the served periods |
 
@@ -604,7 +604,10 @@ fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keep
 - **One completion per job.** A job's end adds one completion to its ending period's accumulator and to its
   assigned report class, with one exact bucket observation in each (WLM Planning 3.1 p.71, p.113).
 - **Response time** = queue + elapsed, on the same tick-boundary clock as RMF's job-end record.
-- **The queue part** is also kept, as `rtQueueSumSec`.
+- **The queue part** is also kept, as `rtQueueSumSec`, whatever the period's goal type (SMF 72.3 records the
+  period's total queue delay time R723CQDT for every period, MVS SMF 3.1 p.646); the projection below reads it only
+  for AVG/PCT goals. A period that changes from a velocity or discretionary goal to AVG/PCT therefore has the decayed
+  queue/execution split of its earlier completions available at once (RF-13).
 - **Advice.** The JES editor warns on RT goals, and the PI Codex entry gives IBM's three-completions-per-20-minutes
   advice.
 - **Tests:** `tests/sim/batchResponseGoals.test.ts`, `tests/game/batchGoals.test.ts`.

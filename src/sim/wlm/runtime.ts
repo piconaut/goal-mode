@@ -295,7 +295,8 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   };
   // Added after the literal: a conditional object spread here copies properties and runs in the hot loop path
   // (every period every tick once a batch class reports queue time), while a store on a fresh object is a shape
-  // transition V8 can inline.
+  // transition V8 can inline. The values are unchanged; the key now sits at the end of the object, so a golden or
+  // bench hash taken from JSON sees a different key order.
   if (acc.rtQueueSumSec !== undefined || t.rtQueueSumSec !== undefined) {
     out.rtQueueSumSec = (acc.rtQueueSumSec ?? 0) * d + (t.rtQueueSumSec ?? 0);
   }
