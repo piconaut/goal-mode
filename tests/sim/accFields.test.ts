@@ -36,8 +36,9 @@ type Rules = Omit<FieldSpec, 'value'>;
 const ALL: Rules = { addScp: 'sum', decayInto: 'decay', mergeAcc: 'sum', sumAcc: 'sum' };
 // CICS attribution metadata: its work is already in the main fields; reportedAccs() attributes it to region classes.
 const MOVED: Rules = { addScp: 'omit', decayInto: 'decay', mergeAcc: 'carry', sumAcc: 'omit' };
-// Written only by WLM's management path, never by addScp; an interval accumulator carries nothing to merge.
-const INTERVAL_ONLY: Rules = { addScp: 'omit', decayInto: 'decay', mergeAcc: 'carry', sumAcc: 'sum' };
+// Kept in WLM's decayed accumulator (management or Monitor III), never written by addScp; an interval accumulator
+// carries nothing to merge.
+const WLM_ACC_ONLY: Rules = { addScp: 'omit', decayInto: 'decay', mergeAcc: 'carry', sumAcc: 'sum' };
 // WLM's sustained-demand projection feeds decisions, not reports.
 const PROJECTION: Rules = { addScp: 'omit', decayInto: 'decay', mergeAcc: 'carry', sumAcc: 'omit' };
 
@@ -49,7 +50,7 @@ const SCP_ACC_FIELDS = {
   workManager: { ...ALL, value: v() },
   completions: { ...ALL, value: v() },
   rtSumSec: { ...ALL, value: v() },
-  rtQueueSumSec: { ...INTERVAL_ONLY, value: v() },
+  rtQueueSumSec: { ...WLM_ACC_ONLY, value: v() },
   buckets: { ...ALL, value: v() },
   using: { ...ALL, value: v() },
   delay: { ...ALL, value: v() },
@@ -66,14 +67,14 @@ const SCP_ACC_FIELDS = {
   usingZiip: { ...ALL, value: v() },
   usingIo: { ...ALL, value: v() },
   iipcpEngines: { ...ALL, value: v() },
-  ziipEnginesView: { ...INTERVAL_ONLY, value: v() },
+  ziipEnginesView: { ...WLM_ACC_ONLY, value: v() },
   demandCp: { ...PROJECTION, value: v() },
   demandZi: { ...PROJECTION, value: v() },
   usingIoNoVel: { ...ALL, value: v() },
   delayIoNoVel: { ...ALL, value: v() },
-  srvUsing: { ...INTERVAL_ONLY, value: v() },
-  srvDelay: { ...INTERVAL_ONLY, value: v() },
-  srvDelayCap: { ...INTERVAL_ONLY, value: v() },
+  srvUsing: { ...WLM_ACC_ONLY, value: v() },
+  srvDelay: { ...WLM_ACC_ONLY, value: v() },
+  srvDelayCap: { ...WLM_ACC_ONLY, value: v() },
 } satisfies Record<keyof Required<ScpAcc>, FieldSpec>;
 
 let tn = 100;
@@ -265,7 +266,7 @@ describe('service-class accumulator fields (CL-19)', () => {
     }
   });
 
-  it('addScp keeps every field it carries and omits the interval-only ones', () => {
+  it('addScp keeps every field it carries and omits the WLM-accumulator-only ones', () => {
     const scps: Record<string, ScpIntervalAcc> = { [`${LPAR}|${T.scKey}`]: P };
     addScp(scps, LPAR, T);
     const out = scps[`${LPAR}|${T.scKey}`]!;
