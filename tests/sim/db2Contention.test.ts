@@ -115,6 +115,8 @@ describe('PT-51 Db2 reader and drain', () => {
     expect(rbank.failed).toBe(0);
     expect((rbank.parts.drainLock ?? 0) / rbank.completions)
       .toBeCloseTo(profile.writes.RBANK! * profile.claimTimeoutSec, 8);
+    // The hold stays in the response time and SMF 101, but not in the CICS task-slot hold: no MXT queue.
+    expect(Object.keys(late.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT'))).toEqual([]);
     const hour = newHour(late.tick - 1);
     const run = accumulateHour({ ...newRun(s, MIDWEST_GAME, 42), sim: late, hour }, hour);
     expect(db2Accounting(run, s, 'current').find((r) => r.workloadId === 'RBANK')?.drainLockMs ?? 0)

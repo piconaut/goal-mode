@@ -178,6 +178,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
           } else {
             const holdSec = writeFrac * remainSec;
             extra += holdSec;
+            s.drainHoldSec = holdSec;
             parts.drainLock = (parts.drainLock ?? 0) + holdSec;
           }
         } else if (s.rate > 0) {

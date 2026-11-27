@@ -230,7 +230,7 @@ export function sliceResults(
       completions,
       failed,
       rtMeanSec: rt,
-      holdSec: rt - waitSec,
+      holdSec: Math.max(0, rt - waitSec - (s.drainHoldSec ?? 0)),
       userRtSec: rt + s.outsideWaitSec,
       parts: scpsOnly
         ? null
