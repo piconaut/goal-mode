@@ -1,19 +1,18 @@
-import { GATEWAY_TRAFFIC_CARDS, OPERATION_TRUST, OPERATIONS } from '../content/operations';
+import { OPERATION_TRUST, OPERATIONS } from '../content/operations';
 import { STC_AUTOMATION } from '../content/entities';
 import { applyOperation, gatewayChannels, operatorRoster, type GatewayMode, type Operation } from '../sim/core/operations';
 import type { Scenario } from '../sim/core/scenario';
 import { effectiveAddressSpaces } from '../sim/core/tick/helpers';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
-import { recallIncomingIops, type GatewayTraffic } from '../sim/core/tick/operatorEffects';
+import { recallIncomingIops } from '../sim/core/tick/operatorEffects';
 import { activeUtilities } from '../sim/subsys/utilities';
 import { rosterCpuSec, type RosterEntry, type RosterKind } from '../sim/workload/rosters';
 import { endEventsByOperation } from './run/events';
 import { previewContext, spendHours, type ChangeOutcome } from './run/changes';
 import { poolUse } from './displaceable';
-import { difficultyOf, scaleExcess } from './difficulty';
 import { hostImages } from './footprint';
 import { allWorkloads } from './workloads';
-import { cardRunning, facetOf, logLine, loseTrust, type GameContent } from './run/shared';
+import { facetOf, logLine, loseTrust, type GameContent } from './run/shared';
 import type { RunState } from './types';
 
 /** Which offered-traffic reading a gateway row shows: a closed hour, the current tick, or admitted traffic. */
@@ -28,23 +27,6 @@ export function operationHours(op: Operation, staffMult = 1): number {
     case 'CANCEL_SESSION': return OPERATIONS.cancelHours * staffMult + (op.target.kind === 'TSO_USER' ? OPERATIONS.tsoHoursLost : 0);
     default: return OPERATIONS.cancelHours * staffMult;
   }
-}
-
-/** Legacy cards already describe the additional traffic as an arrival multiplier. The edge reads the cards, not the
- * live `mods.rate`, so overlapping rate cards keep the pre-existing last-begin-wins approximation. */
-export function gatewaySources(run: RunState, content: GameContent): Record<string, GatewayTraffic> {
-  const result: Record<string, GatewayTraffic> = {};
-  for (const e of run.events) {
-    const source = GATEWAY_TRAFFIC_CARDS[e.defId];
-    if (!source || !cardRunning(e, run.sim.tick)) continue;
-    const def = content.events.find((d) => d.id === e.defId);
-    const severity = def?.fixedSeverity ? 1 : difficultyOf(run.difficulty).eventSeverityMult;
-    for (const cmd of def?.begin ?? []) {
-      if (cmd.kind !== 'SET_MODIFIER' || cmd.mod !== 'rate') continue;
-      (result[cmd.key] ??= {})[source] = scaleExcess(cmd.value, severity);
-    }
-  }
-  return result;
 }
 
 /** The first of `facets` the run tracks (none when it has none of them). */
@@ -104,7 +86,7 @@ export function requestOperation(run: RunState, scenario: Scenario, content: Gam
   } else if (op.kind === 'SET_GATEWAY' && op.mode !== null) {
     const owner = gatewayChannels(run.sim, scenario).find((w) => w.id === op.workloadId)!.stakeholder;
     next = loseTrust(next, [owner], OPERATIONS.gatewayTrust);
-    if (op.mode === 'BLOCK' && gatewaySources(run, content)[op.workloadId]?.attackRateMult === undefined) message += '. Edge team: no unusual source addresses.';
+    if (op.mode === 'BLOCK' && run.sim.mods.gatewaySources?.[op.workloadId]?.attackRateMult === undefined) message += '. Edge team: no unusual source addresses.';
   }
   return { run: logLine(endEventsByOperation(run, next, scenario, content, op), message), ok: true, message };
 }

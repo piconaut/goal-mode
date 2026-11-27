@@ -296,6 +296,16 @@ export interface SimModifiers {
   /** Share (0..1) of a workload's completed units of work that end in rollback rather than commit, keyed by workload
    *  (RT-23). Absent or 0 = every unit commits. Reporting only: a rolled-back unit still consumed its CPU and time. */
   rollbackFrac?: Record<string, number>;
+  /** Edge gateway source multipliers per workload (PT-20): how much of a channel's organic demand is attack traffic
+   *  (bots) and how much is client retries. Set by a gateway card's begin commands, cleared by its end commands, so a
+   *  sim-only replay reads the same sources as the game. */
+  gatewaySources?: Record<string, GatewayTraffic>;
+}
+
+/** The source split of an external channel's demand at the edge, as a gateway card describes it. */
+export interface GatewayTraffic {
+  attackRateMult?: number;
+  retryRateMult?: number;
 }
 
 /** Extra demand a card put on one roster entity (PT-52): its workload's CPU on that image is multiplied by

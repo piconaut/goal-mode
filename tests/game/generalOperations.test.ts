@@ -263,6 +263,17 @@ describe('general operator commands', () => {
     }
   });
 
+  it('tells the edge team there is no attack only when the sim carries no attack source', () => {
+    const run = live();
+    const quiet = issue(run, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' });
+    expect(quiet.ok).toBe(true);
+    expect(quiet.message).toContain('no unusual source addresses');
+    const bots = game.events.find((e) => e.id === 'BOT_ATTACK')!;
+    const attacked = issue({ ...run, sim: applyCommands(run.sim, bots.begin) }, { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' });
+    expect(attacked.ok).toBe(true);
+    expect(attacked.message).not.toContain('no unusual source addresses');
+  });
+
   it("charges a gateway channel's owner for a protection mode, and nothing for clearing it", () => {
     const run = live();
     const channel = gatewayChannels(run.sim, scenario)[0]!;

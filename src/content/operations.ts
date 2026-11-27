@@ -41,14 +41,6 @@ export const CICS_RECYCLE = { restartMin: 3, affinityFrac: 0.15 };
 // FICTIONAL: deliberate edge degradation with a cost even on a quiet day.
 export const GATEWAY = { limitShedFrac: 0.25, retryPassFrac: 0.15, backoffShedFrac: 0.03, sharedSourceFrac: 0.02 };
 
-// Source traffic for the gateway while a card is running, including when another mode is set.
-export const GATEWAY_TRAFFIC_CARDS: Readonly<Record<string, 'attackRateMult' | 'retryRateMult'>> = {
-  BOT_ATTACK: 'attackRateMult',
-  FILING_BOTS: 'attackRateMult',
-  RETRY_STORM: 'retryRateMult',
-  REFUND_RETRY_STORM: 'retryRateMult',
-};
-
 // FICTIONAL: quiesced asynchronous recalls replay at a controlled rate; some scheduled jobs need WAIT recalls.
 export const HSM_RECALL = { lcuId: '30', drainIops: 12_000, waitJobFrac: 0.2 };
 

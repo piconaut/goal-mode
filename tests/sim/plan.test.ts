@@ -69,7 +69,7 @@ const EDITS: { cmd: Command; changes: (keyof ReturnType<typeof keyObjects>)[] }[
 ];
 /** Commands that touch none of the plan's key objects. SET_ROUTING_POLICY only edits `routingPolicies`; the shares it
  * produces arrive as a new `routing` object from `updateRouting`. */
-const NO_PLAN_INPUT: Command['kind'][] = ['SET_ROUTING_POLICY', 'SET_MODIFIER', 'SET_LOCK_BOOST', 'ABEND_JOB', 'RESTART_JOB', 'SET_MQ', 'SET_PRICING', 'SET_MLC_PRICE', 'CANCEL_DB2_READERS', 'NOTE', 'SET_ENTITY_LOAD', 'CLEAR_ENTITY_LOADS', 'SET_UTILITY_OVERRUN'];
+const NO_PLAN_INPUT: Command['kind'][] = ['SET_ROUTING_POLICY', 'SET_MODIFIER', 'SET_GATEWAY_SOURCE', 'SET_LOCK_BOOST', 'ABEND_JOB', 'RESTART_JOB', 'SET_MQ', 'SET_PRICING', 'SET_MLC_PRICE', 'CANCEL_DB2_READERS', 'NOTE', 'SET_ENTITY_LOAD', 'CLEAR_ENTITY_LOADS', 'SET_UTILITY_OVERRUN'];
 
 describe('lookup plan invalidation', () => {
   it('covers every command kind', () => {

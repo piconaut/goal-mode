@@ -3,7 +3,7 @@ import type { JobRuntime } from '../../subsys/batch';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
 import { recallHeld, type CicsRecycle, type GatewayMode, type HsmRecalls } from '../operations';
 import { streamRng } from '../rng';
-import type { SimState, WorldConfig } from '../types';
+import type { GatewayTraffic, SimState, WorldConfig } from '../types';
 import { TICK_SEC } from '../units';
 
 export function activeRecycle(recycle: CicsRecycle, tick: number): boolean {
@@ -75,11 +75,6 @@ export function recycleRouting(s: SimState, workloads: WorkloadDef[], addressSpa
     config: { ...s.config, cics },
     failed,
   };
-}
-
-export interface GatewayTraffic {
-  attackRateMult?: number;
-  retryRateMult?: number;
 }
 
 export function gatewayTraffic(mode: GatewayMode, organicRate: number, retryRate: number, sources?: GatewayTraffic) {
