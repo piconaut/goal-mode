@@ -1344,6 +1344,17 @@ describe('settlement drain holds online postings (RF-10)', () => {
       // ... but the game's even AOR spread must not turn a settlement-only stop into region-wide starvation.
       expect(Object.keys(x.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT')), kind).toEqual([]);
       if (kind === 'WRITERS') expect(x.env.db2Contention?.readers.DB1B?.pending ?? 0).toBe(0);
+      // The task-slot queue would only form from the previous tick's hold, so follow the drain until a tick after
+      // it ends: no MXT queue at any tick, and CICS work that writes nothing on the partition never fails.
+      let drained = false;
+      for (let i = 0; i < 40 && (x.env.db2Contention?.drain || !drained); i++) {
+        x = step(x, [], s);
+        if (x.env.db2Contention?.drain?.phase === 'DRAINED') drained = true;
+        expect(Object.keys(x.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT')), `${kind} tick ${x.tick}`).toEqual([]);
+        expect(x.last.workloads.find((w) => w.id === 'CARDAUTH')!.failed, `${kind} tick ${x.tick}`).toBe(0);
+      }
+      expect(drained, kind).toBe(true);
+      expect(x.env.db2Contention?.drain, kind).toBeUndefined();
     }
   });
 });
