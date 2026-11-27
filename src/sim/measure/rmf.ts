@@ -408,7 +408,8 @@ function addCfSystemSamples(
 const accKeys: Record<string, Record<string, string>> = {};
 const accKey = (lparId: string, scKey: string) => ((accKeys[lparId] ??= {})[scKey] ??= `${lparId}|${scKey}`);
 
-function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: string, t: ScpTick) {
+/** Exported for the accumulator guard test (CL-19). */
+export function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: string, t: ScpTick) {
   const k = accKey(lparId, t.scKey);
   const a: ScpIntervalAcc = scps[k] ?? {
     ...emptyAcc(),
@@ -457,7 +458,8 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
 
-function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
+/** Exported for the accumulator guard test (CL-19). */
+export function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
   return {
     ...p,
     ...(p.workManager || a.workManager ? { workManager: mergeWorkManager(p.workManager, a.workManager) } : {}),
