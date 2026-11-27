@@ -81,6 +81,9 @@ it('shows CICS work manager states and region sample owners without invented tra
   expect(summary).toContain('WORK MANAGER STATES');
   const row = summary.split('\n').find((l) => l.startsWith('ONLRETL'))!;
   expect(row.trimEnd().endsWith('-')).toBe(true);
+  // Only EX VEL% and the sample columns are masked: ACTUAL, QUEUED, PERF INDX, ENDED and END/S stand.
+  expect(row).toMatch(/0\.054 +- +- +12\.62 +1109155 +616\.2 +- +-/);
+  expect(row).not.toContain('82.8');
 });
 
 it('lists the CICS transaction classes a region class serves (RMF Report Analysis p.525)', async () => {
