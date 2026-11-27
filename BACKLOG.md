@@ -192,22 +192,48 @@ report identity in `tests/helpers/reportIdentities.ts`, and point the `hsm-recal
 Codex entries at them. Done when: both lines render from sim state, an identity ties each to it, and
 `npm run compare` against `dev` shows no sim difference.
 
+### PR-27 · Gateway traffic sources as sim state, not a fourth `step` input
+`list: pr-followups · status: ready · priority: low · size: S · area: sim`
+
+Source: milestone #504 review (PT-20). `step(state, commands, scenario, sources)` takes the gateway attack and retry
+multipliers that `src/game/run.ts` derives from active cards each tick (`gatewaySources` in `src/game/operations.ts`),
+so they live in neither `SimState` nor the command log. Determinism holds only because `run.ts` is the sole caller
+that sets a gateway mode; a sim-only replay (bench, lab, headless) of a state with `gatewayModes` set sheds
+differently. Have the gateway cards' begin/end commands set and clear the multipliers in sim state (e.g.
+`SimState.mods.gatewaySources`), read them in `step`, and drop the fourth parameter and `gatewaySources`. Done when:
+`step` has three parameters, a test shows a sim-only replay of a gateway run matches the game run, and
+`npm run compare` against `dev` is identical (state-shape changes named with `--drop`).
+
 ## realism-fixes
 
 ### RF-10 · Utility drains on the settlement partition ignore online writers
-`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
 Source: PR #488 review (PT-51, finding N1). A drain prevents new claims in each claim class it drains and waits for
 existing claims in those classes to be released; `DRAIN ALL` and `DRAIN WRITERS` both include the write class
 ([Db2 13 Managing Performance PDF pp.249–250 (printed 229–230)](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=249)).
 The PT-51 model (`startDb2Contention`, `readClaims` in `src/sim/subsys/db2Contention.ts`) waits only for, and blocks
 only, the tracked BI readers: the authored writers (`MIDWEST_DB2_CONTENTION.writes`) see no drain wait, and a
-writers-only drain is granted at once and affects nothing. Design call needed: whether the Settlement REORG should
-delay online postings (an SLA cost the player then has to diagnose) and how long writer claims last.
+writers-only drain is granted at once and affects nothing.
 
-Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims, the writers'
-SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 drops the APPROX note, goldens are
-regenerated with a behaviour note and the three-scenario sweep is recorded.
+Design (main agent, 2026-11-27, user asked for a plausible length): yes, the Settlement REORG's drain delays online
+postings; that is the real behaviour and its cost is a clue the player can read (SMF 101 drain-lock wait on the
+writers, the REORG in DISPLAY UTILITY).
+- A writer's claim lasts one unit of work: the posting transaction's own elapsed time (its response time in the
+  tick), with a `// FICTIONAL:` floor of 0.2 s in `content/`. Online postings commit per transaction, so writer claims
+  are short and the drain is normally granted quickly once the long-running BI readers let go.
+- While the drain is `WAITING` and `DRAINED`, new writer claims queue instead of being granted. Today's windows are
+  `waitSec: 120` and `runSec: 20` (`src/content/scenarios/midwest-db2.ts`), so a posting waits at most about 140 s; past `claimTimeoutSec` (30 s) it fails as a timeout, which is the SLA cost. A daily blip of
+  under three minutes on settlement-sharing writers is the intended size: visible in the hour's SMF 101, not a card.
+- Research for the implementer (zos-docs, before coding): whether an online REORG (`SHRLEVEL CHANGE`) drains writers
+  only in its last log iteration and switch phase (Utility Guide, REORG TABLESPACE: `DRAIN`, `MAXRO`, `DRAIN_WAIT`),
+  and how a drain wait shows in SMF 101 class 3 (`QWAC` drain-lock suspension). If the drain covers only the final
+  phase, keep the windows above as that phase; if it covers the whole run, keep the 20 s run window anyway and say
+  so in SPEC §17 as an APPROX. Add a docs/research.md row either way.
+
+Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims for the windows
+above, the writers' SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17's APPROX note says what
+remains approximate, goldens are regenerated with a behaviour note and the three-scenario sweep is recorded.
 
 ### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
