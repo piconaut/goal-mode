@@ -6,6 +6,7 @@ import { HARBOURLINE_GAME } from './game-harbourline';
 import { MIDWEST_GAME } from './game-midwest';
 import { REVENUE_GAME } from './game-revenue';
 import { HARBOURLINE, MIDWEST, REVENUE } from './scenarios';
+import { MIDWEST_PROLOGUE, MIDWEST_PROLOGUE_GAME } from './prologue/game-prologue';
 
 export interface ScenarioPack {
   id: string;
@@ -21,4 +22,9 @@ export const PACKS: Record<string, ScenarioPack> = {
   harbourline: { id: 'harbourline', name: 'Harbourline Bank', blurb: 'A large two-CPC bank: spiky trading-day markets, routing set up before the second machine, and a sysplex that is hard to watch in full.', scenario: HARBOURLINE, game: HARBOURLINE_GAME },
 };
 
-export const packOf = (id: string | undefined): ScenarioPack => PACKS[id ?? 'midwest'] ?? PACKS.midwest!;
+/** The optional prologue (PRO-02): its own map, so nothing that iterates `PACKS` or `SCENARIOS` sees it. */
+export const PROLOGUE_SCENARIOS: Record<string, ScenarioPack> = {
+  'midwest-prologue': { id: 'midwest-prologue', name: 'Shadow week (Midwest Mutual)', blurb: 'Five days beside Ruth before Day 1.', scenario: MIDWEST_PROLOGUE, game: MIDWEST_PROLOGUE_GAME },
+};
+
+export const packOf = (id: string | undefined): ScenarioPack => PACKS[id ?? 'midwest'] ?? PROLOGUE_SCENARIOS[id ?? ''] ?? PACKS.midwest!;

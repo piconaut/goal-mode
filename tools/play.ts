@@ -19,12 +19,14 @@
 //   npm run play -- runs/a.json pin CICS <hour> <AOR region> SOS_MIN   (SMF 110 region storage) | pin PROCU <system> <jobname> [--at "D2 10:40"]   (Monitor III job rows; a past --at is refused, as the CLI's history keeps no job rows)
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
 //   npm run play -- runs/a.json activate | discard | policy-activate <name> | policy-load <name> | tfp yes|no | rcadvice [workloadId]
+//   npm run play -- runs/p.json new 42 normal midwest-prologue; tutor [ack | hint | note <kind> <ref>]   (the guided prologue, PRO-02)
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
 //   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
 // Monitor III history (for --at) is kept in runs/a.mon3.json beside the run file.
 
 import { parseIdText } from '../src/game/ids';
+import { PROLOGUE_SCENARIOS } from '../src/content/packs';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
 import { SCENARIOS } from '../src/content/scenarios';
@@ -220,13 +222,19 @@ function parse(): PlayCommand | ReadOnly {
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': {
       const seed = Number(rest[0] ?? 42), difficulty = (rest[1] ?? 'normal').toUpperCase(), scenario = rest[2];
-      const usage = 'usage: new <seed> [normal|story|hard|ironman] [midwest|revenue|harbourline]';
+      const usage = 'usage: new <seed> [normal|story|hard|ironman] [midwest|revenue|harbourline|midwest-prologue]';
       if (!Number.isInteger(seed)) throw new Error(`Seed must be a whole number, got "${rest[0]}"; ${usage}`);
       if (!(difficulty in DIFFICULTIES)) throw new Error(`Unknown difficulty "${rest[1]}"; ${usage}`);
-      if (scenario && !(scenario in SCENARIOS)) throw new Error(`Unknown scenario "${scenario}"; ${usage}`);
+      if (scenario && !(scenario in SCENARIOS) && !(scenario in PROLOGUE_SCENARIOS)) throw new Error(`Unknown scenario "${scenario}"; ${usage}`);
       return { cmd: 'new', seed, difficulty: difficulty as DifficultyId, ...(scenario ? { scenario } : {}) };
     }
     case 'start': return { cmd: 'start' };
+    case 'tutor': {
+      if (rest.length === 0) return { cmd: 'tutor' };
+      if (rest[0] === 'ack' || rest[0] === 'hint') return { cmd: 'tutor', action: rest[0] };
+      if (rest[0] === 'note' && rest[1] && rest[2]) return { cmd: 'tutor', action: 'note', kind: rest[1], ref: rest.slice(2).join(' ') };
+      throw new Error('usage: tutor [ack | hint | note <kind> <ref>]');
+    }
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
     case 'note': return { cmd: 'note', text: rest.join(' ') };
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };

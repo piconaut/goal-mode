@@ -1,0 +1,15 @@
+{
+  "scenario": "midwest-prologue",
+  "seed": 42,
+  "difficulty": "NORMAL",
+  "entries": [
+    { "kind": "CHAPTER", "id": "MON" },
+    { "kind": "START" },
+    { "kind": "ADVANCE", "ticks": 1 },
+    { "kind": "TUTOR_ACK" },
+    { "kind": "TUTOR_NOTE", "noteKind": "tab", "ref": "console" },
+    { "kind": "ADVANCE", "ticks": 2000 },
+    { "kind": "TUTOR_ACK" },
+    { "kind": "ADVANCE", "ticks": 360 }
+  ]
+}

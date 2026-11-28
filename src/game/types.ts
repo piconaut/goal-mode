@@ -95,6 +95,8 @@ export interface ActiveEvent {
   endOnRecycleTick?: number;
   /** Roster entities the card loaded when it began (thread tokens or userids), for its truth and later operations. */
   culprits?: string[];
+  /** A scheduled card's severity override (PRO-02): replaces the difficulty's event severity on its begin commands. */
+  severity?: number;
   started: boolean;
   ended: boolean;
 }
@@ -542,4 +544,37 @@ export interface RunState {
   billsSeen: number;
   log: string[];
   endReason: string | null;
+  /** The guided prologue's progress (PRO-02); absent on every other run, so their saves are unchanged. */
+  tutor?: TutorState;
+}
+
+/** What an RCA filing changed, kept so a prologue refile can take it back before filing again (§14 decision 6). */
+export interface RefileRecord {
+  count: number;
+  trust: Record<Facet, number>;
+  insight: number;
+  score: number;
+}
+
+/** The prologue's tutorial state (docs/prologue-design.md §11.2): plain data, read by the game layer only. */
+export interface TutorState {
+  /** Chapter of the current beat. */
+  chapter: number;
+  /** Index of the current beat across all chapters, -1 before the first one is reached. */
+  beat: number;
+  /** Index of the current step in the beat; the beat's length once its steps are done. */
+  step: number;
+  /** Step ids completed (`skipped:<id>` for a skipped one), in order. */
+  done: string[];
+  hintsUsed: number;
+  /** The hint rung shown for the current step (0 = none yet). */
+  hintRung: number;
+  /** Refiled RCAs by lead incident id. */
+  refiles: Record<string, RefileRecord>;
+  /** Navigation the UI reported (`TUTOR_NOTE`), oldest first. */
+  notes: { kind: string; ref: string; tick: number }[];
+  /** Start-of-beat values of what the current lesson's undo covers (JSON text by key), or null. */
+  undoBase: Record<string, string> | null;
+  /** Beats whose scripted change failure has happened. */
+  scriptedFailures: string[];
 }

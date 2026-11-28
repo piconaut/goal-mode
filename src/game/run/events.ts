@@ -57,22 +57,39 @@ function pickEvents(
 }
 
 const changeTick = (day: number, hour: number) => day * TICKS_PER_DAY + tickOfPlayedHour(hour);
-const endTickOf = (def: EventDef, startTick: number): number | null =>
-  def.durationHours === null ? null : startTick + Math.max(1, Math.round(def.durationHours * TICKS_PER_HOUR));
+const endTickOf = (def: EventDef, startTick: number, durationHours = def.durationHours): number | null =>
+  durationHours === null ? null : startTick + Math.max(1, Math.round(durationHours * TICKS_PER_HOUR));
+
+/** `HH:MM` → wall-clock hours (fractional). */
+export const hourOfText = (at: string): number => {
+  const [h, m] = at.split(':').map(Number);
+  return (h ?? 0) + (m ?? 0) / 60;
+};
+
+/** A day's cards: the scheduled ones when the content has a schedule (PRO-02), otherwise the draw. */
+function cardsOf(run: RunState, content: GameContent, day: number): { def: EventDef; hour: number; durationHours?: number | null; severity?: number }[] {
+  if (!content.scheduledCards) return pickEvents(run, content, day, streamRng(run.seed, 'events', day));
+  return content.scheduledCards.filter((s) => s.day === day).map((s) => {
+    const def = content.events.find((d) => d.id === s.card);
+    if (!def) throw new Error(`Scheduled card ${s.card} is not in the content's events`);
+    return { def, hour: hourOfText(s.at), ...(s.durationHours !== undefined ? { durationHours: s.durationHours } : {}), ...(s.severity !== undefined ? { severity: s.severity } : {}) };
+  });
+}
 
 /** Pick tomorrow's (or today's) events; forewarn when the card says so. */
 export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
-  const picked = pickEvents(run, content, day, streamRng(run.seed, 'events', day));
-  const profiles = content.otherTeamChanges ?? [];
+  const picked = cardsOf(run, content, day);
+  // A schedule replaces the deck: no routine rollouts either, so the run sees only what the script put there.
+  const profiles = content.scheduledCards ? [] : content.otherTeamChanges ?? [];
   const notices: { def: OtherTeamChangeDef; startTick: number; endTick: number | null; uid?: string }[] = [];
   let r = run;
-  for (const { def, hour } of picked) {
+  for (const { def, hour, durationHours, severity } of picked) {
     const profile = profileOf(profiles, def.id);
     const scheduledTick = changeTick(day, hour);
     // Repeat rollouts share their card's effect. Let the previous rollout finish before the new one can change it.
     const startTick = profile ? r.events.reduce((tick, event) => event.defId === def.id ? Math.max(tick, event.endTick ?? tick) : tick, scheduledTick)
       : scheduledTick;
-    const endTick = endTickOf(def, startTick);
+    const endTick = endTickOf(def, startTick, durationHours === undefined ? def.durationHours : durationHours);
     const ev: ActiveEvent = {
       uid: `${def.id}@${day}`,
       defId: def.id,
@@ -84,6 +101,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       mechanisms: cardMechanisms(def) ?? [],
       ...(def.failureMechanism ? { failureMechanism: def.failureMechanism } : {}),
       ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
+      ...(severity !== undefined ? { severity } : {}),
       endCommands: def.end,
       started: false,
       ended: false,
