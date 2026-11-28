@@ -98,6 +98,20 @@ describe('CF Activity identity under a gatherer gap (RF-12)', () => {
     expect(c.failures.length).toBeGreaterThan(0);
   });
 
+  it('skips when a CF-bearing system was down for the whole interval and left no row', () => {
+    const c = new Check();
+    identity.check(run(iv({ PROD1: 600, PROD2: 0 })), c);
+    expect(c.failures).toEqual([]);
+    expect(c.n).toBeGreaterThan(0);
+  });
+
+  it('checks an interval closed before RF-12, which carries no gatherer data', () => {
+    const { cfMaster: _master, cfGathererSec: _sec, ...legacy } = iv({});
+    const c = new Check();
+    identity.check(run(legacy as RmfInterval), c);
+    expect(c.failures.length).toBeGreaterThan(0);
+  });
+
   it('applies the same gap rule to the CF service-time identity', () => {
     const service = IDENTITIES.find((i) => i.id === 'cf-service-times')!;
     const gap = new Check();

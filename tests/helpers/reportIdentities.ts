@@ -743,11 +743,13 @@ export const IDENTITIES: Identity[] = [
     source: 'RMF Report Analysis 3.1 p.365–378 (Tables 144–146)',
     check: (run, c) => {
       // A Monitor III gatherer gap makes a row's sampled time shorter than the interval, so it cannot add up to a
-      // figure gathered over the whole interval (RF-12). Only systems that carry CF rows in the run can create a CF
-      // gap; a stopped gatherer on a system with no CF traffic removes nothing from the report.
-      const cfSystemsSeen = new Set(run.intervals.flatMap((o) => (o.iv.cfSystems ?? []).map((row) => row.system)));
+      // figure gathered over the whole interval (RF-12); and a system down for the whole interval has no row at all
+      // while its requests still appear in the CF line. A stopped gatherer on a system with samples and no CF traffic
+      // removes nothing. An interval with no gatherer data (closed before RF-12) is checked as before.
       const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
-      const systemsGap = (iv: RmfInterval) => [...cfSystemsSeen].some((system) => short(iv, system));
+      const systemsGap = (iv: RmfInterval) =>
+        (iv.cfSystems ?? []).some((row) => short(iv, row.system)) ||
+        Object.entries(iv.cfGathererSec ?? {}).some(([system, sec]) => sec <= 1e-9 && (iv.cfSystems ?? []).every((row) => row.system !== system));
       // The CF's own line is gathered by any active gatherer, so it is short only when every one was down for a while.
       const lineGap = (iv: RmfInterval) => {
         if (!iv.cfGathererSec) return false;
@@ -757,8 +759,7 @@ export const IDENTITIES: Identity[] = [
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
-        const masterGap = !iv.cfMaster || short(iv, iv.cfMaster);
-        const gap = masterGap || systemsGap(iv) || lineGap(iv);
+        const gap = short(iv, iv.cfMaster ?? '') || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
           if (!gap) {
             c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
@@ -793,9 +794,10 @@ export const IDENTITIES: Identity[] = [
         c.close(got.asyncPct, (100 * (req - syncReq)) / req, WEIGHTED, where('ASYNC %'));
         if (syncReq > 0) c.close(got.syncUs, sum(lines.map((s) => ((s.reqPerSec * s.syncPct) / 100) * s.syncUs)) / syncReq, WEIGHTED, where('SYNC SERV'));
       };
-      const cfSystemsSeen = new Set(run.intervals.flatMap((o) => (o.iv.cfSystems ?? []).map((row) => row.system)));
       const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
-      const systemsGap = (iv: RmfInterval) => [...cfSystemsSeen].some((system) => short(iv, system));
+      const systemsGap = (iv: RmfInterval) =>
+        (iv.cfSystems ?? []).some((row) => short(iv, row.system)) ||
+        Object.entries(iv.cfGathererSec ?? {}).some(([system, sec]) => sec <= 1e-9 && (iv.cfSystems ?? []).every((row) => row.system !== system));
       const lineGap = (iv: RmfInterval) => {
         if (!iv.cfGathererSec) return false;
         const secs = Object.values(iv.cfGathererSec);
@@ -805,8 +807,8 @@ export const IDENTITIES: Identity[] = [
         if (!o.steady) continue;
         const iv = o.iv;
         // The CF line and the structure summary are gathered over different windows when a gatherer stopped (RF-12).
-        // A stopped gatherer on a system with no CF traffic changes neither, so only CF-bearing systems count.
-        const gap = !iv.cfMaster || short(iv, iv.cfMaster) || systemsGap(iv) || lineGap(iv);
+        // A stopped gatherer on a system with samples and no CF traffic changes neither, so only those rows count.
+        const gap = short(iv, iv.cfMaster ?? '') || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
           if (gap) continue;
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);

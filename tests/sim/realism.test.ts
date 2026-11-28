@@ -1546,6 +1546,16 @@ describe('RMFGAT cancellation leaves gaps in CF Activity only (RF-12)', () => {
     expect(iv3.cfMaster).toBe(master);
     expect(iv3.cfGathererSec).toEqual(Object.fromEntries(systems.map((system) => [system, intervalTicks * TICK_SEC])));
     expect(renderCfActivity(iv3)).not.toContain('MONITOR III GAPS');
+    // A CANCEL issued on the boundary itself is handled the same way: the master is down at the next interval's first
+    // sample, so another system is picked, and the stopped system's rows count only the ticks after its restart.
+    expect(s.tick).toBe(intervalTicks * 3);
+    s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: master }], MIDWEST);
+    while (s.tick < intervalTicks * 4) s = step(s, [], MIDWEST);
+    const iv4 = s.rmf.intervals.at(-1)!;
+    expect(iv4.endTick).toBe(intervalTicks * 4);
+    expect(iv4.cfMaster).toBe(other);
+    expect(iv4.cfGathererSec![master]).toBe(120 * TICK_SEC);
+    expect(renderCfActivity(iv4)).toContain(`MONITOR III GAPS: ${master} 1200 S OF 1800`);
     // Whatever the gatherers did, every interval ended on the Monitor I clock grid.
     for (const interval of s.rmf.intervals) expect(interval.endTick % intervalTicks).toBe(0);
   });
