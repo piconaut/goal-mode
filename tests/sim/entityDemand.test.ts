@@ -4,6 +4,10 @@ import { clockAt } from '../../src/sim/core/clock';
 import { cpSpeed, generationOf, mpFactor, ziipSpeed } from '../../src/sim/hw/cpc';
 import { baseRate } from '../../src/sim/workload/arrivals';
 import { entityEngineCap, meanReferenceRate, referenceEngineSecPerTxn, sizedEntityDemand } from '../../src/sim/workload/entityDemand';
+import { entityLoadSlices, scKeyOf } from '../../src/sim/workload/slices';
+import { classify } from '../../src/sim/wlm/classify';
+import { initState } from '../../src/sim/core/init';
+import type { EntityLoad } from '../../src/sim/core/types';
 
 const adhoc = MIDWEST.workloads.find((w) => w.id === 'ADHOC')!;
 const lpar = MIDWEST.world.lpars.find((l) => l.id === 'PROD2')!;
@@ -40,5 +44,33 @@ describe('entity demand (RF-11)', () => {
     expect(huge.cpEngines + huge.ziipEngines).toBeCloseTo(6, 9);
     expect(sizedEntityDemand(adhoc, MIDWEST.world, 'NOLPAR', 0.2, 9)).toEqual({ cpEngines: 0, ziipEngines: 0 });
     expect(sizedEntityDemand(adhoc, MIDWEST.world, 'PROD2', 0, 9)).toEqual({ cpEngines: 0, ziipEngines: 0 });
+  });
+});
+
+describe('entityLoadSlices (RF-11)', () => {
+  const s = initState(1, MIDWEST);
+  const def = s.wlm.definition;
+  const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 'c1', kind: 'DDF_THREAD', id: '20226', workloadId: 'ADHOC', lparId: 'PROD2', cpEngines: 1.6, ziipEngines: 0.9, ...over });
+
+  it('puts each load on its own image as an address-space slice in its workload\'s last service-class period', () => {
+    const cls = classify(def, { ...adhoc.work, SY: lpar.id });
+    const periods = def.classes.find((c) => c.id === cls.serviceClass)!.periods;
+    expect(periods.length).toBeGreaterThan(1); // so the first and last periods differ
+    const loads = [
+      load(),
+      load({ lparId: 'PROD1' }), // another image
+      load({ id: '20227', cpEngines: 0, ziipEngines: 0 }), // no demand
+      load({ id: '20228', workloadId: 'NOSUCH' }), // workload not in the run
+    ];
+    const out = entityLoadSlices(def, lpar, MIDWEST.workloads, loads);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      kind: 'AS', workloadId: 'ADHOC', role: null, jobname: null,
+      scKey: scKeyOf(cls.serviceClass, periods.length - 1), reportClass: cls.reportClass,
+      cpEngines: 1.6, ziipEngines: 0.9, units: 2.5,
+    });
+    // A fraction of an engine is still one dispatchable unit.
+    expect(entityLoadSlices(def, lpar, MIDWEST.workloads, [load({ cpEngines: 0.2, ziipEngines: 0.1 })])[0]!.units).toBe(1);
+    expect(entityLoadSlices(def, lpar, MIDWEST.workloads, undefined)).toEqual([]);
   });
 });
