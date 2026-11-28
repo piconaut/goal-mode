@@ -1,5 +1,6 @@
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { INSIGHT, toolDef, TOOLS, type ToolDef, type ToolFeature } from '../content/tools';
+import { RMF_GATHERER_JOBNAME } from '../content/operations';
 import type { Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
 import type { ChangeOutcome } from './run';
@@ -35,7 +36,7 @@ export const alertingAgentDown = (run: RunState): boolean => downOn(run, 'MONAGE
 /** Images whose Monitor III data gatherer (RMFGAT) is not running. Each system gathers its own samples, and the
  * reporter marks just that system "Gatherer not active" (z/OS 3.1 RMF User's Guide SC27-4936 PDF p.247 (printed 223),
  * PDF pp.93–95 (printed 69–71)). */
-export const mon3GatherersDown = (run: RunState): string[] => downOn(run, 'RMFGAT');
+export const mon3GatherersDown = (run: RunState): string[] => downOn(run, RMF_GATHERER_JOBNAME);
 
 const onTrial = (run: RunState, id: string): boolean => (run.toolTrials ?? []).some((t) => t.id === id);
 

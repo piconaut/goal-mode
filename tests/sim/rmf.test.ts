@@ -98,3 +98,104 @@ describe('CFACT lock contention', () => {
     expect(row({ ...iv, lockIndex: undefined }).trimEnd().endsWith('-')).toBe(true);
   });
 });
+
+// RF-12: CF Activity is the one Postprocessor report built from Monitor III's SMF 74.4 records. Each system's
+// gatherer writes its own rows; the first active system by id is the sysplex master whose samples carry the
+// structure detail. Data Gatherer User's Guide PDF pp.23–24 (printed 5–6), PDF pp.102–103 (printed 84–85).
+describe('Monitor III gatherer gaps in CF Activity (RF-12)', () => {
+  const row = (name: string, requestRate: number) => ({
+    name, type: 'LOCK' as const, cfLparId: 'CF01', distKm: 10, requestRate,
+    syncSec: 1e-4, asyncFrac: 0, asyncSec: 0, serviceSec: 1e-4,
+  });
+  const cf: CfResult = {
+    lparId: 'CF01', requestRate: 30, demandEngines: 0.1, busyFrac: 0.2, syncSec: 1e-4, asyncFrac: 0,
+    serviceSec: 1e-4, zosCpuSec: 0,
+    structures: [
+      { name: 'DB1G_LOCK1', type: 'LOCK', cfLparId: 'CF01', requestRate: 30, syncSec: 1e-4, asyncFrac: 0, serviceSec: 1e-4, zosCpuSec: 0 },
+    ],
+  };
+  const cfSys: Record<string, CfSystemResult> = {
+    PROD1: { distKm: 10, requestRate: 12, syncSec: 1e-4, asyncFrac: 0, serviceSec: 1e-4, zosCpuSec: 0, byStructure: [row('DB1G_LOCK1', 12)] },
+    PROD2: { distKm: 20, requestRate: 18, syncSec: 1e-4, asyncFrac: 0, serviceSec: 1e-4, zosCpuSec: 0, byStructure: [row('DB1G_LOCK1', 18)] },
+  };
+  const systems = ['PROD1', 'PROD2'];
+
+  it('keeps only the samples of a system whose gatherer is down, and the master carries the structure detail', () => {
+    let acc = accumulateTick(newRmfAcc(0), [], [], null, [cf], cfSys, 0, { systems, down: [] });
+    acc = accumulateTick(acc, [], [], null, [cf], cfSys, 0, { systems, down: ['PROD2'] });
+    acc = accumulateTick(acc, [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1'] });
+    // Each system was sampled on two of the three ticks; the CF's own line keeps all three (PROD1 still gathered
+    // it while PROD2 was down, and vice versa).
+    expect(acc.cfSystems!['PROD2|CF01']!.ticks).toBe(2);
+    expect(acc.cfSystems!['PROD1|CF01']!.ticks).toBe(2);
+    expect(acc.cf['CF01']!.ticks).toBe(3);
+    // The structure detail comes from the master, so the tick PROD1 was down adds none.
+    expect(acc.cfStructures!['DB1G_LOCK1']!.ticks).toBe(2);
+    const iv = closeInterval(acc, { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 3 });
+    expect(iv.cfMaster).toBe('PROD1');
+    expect(iv.cfGathererSec).toEqual({ PROD1: 20, PROD2: 20 });
+    expect(iv.cfSystems!.find((s) => s.system === 'PROD2')!.reqPerSec).toBeCloseTo(18);
+    expect(iv.cfSystems!.find((s) => s.system === 'PROD1')!.reqPerSec).toBeCloseTo(12);
+    expect(renderCfActivity(iv)).toContain('DB1G_LOCK1');
+    // The report shows the short sampled time, so a row averaged over the up ticks is not read as a full interval.
+    expect(renderCfActivity(iv)).toContain('MONITOR III GAPS: PROD1 20 S OF 30, PROD2 20 S OF 30');
+  });
+
+  it('stops the structure detail while the master is down and resumes it when automation restarts it', () => {
+    let acc = accumulateTick(newRmfAcc(0), [], [], null, [cf], cfSys, 0, { systems, down: [] });
+    acc = accumulateTick(acc, [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1'] });
+    acc = accumulateTick(acc, [], [], null, [cf], cfSys, 0, { systems, down: [] });
+    expect(acc.cfMaster).toBe('PROD1');
+    expect(acc.cfStructures!['DB1G_LOCK1']!.ticks).toBe(2);
+    expect(acc.cfGathererTicks).toEqual({ PROD1: 2, PROD2: 3 });
+    const iv = closeInterval(acc, { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 3 });
+    expect(iv.cfMaster).toBe('PROD1');
+    expect(renderCfActivity(iv)).toContain('MONITOR III GAPS: PROD1 20 S OF 30');
+  });
+
+  it('credits an interval begun by an older save to every gatherer, so it reports no false gap', () => {
+    // A pre-RF-12 accumulator has ticks but no gatherer counts or master; its earlier samples were not gated.
+    const legacy = { ...newRmfAcc(0), ticks: 3 };
+    const acc = accumulateTick(legacy, [], [], null, [cf], cfSys, 0, { systems, down: [] });
+    const iv = closeInterval(acc, { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 4 });
+    expect(iv.cfGathererSec).toEqual({ PROD1: 40, PROD2: 40 });
+    expect(renderCfActivity(iv)).not.toContain('MONITOR III GAPS');
+  });
+
+  it('picks another system as master in the next interval when the old one is down, and has no CF data when all are', () => {
+    let acc = accumulateTick(newRmfAcc(0), [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1'] });
+    acc = accumulateTick(acc, [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1'] });
+    const moved = closeInterval(acc, { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 2 });
+    expect(moved.cfMaster).toBe('PROD2');
+    expect(moved.cfStructures).toHaveLength(1);
+    expect(moved.cfSystems!.map((s) => s.system)).toEqual(['PROD2']);
+
+    const none = closeInterval(
+      accumulateTick(newRmfAcc(0), [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1', 'PROD2'] }),
+      { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 1 },
+    );
+    expect(none.cf).toEqual([]);
+    expect(none.cfStructures).toEqual([]);
+    expect(none.cfSystems).toBeUndefined();
+    expect(none.cfMaster).toBeUndefined();
+  });
+
+  it('leaves CPU Activity, WLMGL and DASD unchanged', () => {
+    const s = { ...emptyScpTick('ONLHI#1', 240), cpEngines: 1, iipcpEngines: 0, ziipEngines: 0 };
+    const lt: LparTick = { lparId: 'PROD1', scps: [s], roleHealth: {} };
+    const dasd = { totalIops: 100, classes: { RANDOM: { rtSec: 0.001, iosqSec: 0, pendSec: 0, discSec: 0, connSec: 0 }, SEQ: { rtSec: 0.002, iosqSec: 0, pendSec: 0, discSec: 0, connSec: 0 } }, lcus: [] } as unknown as Parameters<typeof accumulateTick>[3];
+    const withGap = closeInterval(
+      accumulateTick(accumulateTick(newRmfAcc(0), [lt], [], dasd, [cf], cfSys, 0, { systems, down: ['PROD1'] }), [lt], [], dasd, [cf], cfSys, 0, { systems, down: ['PROD1'] }),
+      { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 2 },
+    );
+    const whole = closeInterval(
+      accumulateTick(accumulateTick(newRmfAcc(0), [lt], [], dasd, [cf], cfSys, 0, { systems, down: [] }), [lt], [], dasd, [cf], cfSys, 0, { systems, down: [] }),
+      { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 2 },
+    );
+    expect(withGap.cpu).toEqual(whole.cpu);
+    expect(withGap.wlm).toEqual(whole.wlm);
+    expect(withGap.dasd).toEqual(whole.dasd);
+    expect(withGap.lcus).toEqual(whole.lcus);
+    expect(withGap.cpcBusy).toEqual(whole.cpcBusy);
+  });
+});

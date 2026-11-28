@@ -193,32 +193,6 @@ and the realism test match.
 
 ## realism-fixes
 
-### RF-12 · A stopped Monitor III gatherer leaves holes in CF Activity (SMF 74.4)
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: PR review of PT-56 (2026-11-26); research settled 2026-11-27 (docs/research.md "RMF"). The Data Gatherer
-User's Guide's table of monitored activities ([Data Gatherer User's Guide PDF pp.23–24 (printed 5–6)](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=23)) lists, per monitor, the SMF types it writes: Monitor III writes
-74.4 (coupling facility), 74.2 (XCF), 74.3/74.6 (UNIX), 74.9, 74.10, 72.4 and 72.5; Monitor I, which runs in the RMF
-address space and keeps running when RMFGAT is cancelled, writes 70.1, 72.3, 73, 74.1, 74.5, 75 and 78. So a cancelled
-RMFGAT leaves the CPU Activity, Partition Data, WLMGL, Channel and DASD reports whole; of the reports the game has,
-only CF Activity (74.4) comes from Monitor III. CF structure detail is gathered once per sysplex on the master
-gatherer, which the Sysplex Data Server picks automatically among systems whose Monitor III gatherer is active
-([PDF pp.102–103 (printed 84–85)](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=102)). A
-`MODIFY RMF,STOP III` forces an immediate end of interval
-([PDF p.63 (printed 45)](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=63)).
-
-Model: while RMFGAT is down on a system, CF Activity's per-system rows (that system's requests to each CF) carry only
-the samples before the cancel and after the automation restart, with the interval's sampled time shown short; the
-structure detail comes from the master gatherer, which the game picks as the first system by id with an active
-gatherer and re-picks at the next interval when the master's gatherer stops. APPROX (not stated in the books): how
-quickly the master moves, and that a CANCEL ends the interval like `STOP III` does. The other RMF reports stay
-unchanged.
-
-Done when: cancelling RMFGAT on a system shortens that system's CF Activity rows for the affected interval(s), a
-cancel on the master moves structure detail to another system from the next interval, a realism test shows both and
-that CPU Activity/WLMGL/DASD are unchanged, the report invariants still hold, and SPEC §17 and the ledger row are
-updated.
-
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.

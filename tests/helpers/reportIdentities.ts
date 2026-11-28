@@ -742,18 +742,37 @@ export const IDENTITIES: Identity[] = [
     // than the sum of the individual structure values" (facility management commands, not modelled): here it is equal.
     source: 'RMF Report Analysis 3.1 p.365–378 (Tables 144–146)',
     check: (run, c) => {
+      // A Monitor III gatherer gap makes a row's sampled time shorter than the interval, so it cannot add up to a
+      // figure gathered over the whole interval (RF-12); and a system down for the whole interval has no row at all
+      // while its requests still appear in the CF line. A stopped gatherer on a system with samples and no CF traffic
+      // removes nothing. An interval with no gatherer data (closed before RF-12) is checked as before.
+      const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
+      const systemsGap = (iv: RmfInterval) =>
+        (iv.cfSystems ?? []).some((row) => short(iv, row.system)) ||
+        Object.entries(iv.cfGathererSec ?? {}).some(([system, sec]) => sec <= 1e-9 && (iv.cfSystems ?? []).every((row) => row.system !== system));
+      // The CF's own line is gathered by any active gatherer, so it is short only when every one was down for a while.
+      const lineGap = (iv: RmfInterval) => {
+        if (!iv.cfGathererSec) return false;
+        const secs = Object.values(iv.cfGathererSec);
+        return secs.length === 0 || Math.max(...secs) < iv.intervalSec - 1e-6;
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
+        const gap = short(iv, iv.cfMaster ?? '') || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
-          c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
-          c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
+          if (!gap) {
+            c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
+            c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
+          }
           c.ok(cf.busyPct >= 0 && cf.busyPct <= 100 && cf.asyncPct >= -1e-9 && cf.asyncPct <= 100 + 1e-9, () => `${at(o)} ${cf.lparId} UTIL% / ASYNC % outside 0–100`);
         }
-        // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
-        c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
+        if (!gap) {
+          // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
+          c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
+        }
         for (const st of iv.cfStructures) {
-          c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
+          if (!gap) c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
           c.ok(iv.cf.some((cf) => cf.lparId === st.cfLparId), () => `${at(o)} ${st.name} in ${st.cfLparId}, which has no CF line`);
         }
         for (const s of iv.cfSystems ?? []) {
@@ -775,10 +794,23 @@ export const IDENTITIES: Identity[] = [
         c.close(got.asyncPct, (100 * (req - syncReq)) / req, WEIGHTED, where('ASYNC %'));
         if (syncReq > 0) c.close(got.syncUs, sum(lines.map((s) => ((s.reqPerSec * s.syncPct) / 100) * s.syncUs)) / syncReq, WEIGHTED, where('SYNC SERV'));
       };
+      const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
+      const systemsGap = (iv: RmfInterval) =>
+        (iv.cfSystems ?? []).some((row) => short(iv, row.system)) ||
+        Object.entries(iv.cfGathererSec ?? {}).some(([system, sec]) => sec <= 1e-9 && (iv.cfSystems ?? []).every((row) => row.system !== system));
+      const lineGap = (iv: RmfInterval) => {
+        if (!iv.cfGathererSec) return false;
+        const secs = Object.values(iv.cfGathererSec);
+        return secs.length === 0 || Math.max(...secs) < iv.intervalSec - 1e-6;
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
+        // The CF line and the structure summary are gathered over different windows when a gatherer stopped (RF-12).
+        // A stopped gatherer on a system with samples and no CF traffic changes neither, so only those rows count.
+        const gap = short(iv, iv.cfMaster ?? '') || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
+          if (gap) continue;
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);
           const req = sum(sts.map((s) => s.reqPerSec));
           const where = (x: string) => () => `${at(o)} ${cf.lparId} ${x} vs structures`;
@@ -788,6 +820,33 @@ export const IDENTITIES: Identity[] = [
         for (const s of iv.cfSystems ?? []) {
           weigh(c, (iv.cfStructSystems ?? []).filter((x) => x.cfLparId === s.cfLparId && x.system === s.system), s, (x) => () => `${at(o)} ${s.system}→${s.cfLparId} ${x} vs its structure lines`);
         }
+      }
+    },
+  },
+  {
+    id: 'cf-gap-consistency',
+    title: 'CF Activity: the sampled time and rows agree with the Monitor III gatherers, and the structure detail has the interval master',
+    basis: 'game',
+    // RF-12: `cfGathererSec` is the sampled time behind each system's CF rows and `cfMaster` the gatherer whose samples
+    // carry the structure summary. A row exists only for a system that sampled, and the summary only with a master.
+    // The books give the SMF split and the master gatherer, not these report fields, so this is a game identity.
+    source: 'SPEC §17 (RF-12 model); Data Gatherer User\'s Guide PDF p.39 (printed 21) for the SYNC interval',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        if (!o.steady || !o.iv.cfGathererSec) continue;
+        const iv = o.iv;
+        const secs = iv.cfGathererSec!;
+        for (const [system, sec] of Object.entries(secs)) {
+          c.ok(sec >= 0 && sec <= iv.intervalSec + 1e-6, () => `${at(o)} ${system} sampled ${sec} s of ${iv.intervalSec}`);
+          const rows = (iv.cfSystems ?? []).filter((row) => row.system === system);
+          c.ok(rows.length === 0 || sec > 0, () => `${at(o)} ${system} has CF rows but no sampled time`);
+        }
+        for (const row of iv.cfSystems ?? []) c.ok(secs[row.system] !== undefined, () => `${at(o)} ${row.system} has a CF row but no sampled time`);
+        if (iv.cfMaster !== undefined) {
+          c.ok(secs[iv.cfMaster] !== undefined && secs[iv.cfMaster]! > 0, () => `${at(o)} master ${iv.cfMaster} has no sampled time`);
+          c.ok((iv.cfStructures ?? []).length > 0, () => `${at(o)} master ${iv.cfMaster} supplied no structure detail`);
+        }
+        c.ok((iv.cfStructures ?? []).length === 0 || iv.cfMaster !== undefined, () => `${at(o)} structure detail without a master gatherer`);
       }
     },
   },

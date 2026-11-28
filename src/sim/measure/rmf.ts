@@ -71,8 +71,24 @@ export interface RmfAcc {
   cfSystems?: Record<string, CfSystemAcc>;
   /** Per structure copy and connected system (Structure Activity), keyed name|role|system. */
   cfStructSystems?: Record<string, CfStructSystemAcc>;
+  /** The Monitor III master gatherer for this interval: the first system by id whose gatherer was active at the
+   *  interval's first sample (or at the first tick of an interval begun by an older save). Its gatherer supplies the
+   *  sysplex structure detail (`cfStructures`), so that detail stops while it is down and resumes when automation
+   *  restarts it; the next interval picks again (RF-12). */
+  cfMaster?: string;
+  /** Ticks in this interval each system's Monitor III gatherer was active (the sampled time of its CF rows). An
+   *  interval begun by an older save seeds every system with its earlier ticks: those samples were not gated. */
+  cfGathererTicks?: Record<string, number>;
   /** Report classes, keyed lpar|name (only once the policy assigns any). */
   rcs?: Record<string, RcIntervalAcc>;
+}
+
+/** The Monitor III gatherers at one tick (RF-12): of the game's reports, only CF Activity (SMF 74.4) is their data. */
+export interface RmfGatherers {
+  /** The sysplex's z/OS systems, the master candidates. */
+  systems: readonly string[];
+  /** Systems whose Monitor III gatherer (RMFGAT) was not running this tick. */
+  down: readonly string[];
 }
 
 /** Structure name, then PRIM before SEC. */
@@ -202,6 +218,12 @@ export interface RmfInterval {
   cfSystems?: { system: string; cfLparId: string; distKm: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
   /** Structure Activity: one row per structure copy per connected system (p.372–374). */
   cfStructSystems?: { name: string; type: string; role?: 'PRIM' | 'SEC'; cfLparId: string; system: string; reqPerSec: number; syncPct: number; syncUs: number; asyncUs: number }[];
+  /** The Monitor III master gatherer whose samples supplied the structure detail this interval (RF-12). Absent on an
+   *  interval closed before RF-12. */
+  cfMaster?: string;
+  /** Seconds of the interval each system's Monitor III gatherer sampled; short when the gatherer was down (RF-12).
+   *  Absent on an interval closed before RF-12. */
+  cfGathererSec?: Record<string, number>;
   jobs: JobEndRecord[];
 }
 
@@ -232,6 +254,8 @@ export function accumulateTick(
   cfSys?: Readonly<Record<string, CfSystemResult>>,
   /** Sysplex lock index this tick (running batch lock intensity), for CFACT lock contention. */
   lockIndex = 0,
+  /** Monitor III gatherers this tick; absent keeps every sample (an interval from an older save, unit tests). */
+  gatherers?: RmfGatherers,
 ): RmfAcc {
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
@@ -290,7 +314,23 @@ export function accumulateTick(
   }
   const c = { ...acc.cf };
   const cs = { ...(acc.cfStructures ?? {}) };
-  for (const r of cf) {
+  // RF-12: each system's gatherer collects its own CF samples, and the first active system by id is the sysplex
+  // master that collects the structure detail. A cancelled gatherer leaves that system's samples (and, as master,
+  // the structure detail) out until automation restarts it.
+  const down = gatherers ? new Set(gatherers.down) : null;
+  const gathererUp = (system: string) => down === null || !down.has(system);
+  const anyGathererUp = gatherers ? gatherers.systems.some(gathererUp) : true;
+  const master = acc.cfMaster ?? (gatherers ? [...gatherers.systems].sort().find(gathererUp) : undefined);
+  const structureSamples = gatherers === undefined || (master !== undefined && gathererUp(master));
+  let gathererTicks = acc.cfGathererTicks;
+  if (gatherers) {
+    // An interval begun by an older save has no counts, and its earlier samples were accumulated ungated; credit them
+    // to every system so the first new interval reports no false gap (a gatherer already down before the save counts
+    // as up until now). The first tick that sees a gap then shortens exactly the ticks after it.
+    gathererTicks = { ...(gathererTicks ?? Object.fromEntries(gatherers.systems.map((system) => [system, acc.ticks]))) };
+    for (const system of gatherers.systems) if (gathererUp(system)) gathererTicks[system] = (gathererTicks[system] ?? 0) + 1;
+  }
+  for (const r of anyGathererUp ? cf : []) {
     const a = c[r.lparId] ?? { busy: 0, rate: 0, sync: 0, async: 0, service: 0, ticks: 0 };
     // Requests to secondary copies are CF requests too: fold them into the CF's rate and averages.
     const copies = r.secondaries;
@@ -320,19 +360,21 @@ export function accumulateTick(
         syncSecW += syncTime;
         serviceSecW += serviceTime;
       }
-      const key = st.role === 'SEC' ? `${st.name}|SEC` : st.name;
-      const prev = cs[key];
-      cs[key] = {
-        name: st.name,
-        ...(st.role ? { role: st.role } : {}),
-        type: st.type,
-        cfLparId: st.cfLparId,
-        rate: (prev?.rate ?? 0) + st.requestRate,
-        syncReq: (prev?.syncReq ?? 0) + syncRate,
-        syncSecW: (prev?.syncSecW ?? 0) + syncTime,
-        serviceSecW: (prev?.serviceSecW ?? 0) + serviceTime,
-        ticks: (prev?.ticks ?? 0) + 1,
-      };
+      if (structureSamples) {
+        const key = st.role === 'SEC' ? `${st.name}|SEC` : st.name;
+        const prev = cs[key];
+        cs[key] = {
+          name: st.name,
+          ...(st.role ? { role: st.role } : {}),
+          type: st.type,
+          cfLparId: st.cfLparId,
+          rate: (prev?.rate ?? 0) + st.requestRate,
+          syncReq: (prev?.syncReq ?? 0) + syncRate,
+          syncSecW: (prev?.syncSecW ?? 0) + syncTime,
+          serviceSecW: (prev?.serviceSecW ?? 0) + serviceTime,
+          ticks: (prev?.ticks ?? 0) + 1,
+        };
+      }
     }
     const averageCopies = copies && rate > 0;
     c[r.lparId] = {
@@ -347,12 +389,12 @@ export function accumulateTick(
   }
   let sy = acc.cfSystems;
   let ss = acc.cfStructSystems;
-  if (cfSys) {
+  if (cfSys && anyGathererUp) {
     sy = { ...(sy ?? {}) };
     ss = { ...(ss ?? {}) };
-    addCfSystemSamples(cfSys, sy, ss);
+    addCfSystemSamples(cfSys, sy, ss, gathererUp);
   }
-  return { ...acc, ticks: acc.ticks + 1, lockIndexSum: (acc.lockIndexSum ?? 0) + lockIndex, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
+  return { ...acc, ticks: acc.ticks + 1, lockIndexSum: (acc.lockIndexSum ?? 0) + lockIndex, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(master !== undefined ? { cfMaster: master } : {}), ...(gathererTicks ? { cfGathererTicks: gathererTicks } : {}), ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
 }
 
 /** Copy each subchannel on its first sample so later samples can update the same row. */
@@ -360,8 +402,11 @@ function addCfSystemSamples(
   cfSys: Readonly<Record<string, CfSystemResult>>,
   systemTotals: Record<string, CfSystemAcc>,
   structureTotals: Record<string, CfStructSystemAcc>,
+  gathererUp: (system: string) => boolean,
 ): void {
   for (const id of Object.keys(cfSys).sort()) {
+    // A system whose gatherer is down contributes no samples: its rows average over the sampled time only (RF-12).
+    if (!gathererUp(id)) continue;
     const channels = new Map<string, CfSystemAcc>();
     for (const sample of cfSys[id]!.byStructure ?? []) {
       const structureKey = `${sample.name}|${sample.role ?? ''}|${id}`;
@@ -655,6 +700,10 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
     intervalSec: acc.ticks * TICK_SEC,
     policy: ctx.def.policyName,
     lockIndex: acc.ticks > 0 ? (acc.lockIndexSum ?? 0) / acc.ticks : 0,
+    ...(acc.cfMaster ? { cfMaster: acc.cfMaster } : {}),
+    ...(acc.cfGathererTicks
+      ? { cfGathererSec: Object.fromEntries(Object.entries(acc.cfGathererTicks).map(([system, ticks]) => [system, ticks * TICK_SEC])) }
+      : {}),
     cpu,
     cpcBusy,
     wlm,
