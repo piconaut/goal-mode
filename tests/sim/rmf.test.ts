@@ -141,6 +141,15 @@ describe('Monitor III gatherer gaps in CF Activity (RF-12)', () => {
     expect(renderCfActivity(iv)).toContain('MONITOR III GAPS: PROD1 20 S OF 30, PROD2 20 S OF 30');
   });
 
+  it('credits an interval begun by an older save to every gatherer, so it reports no false gap', () => {
+    // A pre-RF-12 accumulator has ticks but no gatherer counts or master; its earlier samples were not gated.
+    const legacy = { ...newRmfAcc(0), ticks: 3 };
+    const acc = accumulateTick(legacy, [], [], null, [cf], cfSys, 0, { systems, down: [] });
+    const iv = closeInterval(acc, { def: BASEPOL, config: MIDWEST.world, r4haByLpar: {}, jobs: [], endTick: 4 });
+    expect(iv.cfGathererSec).toEqual({ PROD1: 40, PROD2: 40 });
+    expect(renderCfActivity(iv)).not.toContain('MONITOR III GAPS');
+  });
+
   it('picks another system as master in the next interval when the old one is down, and has no CF data when all are', () => {
     let acc = accumulateTick(newRmfAcc(0), [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1'] });
     acc = accumulateTick(acc, [], [], null, [cf], cfSys, 0, { systems, down: ['PROD1'] });

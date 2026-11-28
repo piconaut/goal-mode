@@ -34,7 +34,7 @@ export const RMF_GATHERER_JOBNAME = 'RMFGAT';
 // Monitor III data gatherer (z/OS 3.1 RMF User's Guide SC27-4936 PDF p.247 (printed 223)); MONAGENT running the alert
 // rules and the Regulator watching CICSXLOG are game rules.
 export const CANCEL_WARNINGS: Readonly<Record<string, string>> = {
-  RMFGAT: 'Monitor III data gatherer: no Monitor III samples from this system until automation restarts it.',
+  [RMF_GATHERER_JOBNAME]: 'Monitor III data gatherer: no Monitor III samples from this system until automation restarts it.',
   MONAGENT: 'Monitoring agent: every alert rule stops until automation restarts it.',
   CICSXLOG: 'CICS log archiver: the Regulator notices it stopping (trust).',
 };

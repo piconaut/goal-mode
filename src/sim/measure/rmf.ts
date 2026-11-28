@@ -72,10 +72,12 @@ export interface RmfAcc {
   /** Per structure copy and connected system (Structure Activity), keyed name|role|system. */
   cfStructSystems?: Record<string, CfStructSystemAcc>;
   /** The Monitor III master gatherer for this interval: the first system by id whose gatherer was active at the
-   *  interval's first sample. Its gatherer supplies the sysplex structure detail (`cfStructures`), so that detail
-   *  stops when it does and the next interval picks again (RF-12). Absent on an interval begun by an older save. */
+   *  interval's first sample (or at the first tick of an interval begun by an older save). Its gatherer supplies the
+   *  sysplex structure detail (`cfStructures`), so that detail stops when it does and the next interval picks again
+   *  (RF-12). */
   cfMaster?: string;
-  /** Ticks in this interval each system's Monitor III gatherer was active (the sampled time of its CF rows). */
+  /** Ticks in this interval each system's Monitor III gatherer was active (the sampled time of its CF rows). An
+   *  interval begun by an older save seeds every system with its earlier ticks: those samples were not gated. */
   cfGathererTicks?: Record<string, number>;
   /** Report classes, keyed lpar|name (only once the policy assigns any). */
   rcs?: Record<string, RcIntervalAcc>;
@@ -217,10 +219,10 @@ export interface RmfInterval {
   /** Structure Activity: one row per structure copy per connected system (p.372–374). */
   cfStructSystems?: { name: string; type: string; role?: 'PRIM' | 'SEC'; cfLparId: string; system: string; reqPerSec: number; syncPct: number; syncUs: number; asyncUs: number }[];
   /** The Monitor III master gatherer whose samples supplied the structure detail this interval (RF-12). Absent on an
-   *  interval from an older save. */
+   *  interval closed before RF-12. */
   cfMaster?: string;
   /** Seconds of the interval each system's Monitor III gatherer sampled; short when the gatherer was down (RF-12).
-   *  Absent on an interval from an older save. */
+   *  Absent on an interval closed before RF-12. */
   cfGathererSec?: Record<string, number>;
   jobs: JobEndRecord[];
 }
@@ -322,7 +324,10 @@ export function accumulateTick(
   const structureSamples = gatherers === undefined || (master !== undefined && gathererUp(master));
   let gathererTicks = acc.cfGathererTicks;
   if (gatherers) {
-    gathererTicks = { ...(gathererTicks ?? {}) };
+    // An interval begun by an older save has no counts, and its earlier samples were accumulated ungated; credit them
+    // to every system so the first new interval reports no false gap (a gatherer already down before the save counts
+    // as up until now). The first tick that sees a gap then shortens exactly the ticks after it.
+    gathererTicks = { ...(gathererTicks ?? Object.fromEntries(gatherers.systems.map((system) => [system, acc.ticks]))) };
     for (const system of gatherers.systems) if (gathererUp(system)) gathererTicks[system] = (gathererTicks[system] ?? 0) + 1;
   }
   for (const r of anyGathererUp ? cf : []) {

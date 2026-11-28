@@ -793,11 +793,20 @@ export const IDENTITIES: Identity[] = [
         c.close(got.asyncPct, (100 * (req - syncReq)) / req, WEIGHTED, where('ASYNC %'));
         if (syncReq > 0) c.close(got.syncUs, sum(lines.map((s) => ((s.reqPerSec * s.syncPct) / 100) * s.syncUs)) / syncReq, WEIGHTED, where('SYNC SERV'));
       };
+      const cfSystemsSeen = new Set(run.intervals.flatMap((o) => (o.iv.cfSystems ?? []).map((row) => row.system)));
+      const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
+      const systemsGap = (iv: RmfInterval) => [...cfSystemsSeen].some((system) => short(iv, system));
+      const lineGap = (iv: RmfInterval) => {
+        if (!iv.cfGathererSec) return false;
+        const secs = Object.values(iv.cfGathererSec);
+        return secs.length === 0 || Math.max(...secs) < iv.intervalSec - 1e-6;
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
         // The CF line and the structure summary are gathered over different windows when a gatherer stopped (RF-12).
-        const gap = !iv.cfMaster || Object.values(iv.cfGathererSec ?? {}).some((sec) => sec < iv.intervalSec - 1e-6);
+        // A stopped gatherer on a system with no CF traffic changes neither, so only CF-bearing systems count.
+        const gap = !iv.cfMaster || short(iv, iv.cfMaster) || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
           if (gap) continue;
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);

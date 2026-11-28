@@ -16,7 +16,8 @@ import type { RegionMode } from '../../src/sim/wlm/types';
 import { accPi, decayInto, emptyAcc, goalInfo, goalPi, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
-import { renderCfActivity, renderWlmSummary } from '../../src/sim/measure/reports';
+import { renderCfActivity, renderCpuActivity, renderDasdSummary, renderWlmSummary } from '../../src/sim/measure/reports';
+import { closeInterval } from '../../src/sim/measure/rmf';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
@@ -1507,8 +1508,18 @@ describe('RMFGAT cancellation leaves gaps in CF Activity only (RF-12)', () => {
       expect(cut.cpu.some((row) => row.lparId === system)).toBe(true);
       expect(cut.wlm.some((row) => row.lparId === system)).toBe(true);
     }
-    expect(cut.dasd.iops).toBeGreaterThan(0);
-    expect(new Set(cut.wlm.map((r) => r.serviceClass))).toEqual(new Set(control.rmf.intervals.at(-1)!.wlm.map((r) => r.serviceClass)));
+    // CPU Activity and DASD are unchanged by the gatherer gap: a control run's same six ticks, closed by hand at the
+    // same tick, render byte-identically. WLMGL moves only in SYSSTC, where the stopped task's own CPU ran; the unit
+    // test compares that section exactly given identical inputs.
+    let control6 = initState(7, MIDWEST);
+    while (control6.tick < 6) control6 = step(control6, [], MIDWEST);
+    const ctl = closeInterval(control6.rmf.acc, {
+      def: control6.wlm.definition, config: control6.config,
+      r4haByLpar: Object.fromEntries(control6.capping.lpars.map((l) => [l.id, l.r4ha])), jobs: [], endTick: 6,
+    });
+    expect(renderCpuActivity(cut)).toBe(renderCpuActivity(ctl));
+    expect(renderDasdSummary(cut)).toBe(renderDasdSummary(ctl));
+    expect(new Set(cut.wlm.map((r) => r.serviceClass))).toEqual(new Set(ctl.wlm.map((r) => r.serviceClass)));
 
     // Interval 2 starts at 6 with the old master down; the next active system by id takes the structure detail.
     while (s.tick < 100) s = step(s, [], MIDWEST);

@@ -2,6 +2,7 @@
 // Rates and CPU costs are tuned so day 1 peaks at roughly 75–85% of the CPC.
 
 import type { AddressSpaceDef, ArrivalShape, WorkloadDef } from '../../sim/workload/types';
+import { RMF_GATHERER_JOBNAME } from '../operations';
 
 const WEEKDAY: ArrivalShape['weekly'] = [1, 1, 1, 1, 1.05, 0.45, 0.35];
 const ALLWEEK: ArrivalShape['weekly'] = [1, 1, 1, 1, 1.05, 0.9, 0.85];
@@ -206,7 +207,7 @@ export function zosBase(lparId: string, scale: number): AddressSpaceDef[] {
     as(lparId, 'VTAM', 'VTAM', 0.008 * scale),
     as(lparId, 'TCPIP', 'TCPIP', 0.015 * scale),
     as(lparId, 'RRS', 'RRS', 0.004 * scale),
-    as(lparId, 'RMFGAT', null, 0.01 * scale),
+    as(lparId, RMF_GATHERER_JOBNAME, null, 0.01 * scale),
     as(lparId, 'MONAGENT', null, 0.03 * scale),
   ];
 }

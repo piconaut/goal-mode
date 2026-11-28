@@ -64,26 +64,48 @@ describe('CF Activity identity under a gatherer gap (RF-12)', () => {
     cfStructSystems: [{ name: 'DB1G_LOCK1', type: 'LOCK', cfLparId: 'CF01', system: 'PROD1', reqPerSec: 60, syncPct: 90, syncUs: 1, asyncUs: 1 }],
     cfMaster: 'PROD1', cfGathererSec: gatherer, jobs: [],
   });
-  const run = (gatherer: Record<string, number>): ReportRun => ({
-    intervals: [{ phase: 'test', iv: iv(gatherer), config: MIDWEST.world, cfRequests: 6000, steady: true }],
+  const run = (interval: RmfInterval): ReportRun => ({
+    intervals: [{ phase: 'test', iv: interval, config: MIDWEST.world, cfRequests: 6000, steady: true }],
   } as unknown as ReportRun);
+  // The service identity needs the CF line and its structure/copy lines inconsistent, and the per-system row
+  // consistent with its own structure lines (so the inner check has something to pass).
+  const serviceIv = (gatherer: Record<string, number>): RmfInterval => {
+    const base = iv(gatherer);
+    return {
+      ...base,
+      cf: [{ ...base.cf[0]!, syncUs: 99, serviceUs: 99, asyncPct: 10 }],
+      cfSystems: [{ ...base.cfSystems![0]!, syncUs: 1, asyncPct: 10, serviceUs: 1 }],
+      cfStructSystems: [{ ...base.cfStructSystems![0]!, syncPct: 90, syncUs: 1, asyncUs: 1 }],
+    };
+  };
 
   it('skips the cross-window sums when a CF system sampled short, keeping the inner identity', () => {
     const c = new Check();
-    identity.check(run({ PROD1: 300 }), c);
+    identity.check(run(iv({ PROD1: 300 })), c);
     expect(c.failures).toEqual([]);
     expect(c.n).toBeGreaterThan(0);
   });
 
   it('checks them again when every CF system sampled the whole interval', () => {
     const c = new Check();
-    identity.check(run({ PROD1: 600 }), c);
+    identity.check(run(iv({ PROD1: 600 })), c);
     expect(c.failures.length).toBeGreaterThan(0);
   });
 
   it('does not skip for a stopped gatherer on a system with no CF rows', () => {
     const c = new Check();
-    identity.check(run({ PROD1: 600, TSOONLY: 300 }), c);
+    identity.check(run(iv({ PROD1: 600, TSOONLY: 300 })), c);
     expect(c.failures.length).toBeGreaterThan(0);
+  });
+
+  it('applies the same gap rule to the CF service-time identity', () => {
+    const service = IDENTITIES.find((i) => i.id === 'cf-service-times')!;
+    const gap = new Check();
+    service.check(run(serviceIv({ PROD1: 300 })), gap);
+    expect(gap.failures).toEqual([]);
+    expect(gap.n).toBeGreaterThan(0);
+    const whole = new Check();
+    service.check(run(serviceIv({ PROD1: 600 })), whole);
+    expect(whole.failures.length).toBeGreaterThan(0);
   });
 });
