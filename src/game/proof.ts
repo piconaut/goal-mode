@@ -291,7 +291,7 @@ export function pinVerdictLines(proof: ProofResult | undefined, verdicts: readon
 }
 
 /** When a met CPU predicate's pin is over a line the hour average misses, the truth reads the clock hour
- *  (RT-30; RT-31 decides the time base itself). */
+ *  (RT-30). The clock-hour average is the truth's time base by decision (RT-31, SPEC §10). */
 export function hourBaseNote(proof: ProofResult, pins: readonly EvidencePin[], basis: CapacityBasis | null | undefined): string | null {
   if (!basis) return null;
   const met = new Set(proof.mechanism.predicates.filter((x) => x.met).flatMap((x) => x.pinIds));

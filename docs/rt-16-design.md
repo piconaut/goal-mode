@@ -191,7 +191,7 @@ WLMGL APPL % (or PROCU) on the judged host, and `excessSharePct` over the hosts 
 
 Entries that wait on the split: RT-17 (hour-of-day baselines change `groupExcess`, which RT-32 reads), RT-28 (RT-32
 rewrites `mechanismExplanation`), RT-31 (its time base applies to RT-32's lines and bands; every line here is the
-clock-hour average until RT-31 decides otherwise) and RT-21 (batch nights) are `after RT-32`.
+clock-hour average, which RT-31 kept) and RT-21 (batch nights) are `after RT-32`.
 
 ## 8. Decisions
 
