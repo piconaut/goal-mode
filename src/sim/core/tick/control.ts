@@ -261,10 +261,10 @@ export function stepRmf(
   let jobsThisInterval = jobsEnded.length ? [...prev.rmf.jobsThisInterval, ...jobsEnded] : prev.rmf.jobsThisInterval;
   let intervals = prev.rmf.intervals;
   const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));
-  // RF-12: `STOP III` forces an immediate end of interval, and the model treats a cancelled RMFGAT the same way (the
-  // books do not say what a CANCEL does to it). The next interval starts here, so its length is counted from then.
-  const cut = prev.cancelledAddressSpaces?.some((a) => a.jobname === RMF_GATHERER_JOBNAME && a.atTick === prev.tick) ?? false;
-  if (cut || nextTick - acc.startTick >= intervalTicks) {
+  // The Postprocessor interval is Monitor I's: it ends on the clock grid whatever the gatherers do, because every
+  // system's Monitor I writes it in SYNC (Data Gatherer User's Guide PDF p.39 (printed 21)). A cancelled gatherer only
+  // ends its own samples (RF-12), so the next interval keeps ending where it would have.
+  if (nextTick % intervalTicks === 0) {
     intervals = [...intervals, closeInterval(acc, { def, config, r4haByLpar: r4haBy, groupByLpar, jobs: jobsThisInterval, endTick: nextTick })];
     if (intervals.length > RMF_KEEP) intervals = intervals.slice(intervals.length - RMF_KEEP);
     acc = newRmfAcc(nextTick);

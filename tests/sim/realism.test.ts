@@ -17,7 +17,6 @@ import { accPi, decayInto, emptyAcc, goalInfo, goalPi, tickPi } from '../../src/
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderCfActivity, renderCpuActivity, renderDasdSummary, renderWlmSummary } from '../../src/sim/measure/reports';
-import { closeInterval } from '../../src/sim/measure/rmf';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
@@ -1477,73 +1476,77 @@ describe('Db2 work runs only where Db2 is licensed', () => {
 // RF-12: CF Activity is the only Postprocessor report built from Monitor III's SMF 74.4 records. Each system's
 // gatherer writes its own per-system rows; the first system by id with an active gatherer is the sysplex master that
 // supplies the structure detail (Data Gatherer User's Guide PDF pp.23–24 (printed 5–6), PDF pp.102–103 (printed 84–85)).
-// A cancelled gatherer ends the interval where it stops, like STOP III, so the next one starts there.
+// The Postprocessor interval itself is Monitor I's, written in SYNC on every system, so a cancelled gatherer ends only
+// its own samples and the interval keeps ending on the clock grid (PDF p.39 (printed 21), PDF p.63 (printed 45)).
 describe('RMFGAT cancellation leaves gaps in CF Activity only (RF-12)', () => {
   const intervalTicks = Math.round((MIDWEST.world.rmfIntervalMin * 60) / TICK_SEC);
 
-  it('cuts the interval where a gatherer stops, shortens its rows, moves the master, and leaves the other reports whole', () => {
-    let control = initState(7, MIDWEST);
-    while (control.tick < intervalTicks) control = step(control, [], MIDWEST);
+  it('shortens the stopped system rows, moves the master, and keeps the interval grid and the other reports', () => {
+    const systems = MIDWEST.world.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id).sort();
 
     let s = initState(7, MIDWEST);
     for (let i = 0; i < 5; i++) s = step(s, [], MIDWEST);
-    const systems = MIDWEST.world.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id).sort();
     const master = s.rmf.acc.cfMaster!;
     expect(master).toBe(systems[0]);
-    const other = systems[1]!;
-    // The master stops at tick 5: the interval ends there (STOP III-like), with its samples one tick short.
+    const other = systems.find((x) => x !== master)!;
+    // The master stops late in the first interval and is still down at its boundary.
+    while (s.tick < 170) s = step(s, [], MIDWEST);
     s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: master }], MIDWEST);
-    const cut = s.rmf.intervals.at(-1)!;
-    expect(cut.endTick).toBe(6);
-    expect(cut.intervalSec).toBe(6 * TICK_SEC);
-    expect(cut.cfMaster).toBe(master);
-    expect(cut.cfGathererSec![master]).toBe(5 * TICK_SEC);
-    expect(cut.cfGathererSec![other]).toBe(6 * TICK_SEC);
-    expect(renderCfActivity(cut)).toContain(`MONITOR III GAPS: ${master} 50 S OF 60`);
-    // The master supplied the structure detail while it ran; the CF's own line has every tick.
-    expect(cut.cfStructures!.length).toBeGreaterThan(0);
-    expect(cut.cf.length).toBeGreaterThan(0);
+    while (s.tick < intervalTicks) s = step(s, [], MIDWEST);
+
+    const iv = s.rmf.intervals.at(-1)!;
+    // The interval ends where the Monitor I clock says, not where the gatherer stopped.
+    expect(iv.endTick).toBe(intervalTicks);
+    expect(iv.intervalSec).toBe(intervalTicks * TICK_SEC);
+    expect(iv.cfMaster).toBe(master);
+    expect(iv.cfGathererSec![master]).toBe(170 * TICK_SEC);
+    expect(iv.cfGathererSec![other]).toBe(intervalTicks * TICK_SEC);
+    expect(renderCfActivity(iv)).toContain(`MONITOR III GAPS: ${master} 1700 S OF 1800`);
+    // The master supplied the structure detail while it ran; the CF's own line keeps the interval.
+    expect(iv.cfStructures!.length).toBeGreaterThan(0);
+    expect(iv.cf.length).toBeGreaterThan(0);
     // Monitor I keeps writing the other reports: every system keeps its CPU and WLMGL rows, and DASD its data.
     for (const system of systems) {
-      expect(cut.cpu.some((row) => row.lparId === system)).toBe(true);
-      expect(cut.wlm.some((row) => row.lparId === system)).toBe(true);
+      expect(iv.cpu.some((row) => row.lparId === system)).toBe(true);
+      expect(iv.wlm.some((row) => row.lparId === system)).toBe(true);
     }
-    // CPU Activity and DASD are unchanged by the gatherer gap: a control run's same six ticks, closed by hand at the
-    // same tick, render byte-identically. WLMGL moves only in SYSSTC, where the stopped task's own CPU ran; the unit
-    // test compares that section exactly given identical inputs.
-    let control6 = initState(7, MIDWEST);
-    while (control6.tick < 6) control6 = step(control6, [], MIDWEST);
-    const ctl = closeInterval(control6.rmf.acc, {
-      def: control6.wlm.definition, config: control6.config,
-      r4haByLpar: Object.fromEntries(control6.capping.lpars.map((l) => [l.id, l.r4ha])), jobs: [], endTick: 6,
-    });
-    expect(renderCpuActivity(cut)).toBe(renderCpuActivity(ctl));
-    expect(renderDasdSummary(cut)).toBe(renderDasdSummary(ctl));
-    expect(new Set(cut.wlm.map((r) => r.serviceClass))).toEqual(new Set(ctl.wlm.map((r) => r.serviceClass)));
+    expect(iv.dasd.iops).toBeGreaterThan(0);
 
-    // Interval 2 starts at 6 with the old master down; the next active system by id takes the structure detail.
-    while (s.tick < 100) s = step(s, [], MIDWEST);
+    // A control run's same 180 ticks: CPU Activity and DASD are untouched by the gatherer gap, and WLMGL moves only
+    // in SYSSTC, where the stopped task's own 0.01 engines ran before the cancel.
+    let control = initState(7, MIDWEST);
+    while (control.tick < intervalTicks) control = step(control, [], MIDWEST);
+    const ctl = control.rmf.intervals.at(-1)!;
+    expect(renderCpuActivity(iv)).toBe(renderCpuActivity(ctl));
+    expect(renderDasdSummary(iv)).toBe(renderDasdSummary(ctl));
+    const controlRows = renderWlmSummary(ctl).split('\n');
+    const got = renderWlmSummary(iv).split('\n');
+    expect(got).toHaveLength(controlRows.length);
+    got.forEach((line, i) => { if (line !== controlRows[i]) expect(line).toContain('SYSSTC'); });
+
+    // Interval 2 starts with the old master down, so the next active system by id takes the structure detail; that
+    // system stops midway, and both rows carry only their up ticks.
+    while (s.tick < 300) s = step(s, [], MIDWEST);
     expect(s.rmf.acc.cfMaster).toBe(other);
-    // Stopping that master at tick 100 cuts interval 2 there too.
     s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: other }], MIDWEST);
-    const cut2 = s.rmf.intervals.at(-1)!;
-    expect(cut2.endTick).toBe(101);
-    expect(cut2.intervalSec).toBe(95 * TICK_SEC);
-    expect(cut2.cfMaster).toBe(other);
-    expect(cut2.cfGathererSec![other]).toBe(94 * TICK_SEC);
-    expect(cut2.cfStructures!.length).toBeGreaterThan(0);
+    while (s.tick < intervalTicks * 2) s = step(s, [], MIDWEST);
+    const iv2 = s.rmf.intervals.at(-1)!;
+    expect(iv2.endTick).toBe(intervalTicks * 2);
+    expect(iv2.cfMaster).toBe(other);
+    // The first master restarted after 10 minutes (tick 230); the second stopped at tick 300.
+    expect(iv2.cfGathererSec![master]).toBe(130 * TICK_SEC);
+    expect(iv2.cfGathererSec![other]).toBe(120 * TICK_SEC);
+    expect(renderCfActivity(iv2)).toContain(`MONITOR III GAPS: ${master} 1300 S OF 1800, ${other} 1200 S OF 1800`);
+    expect(iv2.cfStructures!.length).toBeGreaterThan(0);
 
-    // Interval 3: the first master restarted by automation, so it is master again; the other system's rows carry
-    // only its samples after its restart, and the note shows the short sampled time.
-    while (s.tick < 281) s = step(s, [], MIDWEST);
-    const iv = s.rmf.intervals.at(-1)!;
-    expect(iv.endTick).toBe(281);
-    expect(iv.cfMaster).toBe(master);
-    expect(iv.cfGathererSec![master]).toBe(180 * TICK_SEC);
-    expect(iv.cfGathererSec![other]).toBe(121 * TICK_SEC);
-    expect(renderCfActivity(iv)).toContain(`MONITOR III GAPS: ${other} 1210 S OF 1800`);
-    expect(iv.cfSystems!.some((row) => row.system === other)).toBe(true);
-    expect(iv.cpu.some((row) => row.lparId === other)).toBe(true);
-    expect(iv.wlm.some((row) => row.lparId === other)).toBe(true);
+    // Interval 3: both gatherers are back, the first system is master again, and its data is whole.
+    while (s.tick < intervalTicks * 3) s = step(s, [], MIDWEST);
+    const iv3 = s.rmf.intervals.at(-1)!;
+    expect(iv3.endTick).toBe(intervalTicks * 3);
+    expect(iv3.cfMaster).toBe(master);
+    expect(iv3.cfGathererSec).toEqual(Object.fromEntries(systems.map((system) => [system, intervalTicks * TICK_SEC])));
+    expect(renderCfActivity(iv3)).not.toContain('MONITOR III GAPS');
+    // Whatever the gatherers did, every interval ended on the Monitor I clock grid.
+    for (const interval of s.rmf.intervals) expect(interval.endTick % intervalTicks).toBe(0);
   });
 });

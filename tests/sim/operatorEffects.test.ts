@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { CICS_RECYCLE, HSM_RECALL } from '../../src/content/operations';
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
+import { applyCommands } from '../../src/sim/core/commands';
+import { step } from '../../src/sim/core/step';
 import { applyOperation, type GatewayMode } from '../../src/sim/core/operations';
 import { activeRecycle, failHeldRecalls, gatewayTraffic, hsmIo, recycleRouting, startRecycles } from '../../src/sim/core/tick/operatorEffects';
 import type { SimState } from '../../src/sim/core/types';
@@ -164,5 +166,17 @@ describe('DFSMShsm recall game rules', () => {
     const released = [{ ...eligible }];
     failHeldRecalls({ ...s, hsmRecalls: { heldSinceTick: null, backlogIo: 100 } }, released);
     expect(released[0]!.status).toBe('RUNNING');
+  });
+});
+
+describe('RMF interval scheduling', () => {
+  it('ends on the clock grid when the interval length changes mid-interval', () => {
+    // The Postprocessor interval is Monitor I's and ends on the clock grid; a length change closes the next
+    // interval on the new grid, not one new interval after the command (the command text: next interval boundary).
+    let s = initState(42, MIDWEST);
+    while (s.tick < 100) s = step(s, [], MIDWEST);
+    s = applyCommands(s, [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }]);
+    while (s.tick < 450) s = step(s, [], MIDWEST);
+    expect(s.rmf.intervals.map((iv) => iv.endTick)).toEqual([180, 270, 360, 450]);
   });
 });
