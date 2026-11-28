@@ -18,7 +18,7 @@ export const TUTOR_PREDICATES: Record<string, Predicate> = {
   cardStarted: (run, args) => run.events.some((e) => e.defId === str(args, 'card') && e.started),
   /** A card has ended. */
   cardEnded: (run, args) => run.events.some((e) => e.defId === str(args, 'card') && e.ended),
-  /** An incident is open or was opened today, optionally for one workload. */
+  /** An incident opened today, optionally for one workload. */
   incidentOpened: (run, args) => run.incidents.some((i) => i.day === run.day && (str(args, 'workload') === undefined || i.workloadId === str(args, 'workload'))),
   /** An RCA was filed, optionally for an incident of one workload. */
   rcaFiled: (run, args) => run.incidents.some((i) => i.rca && (str(args, 'workload') === undefined || i.workloadId === str(args, 'workload'))),

@@ -1,4 +1,5 @@
 import type { DifficultyId } from '../content/difficulty';
+import { tutorView, type TutorView } from './tutor/view';
 import { packOf } from '../content/packs';
 import { otherTeamChangesView } from './run/otherTeamChanges';
 import { difficultyOf } from './difficulty';
@@ -140,6 +141,8 @@ export interface ViewModel {
   daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   scenario: { id: string; name: string };
+  /** The guided prologue's panel, spotlight and date (PRO-03); null on every other run. */
+  tutor: TutorView | null;
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
@@ -312,6 +315,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     scenario: { id: pack.id, name: pack.name },
+    tutor: tutorView(run, pack.game),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,

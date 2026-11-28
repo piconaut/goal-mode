@@ -9,6 +9,8 @@
 // carries a trace, tools/playCore.ts drops it rather than replay a day the browser did not play.
 
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
+import { progressTutor, tutorAck, tutorHint, tutorNote } from './tutor/engine';
+import { canRefile, recordFiling, withdrawRca } from './tutor/rules';
 import { packOf } from '../content/packs';
 import type { InquiryKind } from '../content/inquiries';
 import { advanceHours } from './advance';
@@ -65,7 +67,9 @@ export type DayTraceCommand =
   | { cmd: 'activate' }
   | { cmd: 'activateJson'; json: string }
   | { cmd: 'discard' }
-  | { cmd: 'reportOpened'; key: string };
+  | { cmd: 'reportOpened'; key: string }
+  /** The prologue's Next / Skip step, hint and navigation notes (PRO-03). */
+  | { cmd: 'tutor'; action: 'ack' | 'hint' | 'note'; noteKind?: string; ref?: string };
 
 /** A recorded action and the live tick it was applied at (the worker's `run.sim.tick` at that moment). */
 export interface DayTraceEntry {
@@ -115,6 +119,13 @@ function activate(st: TraceState, def: ServiceDefinition): TraceState {
 /** Apply one recorded action exactly as the worker applied it (the case bodies of src/worker/game.worker.ts;
  *  the basket and the posted messages are browser-only and stay behind). A throw means the trace is corrupt. */
 export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceState {
+  const out = applyTraced(st, c);
+  // The worker's commands re-check the prologue's steps (applyGameCommand); so does the replay.
+  const rules = contentOf(out.run).prologue;
+  return rules && out.run.tutor ? { ...out, run: progressTutor(out.run, rules) } : out;
+}
+
+function applyTraced(st: TraceState, c: DayTraceCommand): TraceState {
   const run = st.run;
   const settled = (out: { run: RunState }): TraceState => ({ ...st, run: out.run });
   switch (c.cmd) {
@@ -134,8 +145,14 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceStat
       const o = cancelChange(run, c.changeId);
       return { run: o.run, pendingPolicy: o.restoredPolicy && !st.pendingPolicy ? o.restoredPolicy : st.pendingPolicy };
     }
-    case 'rca':
-      return settled({ run: submitRca(run, c.incidentId, c.mechanism, c.trigger, scOf(run), c.evidenceIds ?? []) });
+    case 'rca': {
+      // A prologue refile takes the first filing back first, as the command layer does.
+      const inc = run.incidents.find((i) => i.id === c.incidentId);
+      const refile = !!inc?.rca && canRefile(run, contentOf(run), inc);
+      const base = refile ? withdrawRca(run, inc!) : run;
+      const filed = submitRca(base, c.incidentId, c.mechanism, c.trigger, scOf(run), c.evidenceIds ?? []);
+      return settled({ run: inc ? recordFiling(base, filed, contentOf(run), inc) : filed });
+    }
     case 'ask':
       return settled(askAround(run, c.topic, c.workloadId ?? null, scOf(run), contentOf(run)));
     case 'project':
@@ -209,6 +226,13 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceStat
       return { ...st, pendingPolicy: null };
     case 'reportOpened':
       return { ...st, run: noteReportOpened(run, c.key) };
+    case 'tutor': {
+      const rules = contentOf(run).prologue;
+      if (!rules || !run.tutor) return corrupt('a recorded prologue step on a run that is not the prologue');
+      if (c.action === 'ack') return settled(tutorAck(run, rules));
+      if (c.action === 'hint') return settled(tutorHint(run, rules));
+      return { ...st, run: tutorNote(run, rules, c.noteKind ?? '', c.ref ?? '') };
+    }
   }
 }
 

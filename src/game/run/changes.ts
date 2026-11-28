@@ -1,5 +1,5 @@
 import { packOf } from '../../content/packs';
-import { markScriptedFailure, prologueChangeRisk } from '../tutor/rules';
+import { markApplied, markScriptedFailure, prologueChangeRisk } from '../tutor/rules';
 import { applyCommand, type Command } from '../../sim/core/commands';
 import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
@@ -106,7 +106,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
       };
     }
     if (change.activateDay === r.day) {
-      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
+      r = markApplied({ ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] }, content, change.id);
     } else r = { ...r, changes: [...r.changes, change] };
     const what = `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`;
     return { run: logLine(r, what), ok: true, message: `Applied: ${req.label}` };

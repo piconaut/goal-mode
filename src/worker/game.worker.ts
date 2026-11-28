@@ -1,6 +1,8 @@
 // The game runs here, off the UI thread. At 1× a played day (8640 ticks) takes 10 minutes.
 
 import { difficultyOf, scenarioFor } from '../game/difficulty';
+import { replayToChapter } from '../game/tutor/replay';
+import { PROLOGUE_REFERENCE } from '../game/tutor/reference';
 import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
@@ -289,9 +291,10 @@ void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
 
 setInterval(() => {
   if (run.phase !== 'LIVE' || speed <= 0) return;
+  const beat = run.tutor?.beat;
   if (speed === AUTO_SPEED) {
     const t0 = performance.now();
-    while (run.phase === 'LIVE' && !run.alerts?.pauseRequested && performance.now() - t0 < AUTO_FRAME_BUDGET_MS) advanceSampled(HISTORY_EVERY_TICKS);
+    while (run.phase === 'LIVE' && !run.alerts?.pauseRequested && run.tutor?.beat === beat && performance.now() - t0 < AUTO_FRAME_BUDGET_MS) advanceSampled(HISTORY_EVERY_TICKS);
     if (run.phase !== 'LIVE') speed = speedBeforeAuto;
   } else {
     carry += (TICKS_PER_SEC_1X * speed * FRAME_MS) / 1000;
@@ -299,6 +302,11 @@ setInterval(() => {
     if (n <= 0) return;
     carry -= n;
     advanceSampled(n);
+  }
+  if (run.tutor?.beat !== beat) {
+    // A prologue beat stops the clock (design §11.3); speed is not sim state, so no hash moves.
+    speed = 0;
+    carry = 0;
   }
   if (run.alerts?.pauseRequested) {
     // A pausing alert rule fired: stop the clock (Ironman: drop to the slowest speed) and tell the player why.
@@ -381,6 +389,37 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
       if (storageReady) void saveRun(run, desk());
       break;
+    case 'TUTOR_ACK':
+    case 'TUTOR_HINT':
+    case 'TUTOR_NOTE': {
+      const out = command(m.type === 'TUTOR_ACK' ? { kind: 'TUTOR_ACK' } : m.type === 'TUTOR_HINT' ? { kind: 'TUTOR_HINT' } : { kind: 'TUTOR_NOTE', noteKind: m.kind, ref: m.ref });
+      if (out.ok) trace(m.type === 'TUTOR_ACK' ? { cmd: 'tutor', action: 'ack' } : m.type === 'TUTOR_HINT' ? { cmd: 'tutor', action: 'hint' } : { cmd: 'tutor', action: 'note', noteKind: m.kind, ref: m.ref });
+      // A note is quiet: the tab the player opened is its own feedback.
+      if (m.type === 'TUTOR_NOTE') run = out.run;
+      else settle(out);
+      break;
+    }
+    case 'PROLOGUE_CHAPTER': {
+      let start;
+      try {
+        start = replayToChapter(PROLOGUE_REFERENCE, m.chapterId);
+      } catch (e) {
+        post({ type: 'RESULT', ok: false, message: `Cannot load that chapter: ${(e as Error).message}` });
+        break;
+      }
+      whatIf = null;
+      basket = [];
+      dayTrace = null;
+      post({ type: 'BASKET', basket });
+      run = start.run;
+      pendingPolicy = start.pending;
+      postPolicy();
+      speed = 0;
+      history = [];
+      mon3Hist = emptyMon3History();
+      historyDirty = true;
+      break;
+    }
     case 'NEW_RUN':
       whatIf = null;
       pendingPolicy = null;

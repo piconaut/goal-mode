@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-28: PRO-03 adds the prologue UI shell (Ruth's panel, the spotlight and anchors, the top-bar date, the new-run offer and chapter list, put it back); compare identical. PRO-04 is ready; the prologue pauses here (Amy).
 - 2026-11-28: PRO-02 adds the prologue engine (scheduled cards, starting commands and cost, tutorial state and beats as stop ticks, prologue-only rules, back-out list, chapter replay, `play tutor`) on a two-beat test script; compare identical. PRO-03 is ready.
 - 2026-11-28: PRO-01 lets a scenario's calendar start on another day of the month (`monthDayAtStart`, default the 3rd); compare identical.
 - 2026-11-28: RT-31 tests the CPU verdict's time base (the clock-hour average; a pin reads its interval) on INC6's shape and states it in SPEC §10/§17 and docs/rca-design.md §4.3.

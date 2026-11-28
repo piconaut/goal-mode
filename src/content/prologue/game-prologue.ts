@@ -1,6 +1,6 @@
 // The optional guided prologue, the shadow week (docs/prologue-design.md, BACKLOG list `prologue`). PRO-02 ships the
 // engine with a two-beat test script; the chapters' content (Mon 26 … Fri 30) arrives with PRO-04 … PRO-06. The
-// scenario is registered in `PROLOGUE_PACKS`, never in `SCENARIOS` or `PACKS`, so goldens, bench, bots, sweeps and
+// scenario is registered in `PROLOGUE_SCENARIOS`, never in `SCENARIOS` or `PACKS`, so goldens, bench, bots, sweeps and
 // the balance gate never see it.
 import type { Scenario } from '../../sim/core/scenario';
 import { MIDWEST_GAME } from '../game-midwest';
@@ -14,6 +14,8 @@ export const PROLOGUE_TUNING = {
   // FICTIONAL: high enough that no prologue day can end near a loss; the week's trust still moves visibly.
   trustFloor: 20,
   refilesPerRca: 1,
+  // FICTIONAL: "breaks the system badly" (§6.4): an SLA hour this far down is no tuning slip.
+  putBackAttainmentPct: 50,
 } as const;
 
 /** The engine's test script: one chapter, two beats (PRO-02). */

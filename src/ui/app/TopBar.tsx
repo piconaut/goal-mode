@@ -20,7 +20,7 @@ export function TopBar({ v, game, open, setOpen }: { v: ViewModel; game: GameHan
       <span className="brand">GOAL MODE</span>
       <span className="clock">{v.clock}</span>
       <span className="stat">
-        Day <b>{v.endlessFromDay !== null ? <>{v.day + 1} (endless)</> : <>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</>}</b> <span className="muted">· {v.weekday.slice(0, 3)} · {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
+        {v.tutor ? <b>{v.tutor.dateLabel}</b> : <>Day <b>{v.endlessFromDay !== null ? <>{v.day + 1} (endless)</> : <>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</>}</b></>} <span className="muted">{v.tutor ? '' : `· ${v.weekday.slice(0, 3)} `}· {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
       </span>
       <span className="stat" style={{ minWidth: 120 }}>
         {v.phase}

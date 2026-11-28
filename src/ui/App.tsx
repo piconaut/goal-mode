@@ -1,23 +1,15 @@
 // The app shell: the tab bar, the page, the overlays and the toast. Its parts live in `console/`, `app/`,
 // `Inbox.tsx`, `Overlays.tsx` and the tab modules (CL-38).
-import { useEffect, useState } from 'react';
-import { Actions } from './Actions';
-import { Analytics } from './Analytics';
-import { Codex } from './Codex';
+import { useCallback, useEffect, useState } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
-import { EvidenceBoard } from './Evidence';
-import { Finance } from './Finance';
-import { Inbox } from './Inbox';
-import { Monitor } from './Monitor';
 import { Overlays } from './Overlays';
-import { Reports } from './Reports';
-import { Problems } from './Problems';
-import { Smf } from './Smf';
 import { Tutorial } from './Tutorial';
 import { useGame } from './useGame';
+import { Page, TabButtons } from './app/Page';
 import { TopBar } from './app/TopBar';
-import { TABS, useShortcuts, type Tab } from './app/shortcuts';
-import { Console } from './console/Console';
+import { useShortcuts, type Tab } from './app/shortcuts';
+import { MentorPanel } from './tutor/MentorPanel';
+import { Spotlight, spotlightTarget } from './tutor/Spotlight';
 
 export function App() {
   const game = useGame();
@@ -27,10 +19,20 @@ export function App() {
   const phase = v?.phase;
   // A new briefing, review or end of run opens the overlay; the live day starts with it closed.
   useEffect(() => setOverlayOpen(phase !== 'LIVE'), [phase, v?.day]);
-  useShortcuts(game, setTab);
+  const send = game.send;
+  const inPrologue = !!v?.tutor;
+  // The player's own tab changes are prologue navigation (TUTOR_NOTE, design §6.2); the spotlight's are not.
+  const openTab = useCallback(
+    (t: Tab) => {
+      setTab(t);
+      if (inPrologue) send({ type: 'TUTOR_NOTE', kind: 'tab', ref: t });
+    },
+    [inPrologue, send],
+  );
+  useShortcuts(game, openTab);
   if (!v) return <div className="app">Starting the sysplex…</div>;
   return (
-    <div className="app">
+    <div className={v.tutor ? 'app prologue' : 'app'}>
       <TopBar v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       {game.spectate && (
         <div className="spectate-banner" role="status">
@@ -44,11 +46,7 @@ export function App() {
         </div>
       )}
       <div className="tabs">
-        {TABS.map((t, i) => (
-          <button key={t} className={tab === t ? 'active' : ''} title={`Alt+${i + 1}`} onClick={() => setTab(t)}>
-            {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.features.includes('MON3') ? `Monitor III${v.mon3?.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'finance' ? 'Finance' : t === 'analytics' ? `Analytics (${v.insight}◆)` : t === 'codex' ? 'Codex' : `Inbox (${v.inbox.length})`}
-          </button>
-        ))}
+        <TabButtons v={v} tab={tab} setTab={openTab} />
         {(v.lastReport || v.phase === 'BRIEFING' || v.phase === 'REVIEW') && (
           <button className={overlayOpen ? 'active' : ''} aria-pressed={overlayOpen} onClick={() => setOverlayOpen(!overlayOpen)}>
             {v.phase === 'REVIEW' ? `Day ${v.day + 1} review` : v.phase === 'BRIEFING' ? 'Briefing' : `Day ${v.lastReport!.day + 1} report card`}
@@ -56,25 +54,20 @@ export function App() {
         )}
       </div>
       <ErrorBoundary key={tab} where={`${tab} tab`} onReset={() => setTab('console')}>
-      <div className="page">
-        {tab === 'console' && <Console v={v} history={game.history} />}
-        {tab === 'monitor' && <Monitor v={v} game={game} openAnalytics={() => setTab('analytics')} />}
-        {tab === 'reports' && (
-          <>
-            <Reports v={v} game={game} />
-            <Smf v={v} game={game} openAnalytics={() => setTab('analytics')} />
-            <EvidenceBoard v={v} game={game} />
-            <Problems v={v} game={game} />
-          </>
-        )}
-        {tab === 'changes' && <Actions v={v} game={game} />}
-        {tab === 'analytics' && <Analytics v={v} game={game} />}
-        {tab === 'finance' && <Finance v={v} game={game} />}
-        {tab === 'codex' && <Codex v={v} />}
-        {tab === 'inbox' && <Inbox v={v} game={game} />}
-      </div>
+      <Page v={v} game={game} tab={tab} setTab={openTab} />
       </ErrorBoundary>
-      {!game.spectate && <Tutorial v={v} />}
+      {!game.spectate && !v.tutor && <Tutorial v={v} />}
+      {v.tutor && !game.spectate && (
+        <>
+          <Spotlight
+            target={v.phase === 'LIVE' || !overlayOpen ? spotlightTarget(v.tutor.step?.target ?? null, v.tutor.step?.opensTab ?? null, tab) : null}
+            stepKey={v.tutor.step?.id ?? ''}
+            tab={tab}
+            showTab={setTab}
+          />
+          <MentorPanel t={v.tutor} game={game} showTab={setTab} />
+        </>
+      )}
       <ErrorBoundary where="briefing / review" onReset={() => setOverlayOpen(false)}>
       <Overlays v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       </ErrorBoundary>

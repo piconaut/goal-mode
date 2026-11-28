@@ -51,7 +51,7 @@ import {
 } from './types';
 import { SAVE_VERSION } from './runFile';
 import { dueBeat, enterBeat, newTutor, progressTutor } from './tutor/engine';
-import { floorTrust, inPrologue, markScriptedFailure, prologueChangeRisk } from './tutor/rules';
+import { floorTrust, inPrologue, markApplied, markScriptedFailure, prologueChangeRisk } from './tutor/rules';
 import { applyMigratedRequest } from './run/migrate';
 import { packOf } from '../content/packs';
 import { allWorkloads } from './workloads';
@@ -170,6 +170,7 @@ export function startDay(run: RunState, content: GameContent): RunState {
       }
       r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
       changes.push({ ...c, status: 'APPLIED' });
+      r = markApplied(r, content, c.id);
       r = logLine(r, `Planned change applied: ${c.label}`);
       if (c.backoutChangeId) r = applyBackout(r, content, c.backoutChangeId);
       if (c.migratedEventId) {

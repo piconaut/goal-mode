@@ -58,3 +58,25 @@ export function floorTrust(trust: Record<Facet, number>, content: GameContent): 
   const floor = content.prologue!.trustFloor;
   return Object.fromEntries(Object.entries(trust).map(([f, v]) => [f, Math.max(floor, v)])) as Record<Facet, number>;
 }
+
+/** Record when a prologue change took effect (the tick its commands were queued), for `putBackOffered`. */
+export function markApplied(run: RunState, content: GameContent, changeId: number): RunState {
+  if (!inPrologue(run, content)) return run;
+  return { ...run, tutor: { ...run.tutor!, appliedTicks: { ...run.tutor!.appliedTicks, [String(changeId)]: run.sim.tick } } };
+}
+
+/** Ruth's "want me to put it back?" (§6.4): a change the player made in this chapter took effect, and after it an SLA
+ *  incident opened today whose worst hour fell below the content's line. An incident already open before the change
+ *  is not the change's doing. The offer reloads the chapter's start state; it never undoes the sim. */
+export function putBackOffered(run: RunState, content: GameContent): boolean {
+  if (!inPrologue(run, content)) return false;
+  const chapter = content.prologue!.chapters[run.tutor!.chapter];
+  if (!chapter) return false;
+  const applied = run.tutor!.appliedTicks ?? {};
+  const since = run.changes
+    .filter((c) => c.status === 'APPLIED' && c.plannedDay >= chapter.day && applied[String(c.id)] !== undefined)
+    .map((c) => applied[String(c.id)]!);
+  if (since.length === 0) return false;
+  const first = Math.min(...since);
+  return run.incidents.some((i) => i.day === run.day && i.startTick >= first && i.worstAttainmentPct < content.prologue!.putBackAttainmentPct);
+}

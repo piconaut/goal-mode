@@ -888,7 +888,7 @@ Tuning order:
 - `play tutor` prints the current step and its target; `play tutor ack | note <kind> <ref> | hint` drive it. So the
   existing persona agents can playtest it, and a new persona brief ("intern: knows JCL and SDSF, never owned a WLM
   policy") can report confusion step by step.
-- The reference command log in `tests/fixtures/prologue/` is what produces the chapter start states.
+- The reference command log (`src/game/tutor/reference.ts` as built, PRO-03: the browser replays it too, so it ships with the game) is what produces the chapter start states.
 
 ### 11.7 As built (PRO-02)
 
@@ -912,9 +912,45 @@ Tuning order:
   initiators, DASD, RMF interval, routing and projects against a fresh Day 1 run, one `section key field: before →
   after` line each, in section order. PRO-06 words it as Ruth's note.
 - **Chapter start states** (`game/tutor/replay.ts`): `replayToChapter(log, chapterId)` replays a `ReplayLog` of game
-  commands, `ADVANCE` and `CHAPTER` markers; the reference log is `tests/fixtures/prologue/reference.json`.
+  commands, `ADVANCE` and `CHAPTER` markers; the reference log is `src/game/tutor/reference.ts` (moved from `tests/fixtures/prologue/` in PRO-03, because skip and put-it-back replay it in the browser).
 - **Headless:** `play new <seed> normal midwest-prologue`, `play tutor [ack | hint | note <kind> <ref>]`.
-- Not yet: speed 0 in the browser at a beat (the worker keeps advancing; PRO-03), the `undoBase` capture (PRO-05).
+- Not yet: the `undoBase` capture (PRO-05).
+
+### 11.8 As built (PRO-03)
+
+- **Panel** (`ui/tutor/MentorPanel.tsx`): Ruth's words in an ARIA live region; Hint (one rung per click, the rungs
+  shown so far listed), Next on a read-only step, Skip step otherwise; **Show me** once the last rung is shown, when
+  the step has a `showMe` draft (`TutorStep.showMe { label, commands }`), which fills the Change Desk basket and never
+  submits; Skip chapter (the next chapter's start, or leave after the last); Leave the prologue; Put it back. Minimised,
+  it comes back at the next beat. Bottom right, a bottom sheet at ≤ 600 px; the page and the briefing get bottom
+  padding so nothing sits under it.
+- **Spotlight** (`ui/tutor/Spotlight.tsx`): shown for every step with a `target` while the live day runs or the
+  overlay is closed (not only on the pointer rung). It opens the anchor's tab through the plain tab setter (not a
+  `TUTOR_NOTE`, since it isn't the player's navigation) and its Change Desk `<details>`, scrolls the target to the top
+  and focuses it, then draws a fixed 4 px outline with a text label and a dimmed surround, all `pointer-events: none`.
+  A step that waits for a tab note (`opensTab`) points at that tab's button until the player opens it, so the
+  spotlight never does the step for them.
+- **Anchors** (`ui/tutor/anchors.ts`): `tab.<tab>`, `changes.<Section id>` and `console.pi-heatmap`; a parameterised
+  target falls back to its prefix. `data-tour` sits on the tab buttons, every Change Desk `Section` and the PI heat map.
+  PRO-04 … PRO-06 add the anchors their steps name.
+- **Navigation notes:** the player's tab changes (clicks and Alt+N) send `TUTOR_NOTE { tab }` in a prologue run.
+- **Top bar and briefing:** "Mon 26 · Shadow week" replaces "Day N / 40" and the weekday; the day-1 corner tutorial,
+  the first-day pickers and the starting perk are hidden in the prologue.
+- **Entry point** (`ui/tutor/PrologueOffer.tsx`, flag `goalmode.prologue` in localStorage): the first Day 1 briefing
+  and the end-of-run form offer "Shadow week with Ruth (recommended, ~70 min)" or "Go straight to Day 1"; afterwards a
+  smaller button, plus a chapter list once the week was finished or skipped. On the Day 1 briefing (a run that hasn't
+  ended, possibly imported or Ironman) starting the week or a chapter asks for confirmation first. A new prologue uses the reference log's
+  seed and difficulty, so a fresh start and a chapter replay are the same week.
+- **Put it back** (`putBackOffered`, `game/tutor/rules.ts`): offered when, after a change made this chapter took
+  effect (its tick is kept in `tutor.appliedTicks`), an SLA incident opens today whose worst hour is below
+  `putBackAttainmentPct` (`// FICTIONAL:` 50 %, strictly below). An incident already open when the change went in
+  doesn't count. It reloads the chapter's start state from the reference log (`PROLOGUE_CHAPTER`).
+- **Worker:** `TUTOR_ACK`, `TUTOR_HINT`, `TUTOR_NOTE`, `PROLOGUE_CHAPTER`; the clock goes to speed 0 when a beat is
+  entered, and the day trace records the tutor commands.
+- **Tests:** `tests/ui/prologueAnchors.test.ts` renders each targeted step's state from the reference replay
+  (`replayStates`), from the target's tab and from another one, and asserts the spotlight's anchor is in the DOM,
+  not in a closed section, and focused. Checked in Chromium at 1280 and 390 px: the test script plays to the end with
+  no horizontal scroll.
 
 ## 12. Realism
 

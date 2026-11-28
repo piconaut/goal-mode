@@ -117,6 +117,8 @@ export interface TutorStep {
   /** When it no longer holds as the step starts, the step is skipped with `skipSay` (§6.2). */
   precondition?: TutorPredicateRef;
   skipSay?: string;
+  /** The hint ladder's last rung for a change step: fill the Change Desk draft with these, never submit it (§6.3). */
+  showMe?: { label: string; commands: Command[] };
 }
 
 /** A beat stops the clock (§11.3): at a fixed played day and time, or at the first hour boundary where `when`
@@ -143,5 +145,8 @@ export interface PrologueRules {
   trustFloor: number;
   /** How often one RCA may be filed again (§14 decision 6). */
   refilesPerRca: number;
+  /** Ruth offers to put the chapter back once an SLA incident today falls below this attainment after a change the
+   *  player made in the chapter (§6.4). */
+  putBackAttainmentPct: number;
   chapters: TutorChapter[];
 }
