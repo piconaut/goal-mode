@@ -71,7 +71,7 @@ describe('CANCEL_ADDRESS_SPACE', () => {
     const r = cancel(s0, 'CICSXLOG');
     expect(r.ok).toBe(true);
     const restartTick = s0.tick + Math.ceil((STC_AUTOMATION.restartMin * 60) / TICK_SEC);
-    expect(r.state.cancelledAddressSpaces).toEqual([{ jobname: 'CICSXLOG', lparId: 'PROD1', restartTick }]);
+    expect(r.state.cancelledAddressSpaces).toEqual([{ jobname: 'CICSXLOG', lparId: 'PROD1', restartTick, atTick: s0.tick }]);
     const has = (s: SimState) => effectiveAddressSpaces(MIDWEST, s).some((a) => a.jobname === 'CICSXLOG' && a.lparId === 'PROD1');
     expect(has(s0)).toBe(true);
     expect(has(r.state)).toBe(false);
