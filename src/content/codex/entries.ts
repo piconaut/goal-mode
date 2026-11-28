@@ -559,6 +559,8 @@ export const CODEX: CodexEntry[] = [
       { label: "z/OS 3.1 RMF User's Guide (SC27-4936), PDF p.95 (printed 71): Data Index, Gatherer not active", url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbru00_v3r1.pdf#page=95' },
       { label: 'z/OS 3.1 Data Gatherer User\'s Guide, PDF p.23 (printed 5): SMF types per monitor', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=23' },
       { label: 'z/OS 3.1 Data Gatherer User\'s Guide, PDF p.102 (printed 84): master gatherer', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=102' },
+      { label: 'z/OS 3.1 Data Gatherer User\'s Guide, PDF p.39 (printed 21): Monitor III SMF recording follows Monitor I SYNC', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=39' },
+      { label: 'z/OS 3.1 Data Gatherer User\'s Guide, PDF p.63 (printed 45): STOP III ends a session interval, others continue', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/grbdu00_v3r1.pdf#page=63' },
     ],
     discover: { events: ['XLOG_LOOP', 'MONITOR_CREEP'] },
   },

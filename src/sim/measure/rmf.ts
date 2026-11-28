@@ -73,8 +73,8 @@ export interface RmfAcc {
   cfStructSystems?: Record<string, CfStructSystemAcc>;
   /** The Monitor III master gatherer for this interval: the first system by id whose gatherer was active at the
    *  interval's first sample (or at the first tick of an interval begun by an older save). Its gatherer supplies the
-   *  sysplex structure detail (`cfStructures`), so that detail stops when it does and the next interval picks again
-   *  (RF-12). */
+   *  sysplex structure detail (`cfStructures`), so that detail stops while it is down and resumes when automation
+   *  restarts it; the next interval picks again (RF-12). */
   cfMaster?: string;
   /** Ticks in this interval each system's Monitor III gatherer was active (the sampled time of its CF rows). An
    *  interval begun by an older save seeds every system with its earlier ticks: those samples were not gated. */
