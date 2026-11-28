@@ -323,6 +323,14 @@ export function renderCfActivity(iv: RmfInterval): string {
       out.push(`${padRight(s.cfLparId, 8)} ${padRight(s.system, 8)} ${f(s.reqPerSec, 0, 9)} ${f(s.syncUs, 1, 15)} ${f(s.asyncPct, 1, 9)} ${f(s.serviceUs, 1, 14)} ${f(s.distKm, 0, 13)}`);
     }
   }
+  // The Postprocessor report does not print how long a gatherer sampled; the game shows it so a row averaged over a
+  // stopped gatherer's up time is not read as a full interval (RF-12). A real operator sees the gap in the Data Index.
+  const gaps = Object.entries(iv.cfGathererSec ?? {})
+    .filter(([, sec]) => sec < iv.intervalSec - 1e-6)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  if (gaps.length) {
+    out.push('', `MONITOR III GAPS: ${gaps.map(([system, sec]) => `${system} ${Math.round(sec)} S OF ${Math.round(iv.intervalSec)}`).join(', ')}`);
+  }
   return out.join('\n');
 }
 

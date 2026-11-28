@@ -742,15 +742,23 @@ export const IDENTITIES: Identity[] = [
     // than the sum of the individual structure values" (facility management commands, not modelled): here it is equal.
     source: 'RMF Report Analysis 3.1 p.365–378 (Tables 144–146)',
     check: (run, c) => {
-      // A Monitor III gatherer gap makes a system's (or the master's) samples shorter than the interval, so its rows
-      // cannot add up to a CF line gathered over the whole interval (RF-12). The internal identities a sampled row
-      // still satisfies are checked; the cross-window sums are only meaningful when every gatherer ran.
-      const cfGap = (iv: typeof run.intervals[number]['iv']) =>
-        !iv.cfMaster || (iv.cfGathererSec !== undefined && Object.values(iv.cfGathererSec).some((sec) => sec < iv.intervalSec - 1e-6));
+      // A Monitor III gatherer gap makes a row's sampled time shorter than the interval, so it cannot add up to a
+      // figure gathered over the whole interval (RF-12). Only systems that carry CF rows in the run can create a CF
+      // gap; a stopped gatherer on a system with no CF traffic removes nothing from the report.
+      const cfSystemsSeen = new Set(run.intervals.flatMap((o) => (o.iv.cfSystems ?? []).map((row) => row.system)));
+      const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
+      const systemsGap = (iv: RmfInterval) => [...cfSystemsSeen].some((system) => short(iv, system));
+      // The CF's own line is gathered by any active gatherer, so it is short only when every one was down for a while.
+      const lineGap = (iv: RmfInterval) => {
+        if (!iv.cfGathererSec) return false;
+        const secs = Object.values(iv.cfGathererSec);
+        return secs.length === 0 || Math.max(...secs) < iv.intervalSec - 1e-6;
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
-        const gap = cfGap(iv);
+        const masterGap = !iv.cfMaster || short(iv, iv.cfMaster);
+        const gap = masterGap || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
           if (!gap) {
             c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
@@ -788,7 +796,8 @@ export const IDENTITIES: Identity[] = [
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
-        const gap = !iv.cfMaster || (iv.cfGathererSec !== undefined && Object.values(iv.cfGathererSec).some((sec) => sec < iv.intervalSec - 1e-6));
+        // The CF line and the structure summary are gathered over different windows when a gatherer stopped (RF-12).
+        const gap = !iv.cfMaster || Object.values(iv.cfGathererSec ?? {}).some((sec) => sec < iv.intervalSec - 1e-6);
         for (const cf of iv.cf) {
           if (gap) continue;
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);

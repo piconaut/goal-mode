@@ -460,7 +460,7 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
       if (s.cancelledAddressSpaces?.some(on)) return fail(s, `IEE341I ${cmd.jobname} NOT ACTIVE on ${cmd.lparId}`);
       const restartTick = (a?.subsystem ?? 'STC') === 'STC' ? s.tick + Math.ceil((STC_AUTOMATION.restartMin * 60) / TICK_SEC) : null;
       return ok(
-        { ...s, cancelledAddressSpaces: [...(s.cancelledAddressSpaces ?? []), { jobname: cmd.jobname, lparId: cmd.lparId, restartTick }] },
+        { ...s, cancelledAddressSpaces: [...(s.cancelledAddressSpaces ?? []), { jobname: cmd.jobname, lparId: cmd.lparId, restartTick, atTick: s.tick }] },
         `CANCEL ${cmd.jobname}: ended on ${cmd.lparId}${restartTick !== null ? `; automation restarts it in ${STC_AUTOMATION.restartMin} min` : ''}`,
       );
     }

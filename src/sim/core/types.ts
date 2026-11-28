@@ -334,6 +334,9 @@ export interface CancelledAddressSpace {
   lparId: string;
   /** Tick at which automation restarts it; null = it stays down. */
   restartTick: number | null;
+  /** Tick the CANCEL was applied (RF-12: a stopped Monitor III gatherer ends the RMF interval there, like STOP III).
+   *  Absent on an old save, whose cancellations do not cut an interval. */
+  atTick?: number;
 }
 
 /** A scheduled Db2 utility running past its window (REORG_OVERRUN): it stays active at this I/O rate until cleared. */

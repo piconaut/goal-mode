@@ -5,7 +5,8 @@
 // No assertion names a scenario, LPAR, service class or workload: a scenario added to SCENARIOS is covered as is,
 // and an identity whose feature a scenario lacks makes no comparison there. The last test fails if an identity
 // was exercised by no scenario at all.
-import { SCENARIOS } from '../../src/content/scenarios';
+import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
+import type { RmfInterval } from '../../src/sim/measure/rmf';
 import { Check, CONDITIONS, IDENTITIES } from '../helpers/reportIdentities';
 import { runReportScenario, type ReportRun } from '../helpers/reportRun';
 
@@ -46,5 +47,43 @@ describe('report invariants: coverage', () => {
   it('identity ids are unique and each states its basis and source', () => {
     expect(new Set(IDENTITIES.map((i) => i.id)).size).toBe(IDENTITIES.length);
     for (const i of IDENTITIES) expect(i.source.length, i.id).toBeGreaterThan(0);
+  });
+});
+
+// RF-12: a gatherer gap makes sampled rows shorter than the interval, so the cross-window CF sums cannot hold; the
+// identity must skip them for that interval without going silent on the identities a sampled row still satisfies.
+describe('CF Activity identity under a gatherer gap (RF-12)', () => {
+  const identity = IDENTITIES.find((i) => i.id === 'cf-requests-add-up')!;
+  const iv = (gatherer: Record<string, number>): RmfInterval => ({
+    startTick: 0, endTick: 60, intervalSec: 600, policy: 'P', cpu: [], cpcBusy: [], wlm: [],
+    dasd: { iops: 0, rtRandomMs: 0, rtSeqMs: 0, iosqMs: 0, pendMs: 0, discMs: 0, connMs: 0 }, lcus: [],
+    // Deliberately inconsistent sums (60 vs 100): the identity must not reconcile them while a row is short.
+    cf: [{ lparId: 'CF01', busyPct: 10, reqPerSec: 100, syncUs: 1, asyncPct: 0, serviceUs: 1 }],
+    cfStructures: [{ name: 'DB1G_LOCK1', type: 'LOCK', cfLparId: 'CF01', reqPerSec: 100, syncPct: 90, syncUs: 1, serviceUs: 1 }],
+    cfSystems: [{ system: 'PROD1', cfLparId: 'CF01', distKm: 10, reqPerSec: 60, syncUs: 1, asyncPct: 0, serviceUs: 1 }],
+    cfStructSystems: [{ name: 'DB1G_LOCK1', type: 'LOCK', cfLparId: 'CF01', system: 'PROD1', reqPerSec: 60, syncPct: 90, syncUs: 1, asyncUs: 1 }],
+    cfMaster: 'PROD1', cfGathererSec: gatherer, jobs: [],
+  });
+  const run = (gatherer: Record<string, number>): ReportRun => ({
+    intervals: [{ phase: 'test', iv: iv(gatherer), config: MIDWEST.world, cfRequests: 6000, steady: true }],
+  } as unknown as ReportRun);
+
+  it('skips the cross-window sums when a CF system sampled short, keeping the inner identity', () => {
+    const c = new Check();
+    identity.check(run({ PROD1: 300 }), c);
+    expect(c.failures).toEqual([]);
+    expect(c.n).toBeGreaterThan(0);
+  });
+
+  it('checks them again when every CF system sampled the whole interval', () => {
+    const c = new Check();
+    identity.check(run({ PROD1: 600 }), c);
+    expect(c.failures.length).toBeGreaterThan(0);
+  });
+
+  it('does not skip for a stopped gatherer on a system with no CF rows', () => {
+    const c = new Check();
+    identity.check(run({ PROD1: 600, TSOONLY: 300 }), c);
+    expect(c.failures.length).toBeGreaterThan(0);
   });
 });

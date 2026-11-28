@@ -137,6 +137,8 @@ describe('Monitor III gatherer gaps in CF Activity (RF-12)', () => {
     expect(iv.cfSystems!.find((s) => s.system === 'PROD2')!.reqPerSec).toBeCloseTo(18);
     expect(iv.cfSystems!.find((s) => s.system === 'PROD1')!.reqPerSec).toBeCloseTo(12);
     expect(renderCfActivity(iv)).toContain('DB1G_LOCK1');
+    // The report shows the short sampled time, so a row averaged over the up ticks is not read as a full interval.
+    expect(renderCfActivity(iv)).toContain('MONITOR III GAPS: PROD1 20 S OF 30, PROD2 20 S OF 30');
   });
 
   it('picks another system as master in the next interval when the old one is down, and has no CF data when all are', () => {
