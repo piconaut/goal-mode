@@ -13,7 +13,7 @@ export function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hi
   return (
     <>
       <h2>{v.tutor ? `Morning briefing: ${v.tutor.dateLabel}` : `Morning briefing: day ${v.day + 1}, ${v.weekday}`}</h2>
-      {v.day === 0 && !v.tutor && !v.daily && <PrologueOffer game={game} />}
+      {v.day === 0 && !v.tutor && !v.daily && <PrologueOffer game={game} replaces />}
       {v.day === 0 && !v.tutor && <FirstDayDifficulty v={v} game={game} />}
       {v.day === 0 && !v.tutor && <StartingPerk v={v} game={game} />}
       {today.length === 0 && <p className="muted">Quiet inbox this morning.</p>}

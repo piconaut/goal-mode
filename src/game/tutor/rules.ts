@@ -59,12 +59,24 @@ export function floorTrust(trust: Record<Facet, number>, content: GameContent): 
   return Object.fromEntries(Object.entries(trust).map(([f, v]) => [f, Math.max(floor, v)])) as Record<Facet, number>;
 }
 
-/** Ruth's "want me to put it back?" (§6.4): a change the player made in this chapter is in, and an SLA incident today
- *  fell below the content's line. The offer reloads the chapter's start state; it never undoes the sim. */
+/** Record when a prologue change took effect (the tick its commands were queued), for `putBackOffered`. */
+export function markApplied(run: RunState, content: GameContent, changeId: number): RunState {
+  if (!inPrologue(run, content)) return run;
+  return { ...run, tutor: { ...run.tutor!, appliedTicks: { ...run.tutor!.appliedTicks, [String(changeId)]: run.sim.tick } } };
+}
+
+/** Ruth's "want me to put it back?" (§6.4): a change the player made in this chapter took effect, and after it an SLA
+ *  incident opened today whose worst hour fell below the content's line. An incident already open before the change
+ *  is not the change's doing. The offer reloads the chapter's start state; it never undoes the sim. */
 export function putBackOffered(run: RunState, content: GameContent): boolean {
   if (!inPrologue(run, content)) return false;
   const chapter = content.prologue!.chapters[run.tutor!.chapter];
   if (!chapter) return false;
-  const changed = run.changes.some((c) => c.status === 'APPLIED' && c.plannedDay >= chapter.day);
-  return changed && run.incidents.some((i) => i.day === run.day && i.worstAttainmentPct < content.prologue!.putBackAttainmentPct);
+  const applied = run.tutor!.appliedTicks ?? {};
+  const since = run.changes
+    .filter((c) => c.status === 'APPLIED' && c.plannedDay >= chapter.day && applied[String(c.id)] !== undefined)
+    .map((c) => applied[String(c.id)]!);
+  if (since.length === 0) return false;
+  const first = Math.min(...since);
+  return run.incidents.some((i) => i.day === run.day && i.startTick >= first && i.worstAttainmentPct < content.prologue!.putBackAttainmentPct);
 }

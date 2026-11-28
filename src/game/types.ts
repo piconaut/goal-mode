@@ -577,4 +577,7 @@ export interface TutorState {
   undoBase: Record<string, string> | null;
   /** Beats whose scripted change failure has happened. */
   scriptedFailures: string[];
+  /** When each change the player made in the prologue took effect (change id → tick), for Ruth's put-it-back offer.
+   *  Absent on a tutor state saved before PRO-03. */
+  appliedTicks?: Record<string, number>;
 }

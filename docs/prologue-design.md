@@ -938,11 +938,13 @@ Tuning order:
   the first-day pickers and the starting perk are hidden in the prologue.
 - **Entry point** (`ui/tutor/PrologueOffer.tsx`, flag `goalmode.prologue` in localStorage): the first Day 1 briefing
   and the end-of-run form offer "Shadow week with Ruth (recommended, ~70 min)" or "Go straight to Day 1"; afterwards a
-  smaller button, plus a chapter list once the week was finished or skipped. A new prologue uses the reference log's
+  smaller button, plus a chapter list once the week was finished or skipped. On the Day 1 briefing (a run that hasn't
+  ended, possibly imported or Ironman) starting the week or a chapter asks for confirmation first. A new prologue uses the reference log's
   seed and difficulty, so a fresh start and a chapter replay are the same week.
-- **Put it back** (`putBackOffered`, `game/tutor/rules.ts`): offered when a change applied since the chapter's first
-  day is followed by an SLA hour today below `putBackAttainmentPct` (`// FICTIONAL:` 50 %); it reloads the chapter's
-  start state from the reference log (`PROLOGUE_CHAPTER`).
+- **Put it back** (`putBackOffered`, `game/tutor/rules.ts`): offered when, after a change made this chapter took
+  effect (its tick is kept in `tutor.appliedTicks`), an SLA incident opens today whose worst hour is below
+  `putBackAttainmentPct` (`// FICTIONAL:` 50 %, strictly below). An incident already open when the change went in
+  doesn't count. It reloads the chapter's start state from the reference log (`PROLOGUE_CHAPTER`).
 - **Worker:** `TUTOR_ACK`, `TUTOR_HINT`, `TUTOR_NOTE`, `PROLOGUE_CHAPTER`; the clock goes to speed 0 when a beat is
   entered, and the day trace records the tutor commands.
 - **Tests:** `tests/ui/prologueAnchors.test.ts` renders each targeted step's state from the reference replay

@@ -9,7 +9,7 @@ import type { RunState, TutorState } from '../types';
 import { holds } from './predicates';
 
 export const newTutor = (): TutorState => ({
-  chapter: 0, beat: -1, step: 0, done: [], hintsUsed: 0, hintRung: 0, refiles: {}, notes: [], undoBase: null, scriptedFailures: [],
+  chapter: 0, beat: -1, step: 0, done: [], hintsUsed: 0, hintRung: 0, refiles: {}, notes: [], undoBase: null, scriptedFailures: [], appliedTicks: {},
 });
 
 /** Every beat in script order, with its chapter's index. */
