@@ -127,6 +127,29 @@ describe('CF Activity identity under a gatherer gap (RF-12)', () => {
     expect(masterless.failures.length).toBeGreaterThan(0);
   });
 
+  // Each rule of the sampled-time identity on its own: every other rule holds in these intervals, so exactly the
+  // one under test fails.
+  it('fails each sampled-time rule on its own', () => {
+    const gap = IDENTITIES.find((i) => i.id === 'cf-gap-consistency')!;
+    const failures = (interval: RmfInterval) => {
+      const c = new Check();
+      gap.check(run(interval), c);
+      return c.failures;
+    };
+    const ok = iv({ PROD1: 300 });
+    // Sampled longer than the interval.
+    expect(failures(iv({ PROD1: 700 }))).toEqual([expect.stringContaining('PROD1 sampled 700 s of 600')]);
+    // A CF row from a system with no sampled-time entry (the master is another system that sampled).
+    expect(failures({ ...ok, cfMaster: 'PROD2', cfGathererSec: { PROD2: 600 } })).toEqual([expect.stringContaining('PROD1 has a CF row but no sampled time')]);
+    // A master that sampled nothing, on a system with no CF rows.
+    expect(failures({ ...ok, cfMaster: 'PROD2', cfGathererSec: { PROD1: 300, PROD2: 0 } })).toEqual([expect.stringContaining('master PROD2 has no sampled time')]);
+    // A master whose samples carry no structure detail.
+    expect(failures({ ...ok, cfStructures: [] })).toEqual([expect.stringContaining('master PROD1 supplied no structure detail')]);
+    // Structure detail with no master gatherer.
+    const { cfMaster: _master, ...noMaster } = ok;
+    expect(failures(noMaster as RmfInterval)).toEqual([expect.stringContaining('structure detail without a master gatherer')]);
+  });
+
   it('applies the same gap rule to the CF service-time identity', () => {
     const service = IDENTITIES.find((i) => i.id === 'cf-service-times')!;
     const gap = new Check();
