@@ -101,7 +101,7 @@ describe('CFACT lock contention', () => {
 
 // RF-12: CF Activity is the one Postprocessor report built from Monitor III's SMF 74.4 records. Each system's
 // gatherer writes its own rows; the first active system by id is the sysplex master whose samples carry the
-// structure detail. Data Gatherer User's Guide pp.23–24 (printed 5–6), pp.102–103 (printed 84–85).
+// structure detail. Data Gatherer User's Guide PDF pp.23–24 (printed 5–6), PDF pp.102–103 (printed 84–85).
 describe('Monitor III gatherer gaps in CF Activity (RF-12)', () => {
   const row = (name: string, requestRate: number) => ({
     name, type: 'LOCK' as const, cfLparId: 'CF01', distKm: 10, requestRate,

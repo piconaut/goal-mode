@@ -1476,7 +1476,7 @@ describe('Db2 work runs only where Db2 is licensed', () => {
 
 // RF-12: CF Activity is the only Postprocessor report built from Monitor III's SMF 74.4 records. Each system's
 // gatherer writes its own per-system rows; the first system by id with an active gatherer is the sysplex master that
-// supplies the structure detail (Data Gatherer User's Guide pp.23–24 (printed 5–6), pp.102–103 (printed 84–85)).
+// supplies the structure detail (Data Gatherer User's Guide PDF pp.23–24 (printed 5–6), PDF pp.102–103 (printed 84–85)).
 // A cancelled gatherer ends the interval where it stops, like STOP III, so the next one starts there.
 describe('RMFGAT cancellation leaves gaps in CF Activity only (RF-12)', () => {
   const intervalTicks = Math.round((MIDWEST.world.rmfIntervalMin * 60) / TICK_SEC);
