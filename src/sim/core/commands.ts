@@ -518,7 +518,7 @@ export function applyCommand(s: SimState, cmd: Command, base?: readonly AddressS
 
     case 'SET_PRICING':
       if (s.cost.tfp) return fail(s, 'Tailored Fit Pricing is already in force');
-      return ok({ ...s, cost: startTfp(s.cost, cmd.tfp, s.tick) }, 'Billing switched to Tailored Fit Pricing');
+      return ok({ ...s, cost: startTfp(s.cost, cmd.tfp, s.tick, s.monthDayAtStart) }, 'Billing switched to Tailored Fit Pricing');
 
     case 'SET_MLC_PRICE':
       if (!(cmd.mult > 0 && cmd.mult <= 3)) return fail(s, 'MLC price multiplier must be in (0, 3]');

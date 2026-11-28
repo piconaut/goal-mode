@@ -208,64 +208,8 @@ goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare -- --base
 Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
 design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
 
-### PRO-01 · A scenario's calendar can start on another day of the month
-`list: prologue · status: ready · priority: high · size: M · area: sim`
-
-`clockAt` hard-wires a run's first Monday to the 3rd of a 30-day month (`src/sim/core/clock.ts`,
-`dayOfMonth: ((calendarDay + 2) % 30) + 1`).
-- Add `monthDayAtStart?` to the sim `Scenario` (default 3) and pass it to every reader of `dayOfMonth` (arrivals'
-  payday and month-end multipliers, the batch network's month-end volumes, `closeMonth` in `tick/control.ts`, the MLC
-  month fraction, the game layer's callers).
-- Weekday arithmetic is unchanged, so day 0 stays a Monday.
-- This is a sim change with no behaviour change: goldens untouched, no "Behaviour change" note, no sweep. Prove it
-  with `npm run compare` (exit 0) and the bench hashes.
-
-Done when:
-- `npm run compare -- --base origin/dev` reports no difference, and the Midwest and Harbourline bench hashes match the
-  base;
-- a unit test shows that with 26, day 0 is Monday the 26th, day 3 has the month-end multiplier, day 4's night closes
-  the month and writes a bill, and the tick after midnight is Saturday the 1st with the payday multiplier.
-
-### PRO-02 · Prologue engine: scheduled cards, starting state, tutorial state, stop ticks
-`list: prologue · status: ready · priority: high · size: L · area: game`
-
-The game-layer engine from design doc §11.1–§11.3 and §11.6, with no content beyond a two-beat test script.
-- **Content types:**
-  - `GameContent.scheduledCards?` (`{ card, day, at, durationHours?, severity? }`, existing `EventDef`s; a run with
-    it draws nothing from the deck);
-  - `startingCommands?` (applied at run creation like `startingFixes`);
-  - `startingCost?` (a seeded month-to-date `CostState`);
-  - `prologue?`.
-  All are absent on the three scenarios.
-- **Run state and commands:**
-  - `RunState.tutor` (`chapter, beat, step, done, hintsUsed, refiles, notes, undoBase`), absent on normal runs;
-  - the game commands `TUTOR_NOTE { kind, ref }` and `TUTOR_ACK`, with no sim effect.
-- **Steps:**
-  - named predicates in `src/game/tutor/predicates.ts`;
-  - beats as stop ticks in `advance` (speed set to 0 at the beat; speed isn't sim state);
-  - condition beats checked at the existing incident boundaries.
-- **Prologue-only rules**, gated on `content.prologue`: one RCA refile; a trust floor with the loss conditions
-  disabled; a scripted change failure (the first change in a named beat fails, overriding the roll); the back-out list
-  (the end state's configuration against the canonical Day 1 state, one line per difference, fixed order).
-- **Registration:** a `PROLOGUE_SCENARIOS` map, not `SCENARIOS`.
-- **Chapter start states:** replayed from a reference command log in `tests/fixtures/prologue/`, not stored saves
-  (design §6.5, §11.6), so skip, replay and put it back start from them.
-- **Headless:** `play new --scenario midwest-prologue` and `play tutor [ack | note <kind> <ref> | hint]`.
-
-Done when:
-- compare and bench hashes are unchanged;
-- tests cover:
-  - the test script's beats stop at their ticks;
-  - a scheduled card starts at its tick with its footprint and RCA truth as a drawn card would;
-  - `startingCommands` and `startingCost` apply;
-  - each prologue-only rule;
-  - the back-out list (empty for an unchanged run, one line per changed setting);
-  - a chapter start state replays from its command log (the same state hash on two replays);
-  - `SCENARIOS` has no prologue entry, and a Midwest run's state has no `tutor` field;
-- `docs/tools.md` lists the new `play tutor` commands.
-
 ### PRO-03 · Prologue UI shell: mentor panel, spotlight, anchors, date, entry point
-`list: prologue · status: blocked: after PRO-02 · priority: high · size: L · area: ui`
+`list: prologue · status: ready · priority: high · size: L · area: ui`
 
 Design doc §6 and §11.4.
 - **Panel and spotlight:**
@@ -288,7 +232,7 @@ Done when the test script from PRO-02 plays end to end in the browser at desktop
 page scroll, and a render test asserts each test step's target anchor is on screen in that step's state.
 
 ### PRO-04 · Prologue Mon 26 and Tue 27, with the DDFLIMIT flaw
-`list: prologue · status: blocked: after PRO-01, PRO-03 · priority: high · size: L · area: content`
+`list: prologue · status: blocked: after PRO-03 · priority: high · size: L · area: content`
 
 Design doc §3.4, §5.1, §5.2.
 - **Content:** `src/content/prologue/` (`game-prologue.ts`, `flaw.ts`, `schedule.ts`, `script.ts`, `tuning.ts`), with

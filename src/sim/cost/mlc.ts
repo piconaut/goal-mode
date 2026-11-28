@@ -127,14 +127,14 @@ export function tfpCharge(msuHours: number, baselineMsuHours: number, price: num
 }
 
 /** Fraction of the 30-day month elapsed at `tick`. */
-export function monthElapsedFrac(tick: number): number {
-  const c = clockAt(tick);
+export function monthElapsedFrac(tick: number, monthDayAtStart?: number): number {
+  const c = clockAt(tick, monthDayAtStart);
   return ((c.dayOfMonth - 1) * 24 + c.hourOfDay) / (30 * 24);
 }
 
 /** Switch billing to TFP from `tick`: the month so far stays sub-capacity, prorated. */
-export function startTfp(cost: CostState, terms: TfpTerms, tick: number): CostState {
-  const elapsed = monthElapsedFrac(tick);
+export function startTfp(cost: CostState, terms: TfpTerms, tick: number, monthDayAtStart?: number): CostState {
+  const elapsed = monthElapsedFrac(tick, monthDayAtStart);
   return {
     ...cost,
     subcapFrac: elapsed,

@@ -50,6 +50,8 @@ import {
   type RunState
 } from './types';
 import { SAVE_VERSION } from './runFile';
+import { dueBeat, enterBeat, newTutor, progressTutor } from './tutor/engine';
+import { floorTrust, inPrologue, markScriptedFailure, prologueChangeRisk } from './tutor/rules';
 import { applyMigratedRequest } from './run/migrate';
 import { packOf } from '../content/packs';
 import { allWorkloads } from './workloads';
@@ -68,6 +70,14 @@ export function activateSavedPolicy(run: RunState, content: GameContent, name: s
   return requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: structuredClone(def) }] });
 }
 
+/** The sim at run creation: the content's starting commands (PRO-02), then the difficulty's starting fixes, on the
+ *  seeded month-to-date cost when the content has one. Each is absent on the three scenarios. */
+function startingSim(sim: RunState['sim'], content: GameContent, difficulty: DifficultyId): RunState['sim'] {
+  const commands = [...(content.startingCommands ?? []), ...(content.startingFixes?.[difficulty] ?? []).flatMap((f) => f.commands)];
+  const s = applyCommands(sim, commands);
+  return content.startingCost ? { ...s, cost: structuredClone(content.startingCost) } : s;
+}
+
 export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);
   const scenario = scenarioFor(baseScenario, difficulty);
@@ -78,7 +88,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     difficulty,
     seed,
     ...(daily ? { daily } : {}),
-    sim: applyCommands(initState(seed, scenario), (content.startingFixes?.[difficulty] ?? []).flatMap((f) => f.commands)),
+    sim: startingSim(initState(seed, scenario), content, difficulty),
     phase: 'BRIEFING',
     day: 0,
     maxDays: content.maxDays,
@@ -124,6 +134,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     billsSeen: 0,
     log: [],
     endReason: null,
+    ...(content.prologue ? { tutor: newTutor() } : {}),
   };
   if (content.startTools?.length) run = { ...run, sim: applyCommands(run.sim, measurementCommands(run, scenario)) };
   const fixed = content.startingFixes?.[difficulty] ?? [];
@@ -143,15 +154,17 @@ export function startDay(run: RunState, content: GameContent): RunState {
   for (const c of r.changes) {
     if (c.status === 'PLANNED' && c.activateDay === r.day) {
       const attempt = changes.filter((x) => x.label === c.label).length;
-      const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
+      const risk = prologueChangeRisk(r, content) ?? failRisk(r);
+      const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(risk);
       if (failed) {
+        r = markScriptedFailure(r, content);
         changes.push({ ...c, status: 'FAILED' });
         const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? POLICY_RETRY_TAIL : '';
         r = msg(
           r,
           'Change board',
           `Change failed: ${c.label}`,
-          `Implementation backed out (risk was ${Math.round(failRisk(r) * 100)} %; tired teams and rushed changes fail more often).${FAILED_TAIL}${policy}`,
+          `Implementation backed out (risk was ${Math.round(risk * 100)} %; tired teams and rushed changes fail more often).${FAILED_TAIL}${policy}`,
         );
         continue;
       }
@@ -203,8 +216,15 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   const defs = new Map(content.events.map((d) => [d.id, d]));
   let r = run;
   let hour: ReturnType<typeof copyHourForAdvance> | undefined;
+  const rules = r.tutor ? content.prologue : undefined;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
+    // A beat is a stop tick (PRO-02, docs/prologue-design.md §11.3): the clock stops before the beat's tick runs.
+    const due = rules ? dueBeat(r, rules, false) : null;
+    if (due !== null) {
+      r = enterBeat(r, rules!, due);
+      break;
+    }
     r = landRoutineChanges(r, content);
     for (const event of r.sim.cicsRecycles?.length ? r.events : []) {
       if (!event.ended && event.endOnRecycleTick === tick && (event.endTick === null || event.endTick > tick)) {
@@ -231,9 +251,10 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     for (const e of events) {
       const def = defs.get(e.defId);
       if (!e.started && !e.ended && e.startTick <= tick) {
-        cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
+        const severity = e.severity ?? difficultyOf(r.difficulty).eventSeverityMult;
+        cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity && e.severity === undefined ? 1 : severity));
         if (def?.culprits) {
-          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult, def.durationHours ?? ROSTERS.sizingHours);
+          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, severity, def.durationHours ?? ROSTERS.sizingHours);
           cmds.push(...c.commands);
           resolvedEnd.set(e.uid, [...e.endCommands, { kind: 'CLEAR_ENTITY_LOADS', tag: e.uid }]);
           resolvedCulprits.set(e.uid, c.ids);
@@ -350,8 +371,17 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       hour = undefined;
     }
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
+    // Condition beats are checked where the game evaluates incidents, at the hour boundary (§11.3).
+    if (rules && (tick + 1) % TICKS_PER_HOUR === 0) {
+      r = progressTutor(r, rules);
+      const cond = r.phase === 'LIVE' ? dueBeat(r, rules, true) : null;
+      if (cond !== null) {
+        r = enterBeat(r, rules, cond);
+        break;
+      }
+    }
   }
-  return r;
+  return rules ? progressTutor(r, rules) : r;
 }
 
 /** JES2 job log of a Db2 job that started on an image without Db2 (TSO DSN under IKJEFT01, Db2 13 Messages p.140). */
@@ -524,9 +554,14 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   };
 
   r = tfpAtDayEnd(r, scenario);
+  // The prologue can't be lost (§8.1): a silent trust floor, and no loss condition ends it.
+  if (inPrologue(r, content)) {
+    r = { ...r, trust: floorTrust(r.trust, content) };
+    endReason = null;
+  }
   const overall = overallTrust(r);
-  if (!endReason && (overall <= 0 || facetsOf(r).some((f) => r.trust[f]! <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
-  if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
+  if (!endReason && !inPrologue(r, content) && (overall <= 0 || facetsOf(r).some((f) => r.trust[f]! <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
+  if (!endReason && !inPrologue(r, content) && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 

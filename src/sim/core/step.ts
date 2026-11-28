@@ -54,7 +54,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const prev = startRecycles(restartStcs(updateRouting(commanded, scenario)));
   const rng = new Rng(prev.rng);
   const baseWorkloads = effectiveWorkloads(scenario, prev);
-  const clock = clockAt(prev.tick);
+  const clock = clockAt(prev.tick, prev.monthDayAtStart);
   const clockText = formatClock(prev.tick);
   const def = prev.wlm.definition;
   const env = prev.env;

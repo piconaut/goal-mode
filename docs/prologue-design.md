@@ -798,6 +798,10 @@ Content types gain `GameContent.scheduledCards?`, `GameContent.startingCommands?
   - Weekday arithmetic is untouched, so Monday stays Monday.
   - About 18 call sites read `dayOfMonth` or the other calendar fields and need the scenario's value passed
     through. It is mechanical, and it is the only change under `src/sim`. `npm run compare` must show no difference.
+  - **As built (PRO-01):** `clockAt(tick, monthDayAtStart = DEFAULT_MONTH_DAY_AT_START)`; `initState` copies a set
+    `Scenario.monthDayAtStart` into `SimState.monthDayAtStart` (absent on the default, so saves and hashes are
+    unchanged), and every date reader passes the state's value: arrivals and the batch network (`step`), `closeMonth`
+    (`tick/control.ts`), the MLC month fraction and TFP switch, entity sizing, and the game's batch-network callers.
   - With 26, Thursday and Friday get the existing month-end multipliers and batch volumes, and the month closes at
     Friday's midnight through the existing `closeMonth`.
 - **Scheduled cards** start through the same path as drawn cards (the daily draw in the game layer). A run with
@@ -885,6 +889,32 @@ Tuning order:
   existing persona agents can playtest it, and a new persona brief ("intern: knows JCL and SDSF, never owned a WLM
   policy") can report confusion step by step.
 - The reference command log in `tests/fixtures/prologue/` is what produces the chapter start states.
+
+### 11.7 As built (PRO-02)
+
+- **Content.** `src/content/prologue/game-prologue.ts` holds the `midwest-prologue` scenario (Midwest's sim scenario
+  with `monthDayAtStart: 26`) and its `GameContent`, registered in `PROLOGUE_SCENARIOS` (`content/packs.ts`;
+  `packOf` finds it, `PACKS` and `SCENARIOS` don't list it). Deviation from §11.1: `events` keeps Midwest's deck,
+  because every card lookup (begin and end commands, footprints, truth, fixes) reads `content.events`; a run with
+  `scheduledCards` draws nothing from it and gets no routine rollouts, which is what `events: []` was for. PRO-02
+  ships a two-beat test script (`PROLOGUE_TEST_SCRIPT`); PRO-04 … PRO-06 replace it.
+- **Types** (`content/types.ts`): `ScheduledCard { card, day, at, durationHours?, severity? }`, `TutorStep`,
+  `TutorBeat { id, at?, when?, steps, failFirstChange? }`, `TutorChapter`, `PrologueRules { trustFloor,
+  refilesPerRca, chapters }`; `RunState.tutor: TutorState` (`game/types.ts`).
+- **Engine** (`game/tutor/engine.ts`): `advance` stops before the tick of the next timed beat, and at the hour
+  boundary where the next condition beat's `when` holds; `advanceHours` ends early when a beat is entered. Entering a
+  later beat records the skipped steps. Steps complete through `progressTutor` after every game command, at each hour
+  boundary and at the end of `advance`. Predicates: `game/tutor/predicates.ts`.
+- **Rules** (`game/tutor/rules.ts`): change risk 0 in the prologue except the first change while a `failFirstChange`
+  beat is current (risk 1); one refile per RCA, which takes the first filing's trust, Insight and score back before
+  filing again; a silent trust floor at each day's end and no loss condition.
+- **Back-out list** (`game/tutor/backout.ts`): a leaf diff of the policy, hardware, LPARs, groups, CFs, Db2, CICS,
+  initiators, DASD, RMF interval, routing and projects against a fresh Day 1 run, one `section key field: before →
+  after` line each, in section order. PRO-06 words it as Ruth's note.
+- **Chapter start states** (`game/tutor/replay.ts`): `replayToChapter(log, chapterId)` replays a `ReplayLog` of game
+  commands, `ADVANCE` and `CHAPTER` markers; the reference log is `tests/fixtures/prologue/reference.json`.
+- **Headless:** `play new <seed> normal midwest-prologue`, `play tutor [ack | hint | note <kind> <ref>]`.
+- Not yet: speed 0 in the browser at a beat (the worker keeps advancing; PRO-03), the `undoBase` capture (PRO-05).
 
 ## 12. Realism
 

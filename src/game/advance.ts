@@ -35,7 +35,11 @@ export function advanceHours(run: RunState, content: GameContent, hours: number,
       const toChunk = hooks.onChunk ? HISTORY_EVERY_TICKS - (r.sim.tick % HISTORY_EVERY_TICKS) : Infinity;
       const toMintime = hooks.onMintime ? MON3_HISTORY.mintimeTicks - (r.sim.tick % MON3_HISTORY.mintimeTicks) : Infinity;
       const k = Math.min(hourLeft, toChunk, toMintime);
+      const before = r.sim.tick;
+      const beat = r.tutor?.beat;
       r = advance(r, scenario, content, k);
+      // A prologue beat stops the clock early (PRO-02): the caller's advance ends there.
+      if (r.phase === 'LIVE' && (r.sim.tick - before < k || r.tutor?.beat !== beat)) return r;
       hourLeft -= k;
       left -= k;
       if (hooks.onChunk && r.sim.tick % HISTORY_EVERY_TICKS === 0) hooks.onChunk(r);

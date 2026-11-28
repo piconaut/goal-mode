@@ -3,6 +3,7 @@
 // scenario's game content — so no file under `src/content` has to import from `src/game`. The game layer re-exports
 // these for its own callers (`src/game/types.ts`, `src/game/run/shared.ts`).
 import type { Command } from '../sim/core/commands';
+import type { CostState } from '../sim/cost/mlc';
 import type { DifficultyId } from './difficulty';
 // Type-only, like every import here: the module emits nothing, so this edge cannot become a runtime cycle
 // (midwest-events and footprint import types back from this file). Keep it type-only.
@@ -76,4 +77,71 @@ export interface GameContent {
    *  While the newest clock hours miss it for `INTERNAL_SLOW_WINDOW_HOURS` in a row, hands-on engineer-hours cost
    *  `INTERNAL_SLOW_HOURS_MULT` times as much. Absent = no such rule. */
   internalGoal?: InternalGoal;
+  /** Cards at fixed times instead of the daily draw (PRO-02, docs/prologue-design.md §11.1). A run with them draws
+   *  nothing from the deck, and no routine rollouts; each card must be in `events`. Absent on the three scenarios. */
+  scheduledCards?: ScheduledCard[];
+  /** Commands applied at run creation on every difficulty, as `startingFixes` are on theirs (the prologue's flaw). */
+  startingCommands?: Command[];
+  /** A seeded month-to-date cost state in place of a fresh month (the prologue's 1st–25th, §8.4). */
+  startingCost?: CostState;
+  /** The guided prologue's script and rules; its presence turns the prologue-only rules on (§11.2). */
+  prologue?: PrologueRules;
+}
+
+/** A card at a fixed time: an existing `EventDef` by id, on played day `day` at wall-clock `at` (HH:MM, 06:00 or
+ *  later belongs to that day, earlier to its night). `durationHours` and `severity` override the card's. */
+export interface ScheduledCard {
+  card: string;
+  day: number;
+  at: string;
+  durationHours?: number | null;
+  /** Multiplier on the card's begin commands in place of the difficulty's event severity. */
+  severity?: number;
+}
+
+/** A named predicate in `src/game/tutor/predicates.ts`, with its arguments: content names it, no closures. */
+export interface TutorPredicateRef {
+  id: string;
+  args?: Record<string, string | number>;
+}
+
+/** One step of a beat (§6.2). `done` completes it however the player gets there; `ack` is the Next button. */
+export interface TutorStep {
+  id: string;
+  say: string;
+  /** A named UI anchor (`data-tour`) for the spotlight. */
+  target?: string;
+  done: TutorPredicateRef;
+  /** The hint ladder: nudge, pointer, show me (§6.3). */
+  hints: string[];
+  /** When it no longer holds as the step starts, the step is skipped with `skipSay` (§6.2). */
+  precondition?: TutorPredicateRef;
+  skipSay?: string;
+}
+
+/** A beat stops the clock (§11.3): at a fixed played day and time, or at the first hour boundary where `when`
+ *  holds, no earlier than `at` when both are given. */
+export interface TutorBeat {
+  id: string;
+  at?: { day: number; time: string };
+  when?: TutorPredicateRef;
+  steps: TutorStep[];
+  /** The first change made while this beat is current fails, overriding the failure roll (§5.3 W4). */
+  failFirstChange?: true;
+}
+
+export interface TutorChapter {
+  id: string;
+  /** Played day the chapter starts on (its 06:00). */
+  day: number;
+  title: string;
+  beats: TutorBeat[];
+}
+
+export interface PrologueRules {
+  /** No facet falls below this at a day's end, and no loss condition ends the run (§8.1). */
+  trustFloor: number;
+  /** How often one RCA may be filed again (§14 decision 6). */
+  refilesPerRca: number;
+  chapters: TutorChapter[];
 }

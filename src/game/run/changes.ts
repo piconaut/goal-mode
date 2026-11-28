@@ -1,4 +1,5 @@
 import { packOf } from '../../content/packs';
+import { markScriptedFailure, prologueChangeRisk } from '../tutor/rules';
 import { applyCommand, type Command } from '../../sim/core/commands';
 import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
@@ -92,10 +93,11 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     // Emergency change board: costs trust, more when no incident justifies it.
     const trustCost = req.automated ? 0 : preview.trustCostEach;
     r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
-    const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
+    const risk = req.automated ? req.automated.misfireFrac : prologueChangeRisk(r, content) ?? failRisk(r);
     const attempt = r.changes.filter((x) => x.plannedDay === r.day && x.label === req.label).length;
     const failed = streamRng(r.seed, 'live-change', r.day, req.label, attempt).chance(risk);
     if (failed) {
+      if (!req.automated) r = markScriptedFailure(r, content);
       r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
       return {
         run: logLine(r, `${req.automated ? 'Automation MISFIRED' : 'Emergency change FAILED'}: ${req.label}`),

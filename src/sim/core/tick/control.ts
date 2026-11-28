@@ -218,7 +218,7 @@ export function stepCost(t: TickCtx, zosLpars: readonly LparConfig[], msuBy: Rec
     const groupLimits = config.capacityGroups.map((g) => ({ limitMsu: g.limitMsu, members: config.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id) }));
     cost = recordHour(cost, scenario.products, r4haBy, dcBy, nextTick, groupLimits);
   }
-  if (clockAt(nextTick).dayOfMonth === 1 && clock.dayOfMonth !== 1) cost = closeMonth(cost, scenario.products);
+  if (clockAt(nextTick, prev.monthDayAtStart).dayOfMonth === 1 && clock.dayOfMonth !== 1) cost = closeMonth(cost, scenario.products);
   return cost;
 }
 

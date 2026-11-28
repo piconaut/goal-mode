@@ -30,4 +30,7 @@ export interface Scenario {
   batchGrowthPerDay: number;
   /** The nightly Db2 utility schedule (absent = none). */
   utilities?: UtilityDef[];
+  /** Day of the (30-day) month on day 0, a Monday; absent = `DEFAULT_MONTH_DAY_AT_START` (the 3rd). Copied into
+   * `SimState.monthDayAtStart` so every date reader has it without the scenario. */
+  monthDayAtStart?: number;
 }

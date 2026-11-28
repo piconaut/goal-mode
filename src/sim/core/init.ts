@@ -35,6 +35,7 @@ export function initState(seed: number, scenario: Scenario): SimState {
     extraAddressSpaces: [],
     commandLog: [],
     ...routingPoliciesOf(scenario),
+    ...(scenario.monthDayAtStart !== undefined ? { monthDayAtStart: scenario.monthDayAtStart } : {}),
   };
 }
 

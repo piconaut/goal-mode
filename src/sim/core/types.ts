@@ -343,6 +343,8 @@ export interface UtilityOverrun {
 }
 
 export interface SimState {
+  /** The scenario's `monthDayAtStart`, absent when it uses the default (so default runs serialise unchanged). */
+  monthDayAtStart?: number;
   version: 1;
   seed: number;
   tick: number;

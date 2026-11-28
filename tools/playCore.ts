@@ -2,7 +2,8 @@
 // The run file holds the serialised RunState (as the browser saves it), the pending WLM policy and the
 // command log, so seed + log replays the same run.
 
-import { PACKS, packOf } from '../src/content/packs';
+import { PACKS, PROLOGUE_SCENARIOS, packOf } from '../src/content/packs';
+import { tutorText } from '../src/game/tutor/engine';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { DayTrace } from '../src/game/dayTrace';
 import { scenarioFor } from '../src/game/difficulty';
@@ -50,6 +51,7 @@ import type { SmfKind } from '../src/worker/protocol';
 export type PlayCommand =
   | { cmd: 'new'; seed: number; difficulty?: DifficultyId; scenario?: string }
   | { cmd: 'start' }
+  | { cmd: 'tutor'; action?: 'ack' | 'hint' | 'note'; kind?: string; ref?: string }
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
   | { cmd: 'operation'; op: Operation }
@@ -163,7 +165,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
   // A browser save's day trace describes what the browser did during its live day; once this CLI mutates the
   // file, the trace no longer describes that day, so drop it rather than replay a day the browser did not play.
   if (file.dayTrace && file.log[0]?.cmd !== 'new') file = { ...file, dayTrace: undefined };
-  if (c.cmd === 'new' && c.scenario && !PACKS[c.scenario]) return { file, ok: false, text: `Unknown scenario ${c.scenario}; one of ${Object.keys(PACKS).join(' ')}` };
+  if (c.cmd === 'new' && c.scenario && !PACKS[c.scenario] && !PROLOGUE_SCENARIOS[c.scenario]) return { file, ok: false, text: `Unknown scenario ${c.scenario}; one of ${[...Object.keys(PACKS), ...Object.keys(PROLOGUE_SCENARIOS)].join(' ')}` };
   if (c.cmd === 'new') return { file: newPlayFile(c.seed, c.difficulty, c.scenario), ok: true, text: `New run, seed ${c.seed}${c.scenario ? `, ${packOf(c.scenario).name}` : ''}` };
   const run = file.run;
   const content = packOf(run.scenarioId).game;
@@ -173,6 +175,14 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'start': {
       const o = applyGameCommand(run, file.pendingPolicy, { kind: 'START' }, content, sc(run));
       return done(o.run, o.message, o.ok, o.pending);
+    }
+    case 'tutor': {
+      const rules = content.prologue;
+      if (!rules || !run.tutor) return fail('Not a prologue run (new <seed> normal midwest-prologue).');
+      if (!c.action) return done(run, tutorText(run, rules));
+      const cmd = c.action === 'ack' ? { kind: 'TUTOR_ACK' as const } : c.action === 'hint' ? { kind: 'TUTOR_HINT' as const } : { kind: 'TUTOR_NOTE' as const, noteKind: c.kind ?? '', ref: c.ref ?? '' };
+      const o = applyGameCommand(run, file.pendingPolicy, cmd, content, sc(run));
+      return o.ok ? done(o.run, `${o.message}\n${tutorText(o.run, rules)}`, true, o.pending) : fail(o.message);
     }
     case 'note':
       return c.text.trim() ? done(run, 'Noted.') : fail('Empty note');
@@ -194,8 +204,9 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         },
       });
       const mail = r.inbox.slice(run.inbox.length).map((m) => `\n  mail: ${m.from}: ${m.subject}`).join('');
+      const beat = r.tutor && r.tutor.beat !== run.tutor?.beat && content.prologue ? `\nBEAT: ${tutorText(r, content.prologue)}` : '';
       const page = fresh.length ? `\nSTOPPED: ${fresh.join(' ')} ABENDED. restart ${fresh[0]} (0.5h) or let it miss the window.` : '';
-      const d = done(r, `${r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`}${mail}${page}`);
+      const d = done(r, `${r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`}${mail}${page}${beat}`);
       return mon3 ? { ...d, file: { ...d.file, mon3 } } : d;
     }
     case 'change': {
@@ -863,7 +874,7 @@ export function financeText(file: PlayFile): string {
   const tfp = run.sim.cost.tfp;
   if (f.tfp && tfp) {
     // The baseline is prorated over the TFP part of the month; project consumption over that same part.
-    const tfpElapsed = monthElapsedFrac(run.sim.tick) - (1 - tfp.monthFrac);
+    const tfpElapsed = monthElapsedFrac(run.sim.tick, run.sim.monthDayAtStart) - (1 - tfp.monthFrac);
     const scale = tfpElapsed > 1e-6 ? tfp.monthFrac / tfpElapsed : null;
     out.push('', `TFP: ${scale ? (100 / scale).toFixed(0) : 0}% of this month's TFP period elapsed. The baseline is paid in full, used or not; MSU-hours above it cost ${Math.round(100 * tfp.terms.overageFrac)}% of price. zIIP MSU is not counted.`);
     out.push(

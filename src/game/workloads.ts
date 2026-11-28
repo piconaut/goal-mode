@@ -58,6 +58,6 @@ export function runWorkItems(scenario: Scenario, run: RunState): WorkItem[] {
   return workItems(
     allWorkloads(scenario, run),
     [...scenario.addressSpaces, ...run.sim.extraAddressSpaces],
-    scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth),
+    scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick, run.sim.monthDayAtStart).dayOfMonth),
   );
 }

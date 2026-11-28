@@ -35,6 +35,8 @@ import { requestOperation } from './operations';
 import { requestEventReply } from './run/events';
 import { requestBackout } from './run/otherTeamChanges';
 import { MECHANISMS, TRIGGERS } from './sla';
+import { progressTutor, tutorAck, tutorHint, tutorNote } from './tutor/engine';
+import { canRefile, recordFiling, withdrawRca } from './tutor/rules';
 import { alsoAcceptedOf, groupAcceptedOf, rcaAnswerText, rcaGroupOf } from './run/rca';
 import { TRIGGER_LABEL } from '../content/rca';
 import { EVIDENCE } from '../content/evidence';
@@ -79,7 +81,11 @@ export type GameCommand =
   | { kind: 'TOOL_ACTIVE'; toolId: string; active: boolean }
   | { kind: 'TFP'; accept: boolean }
   | { kind: 'ASK'; topic: InquiryKind; workloadId?: string | null }
-  | { kind: 'PROJECT'; id: string; hours: number };
+  | { kind: 'PROJECT'; id: string; hours: number }
+  // The prologue (PRO-02): no sim effect; refused on any other run.
+  | { kind: 'TUTOR_ACK' }
+  | { kind: 'TUTOR_NOTE'; noteKind: string; ref: string }
+  | { kind: 'TUTOR_HINT' };
 
 export interface GameCommandResult {
   run: RunState;
@@ -98,6 +104,19 @@ export function applyGameCommand(
   content: GameContent,
   sc: Scenario,
   opts: { mon3History?: Mon3PinLookup } = {},
+): GameCommandResult {
+  const out = applyOne(run, pending, cmd, content, sc, opts);
+  // A prologue step completes however the player gets there: every command re-checks the current beat's steps.
+  return content.prologue && out.run.tutor ? { ...out, run: progressTutor(out.run, content.prologue) } : out;
+}
+
+function applyOne(
+  run: RunState,
+  pending: ServiceDefinition | null,
+  cmd: GameCommand,
+  content: GameContent,
+  sc: Scenario,
+  opts: { mon3History?: Mon3PinLookup },
 ): GameCommandResult {
   const no = (message: string): GameCommandResult => ({ run, pending, ok: false, message });
   const yes = (r: RunState, message: string, next: ServiceDefinition | null = pending): GameCommandResult => ({ run: r, pending: next, ok: true, message });
@@ -148,12 +167,15 @@ export function applyGameCommand(
       if (!MECHANISMS.includes(cmd.mechanism) || !TRIGGERS.includes(cmd.trigger)) return no(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
       const inc = run.incidents.find((i) => i.id === cmd.incidentId);
       if (!inc) return no(`No incident ${idText('incident', cmd.incidentId)}`);
-      if (inc.rca) return no(`Incident ${idText('incident', cmd.incidentId)} already has an RCA`);
+      const refile = !!inc.rca && canRefile(run, content, inc);
+      if (inc.rca && !refile) return no(`Incident ${idText('incident', cmd.incidentId)} already has an RCA`);
       const missing = (cmd.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
       const pins = run.pins ?? [];
       if (missing.length && !pins.length) return no('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without evidence.');
       if (missing.length) return no(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${pins.map((p) => idText('pin', p.id)).join(' ')}`);
-      const r = submitRca(run, cmd.incidentId, cmd.mechanism, cmd.trigger, sc, cmd.evidenceIds ?? []);
+      // A prologue refile takes the first filing back, then files again (§14 decision 6).
+      const base = refile ? withdrawRca(run, inc) : run;
+      const r = recordFiling(base, submitRca(base, cmd.incidentId, cmd.mechanism, cmd.trigger, sc, cmd.evidenceIds ?? []), content, inc);
       // One RCA covers the group: its accepted answers are the union of the members', and the header names each
       // distinct primary with its workloads, each accepted reason with its victim (RT-15, RT-28, §4.5).
       const group = rcaGroupOf(r.incidents, cmd.incidentId);
@@ -182,6 +204,15 @@ export function applyGameCommand(
         `RCA filed for incident ${idText('incident', cmd.incidentId)}: ${pts} points${evidence}. ${answer}${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${proof}${pinsLine}${hourNote}`,
       );
     }
+    case 'TUTOR_ACK':
+      if (!content.prologue || !run.tutor) return no('Not a prologue run.');
+      return result(tutorAck(run, content.prologue));
+    case 'TUTOR_NOTE':
+      if (!content.prologue || !run.tutor) return no('Not a prologue run.');
+      return yes(tutorNote(run, content.prologue, cmd.noteKind, cmd.ref), `Noted ${cmd.noteKind} ${cmd.ref}.`);
+    case 'TUTOR_HINT':
+      if (!content.prologue || !run.tutor) return no('Not a prologue run.');
+      return result(tutorHint(run, content.prologue));
     case 'OPEN_PROBLEM': {
       const o = openProblemRecord(run, content, sc, cmd.subject, cmd.fromTick, cmd.toTick);
       return { run: o.run, pending, ok: o.ok, message: o.message };

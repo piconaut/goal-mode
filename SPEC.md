@@ -136,7 +136,7 @@ with a summary (weekend maintenance and REORG batch, low online); the player can
 them. *(Implemented: on a Saturday or Sunday the briefing offers "Auto-run the weekend day" next to "Play it", and
 the speed bar has an Auto button; the worker then advances the day as fast as it can (~10 s in a browser) and the
 end-of-day report card is the summary. The day is simulated in full, so seeds and goldens are unaffected.)* The calendar includes month-end (day 1 and the last business day), a quarter-end close
-(the run's final week), paydays (1st/15th), and a seasonal peak if the scenario has one.
+(the run's final week), paydays (1st/15th), and a seasonal peak if the scenario has one. Months are 30 days; day 0 is a Monday on the scenario's `monthDayAtStart` (default the 3rd; PRO-01).
 
 **Growth compression.** Real organic growth is ~10–30%/year. In-game it is compressed so a
 40-day run feels like ~18 months of growth. Mobile/API traffic grows fastest.
