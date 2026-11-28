@@ -8,13 +8,15 @@ import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { resolveCulprits } from '../../src/game/culprits';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
+import { TICK_SEC } from '../../src/sim/core/units';
+import { tickOfClock } from '../../src/sim/core/clock';
 import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { MIDWEST_ADDRESS_SPACES } from '../../src/content/scenarios/midwest-workloads';
 import type { RegionMode } from '../../src/sim/wlm/types';
 import { accPi, decayInto, emptyAcc, goalInfo, goalPi, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
-import { renderWlmSummary } from '../../src/sim/measure/reports';
+import { renderCfActivity, renderCpuActivity, renderDasdSummary, renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
@@ -23,6 +25,8 @@ import { projectionInput } from '../../src/sim/wlm/projection';
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { committedMoves } from '../helpers/wlmMoves';
 import type { SimState } from '../../src/sim/core/types';
+import * as evaluator from '../../src/sim/wlm/evaluate';
+import { vi } from 'vitest';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -806,6 +810,61 @@ describe('event cards (SPEC §9)', () => {
     expect(shadow.prod1MobileRtMs).toBeGreaterThan(asIs.prod1MobileRtMs);
   }, 60_000);
 
+  it('a runaway entity is its own constant demand when the rate falls and when the work is routed away (RF-11)', () => {
+    // The card's load, as the game places it at 10:00.
+    const def = MIDWEST_EVENTS.find((e) => e.id === 'RUNAWAY')!;
+    const cmds = [...def.begin, ...resolveCulprits(base, MIDWEST.workloads, def.culprits!, 'RUNAWAY@0', 1, def.durationHours!).commands];
+    const prodCpu = (s: SimState, lparId: string) => {
+      const g = s.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.ADHOC;
+      return g ? g.cp + g.iipcp + g.ziip : 0;
+    };
+    // Demand the evaluator sees for the entity: what the sim asks the dispatcher for, not what contention grants.
+    let entityDemand: number | null = null;
+    const original = evaluator.evaluateLpar;
+    const spy = vi.spyOn(evaluator, 'evaluateLpar').mockImplementation((input) => {
+      const r = original(input);
+      if (!input.scpsOnly) {
+        const d = input.slices.filter((s) => s.kind === 'AS' && s.workloadId === 'ADHOC').reduce((n, s) => n + s.cpEngines + s.ziipEngines, 0);
+        if (d > 0) entityDemand = d;
+      }
+      return r;
+    });
+    try {
+      // 10:20 the analytics rate is cut to 5 %; 10:30 ADHOC is routed off PROD2 entirely.
+      const changes: Record<number, Parameters<typeof step>[1]> = {
+        20: [{ kind: 'SET_MODIFIER', mod: 'rate', key: 'ADHOC', value: 0.05 }],
+        30: [{ kind: 'SET_ROUTING', workloadId: 'ADHOC', routing: { PROD1: 1, PROD2: 0 } }],
+      };
+      const series = (c: Parameters<typeof step>[1]) => {
+        entityDemand = null;
+        let s = step(base, c, MIDWEST);
+        const out: SimState[] = [s];
+        const demand: (number | null)[] = [entityDemand];
+        for (let i = 0; i < 40; i++) {
+          entityDemand = null;
+          out.push(s = step(s, changes[i] ?? [], MIDWEST));
+          demand.push(entityDemand);
+        }
+        return { out, demand };
+      };
+      const withCard = series(cmds);
+      const start = withCard.demand[5]!;
+      expect(start).toBeGreaterThan(0.5);
+      // The same constant demand at a twentieth of the arrivals and after the work has moved to PROD1.
+      expect(withCard.demand[25]!).toBeCloseTo(start, 9);
+      expect(withCard.demand[40]!).toBeCloseTo(start, 9);
+      // Delivered CPU follows contention, but the entity still runs on PROD2 while ADHOC's own work is on PROD1.
+      entityDemand = null;
+      const asIs = series([]);
+      expect(asIs.demand.every((d) => d === null)).toBe(true);
+      expect(prodCpu(withCard.out[40]!, 'PROD2')).toBeGreaterThan(0.2);
+      expect(prodCpu(asIs.out[40]!, 'PROD2')).toBeCloseTo(0, 9);
+      expect(prodCpu(withCard.out[40]!, 'PROD1')).toBeGreaterThan(0.005);
+    } finally {
+      spy.mockRestore();
+    }
+  }, 60_000);
+
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
     expect(run(card('QR_RELEASE')).qrMsPerTxn).toBeGreaterThan(2 * run([]).qrMsPerTxn);
   }, 60_000);
@@ -1270,9 +1329,18 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     const clueLines = clueWindows.map((t) => lines.find((l) => l.startsWith(`${t.clockText} PROD1 ONLMED#1`)))
       .filter((l): l is string => l !== undefined);
     expect(clueLines.length).toBeGreaterThan(0);
+    // A period mostly waiting keeps the waiting note instead of a rejection (adjust.ts `waitingNote`): the settlement
+    // drain's unmanaged claim wait does that to this fixture for one interval (RF-10). The naming rule applies to the
+    // lines that do report a rejection; every other line must be that waiting note.
+    const rejected = clueLines.filter((l) => l.includes('rejected:'));
+    expect(rejected.length).toBeGreaterThan(0);
     for (const line of clueLines) {
-      expect(line).toContain('rejected: harms ONLHI#1, more important');
-      expect(line).not.toContain('no gain for the receiver');
+      if (line.includes('rejected:')) {
+        expect(line).toContain('rejected: harms ONLHI#1, more important');
+        expect(line).not.toContain('no gain for the receiver');
+      } else {
+        expect(line).toContain('mostly waiting, CPU delay');
+      }
     }
     // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
     expect(samples).toHaveLength(3);
@@ -1315,6 +1383,38 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
     // limit above still holds; this is two direction changes, not the repeated ED↔EB trading the gap test prevents.
     expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(2);
   }, 120_000);
+});
+
+describe('settlement drain holds online postings (RF-10)', () => {
+  const profile = MIDWEST.db2Contention!;
+  const start = tickOfClock('D1 14:48')!;
+  const drainTick = tickOfClock('D1 14:50')!;
+
+  it('charges both drain kinds to the postings and not to the CICS task slots', () => {
+    for (const kind of ['ALL', 'WRITERS'] as const) {
+      const s = { ...MIDWEST, db2Contention: { ...profile, isolation: 'CS' as const, drain: { ...profile.drain, kind } } };
+      let x = { ...initState(42, s), tick: start };
+      while (x.tick < drainTick) x = step(x, [], s);
+      x = step(x, [], s); // the 14:50 drain
+      const rbank = x.last.workloads.find((w) => w.id === 'RBANK')!;
+      // The posting pays the drain's run window in its response and SMF 101 row ...
+      expect(rbank.parts.drainLock ?? 0, kind).toBeGreaterThan(0);
+      // ... but the game's even AOR spread must not turn a settlement-only stop into region-wide starvation.
+      expect(Object.keys(x.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT')), kind).toEqual([]);
+      if (kind === 'WRITERS') expect(x.env.db2Contention?.readers.DB1B?.pending ?? 0).toBe(0);
+      // The task-slot queue would only form from the previous tick's hold, so follow the drain until a tick after
+      // it ends: no MXT queue at any tick, and CICS work that writes nothing on the partition never fails.
+      let drained = false;
+      for (let i = 0; i < 40 && (x.env.db2Contention?.drain || !drained); i++) {
+        x = step(x, [], s);
+        if (x.env.db2Contention?.drain?.phase === 'DRAINED') drained = true;
+        expect(Object.keys(x.env.slotQueue ?? {}).filter((k) => k.endsWith(':MXT')), `${kind} tick ${x.tick}`).toEqual([]);
+        expect(x.last.workloads.find((w) => w.id === 'CARDAUTH')!.failed, `${kind} tick ${x.tick}`).toBe(0);
+      }
+      expect(drained, kind).toBe(true);
+      expect(x.env.db2Contention?.drain, kind).toBeUndefined();
+    }
+  });
 });
 
 describe('Db2 batch on an image without Db2', () => {
@@ -1371,4 +1471,92 @@ describe('Db2 work runs only where Db2 is licensed', () => {
       }
     });
   }
+});
+
+// RF-12: CF Activity is the only Postprocessor report built from Monitor III's SMF 74.4 records. Each system's
+// gatherer writes its own per-system rows; the first system by id with an active gatherer is the sysplex master that
+// supplies the structure detail (Data Gatherer User's Guide PDF pp.23–24 (printed 5–6), PDF pp.102–103 (printed 84–85)).
+// The Postprocessor interval itself is Monitor I's, written in SYNC on every system, so a cancelled gatherer ends only
+// its own samples and the interval keeps ending on the clock grid (PDF p.39 (printed 21), PDF p.63 (printed 45)).
+describe('RMFGAT cancellation leaves gaps in CF Activity only (RF-12)', () => {
+  const intervalTicks = Math.round((MIDWEST.world.rmfIntervalMin * 60) / TICK_SEC);
+
+  it('shortens the stopped system rows, moves the master, and keeps the interval grid and the other reports', () => {
+    const systems = MIDWEST.world.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id).sort();
+
+    let s = initState(7, MIDWEST);
+    for (let i = 0; i < 5; i++) s = step(s, [], MIDWEST);
+    const master = s.rmf.acc.cfMaster!;
+    expect(master).toBe(systems[0]);
+    const other = systems.find((x) => x !== master)!;
+    // The master stops late in the first interval and is still down at its boundary.
+    while (s.tick < 170) s = step(s, [], MIDWEST);
+    s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: master }], MIDWEST);
+    while (s.tick < intervalTicks) s = step(s, [], MIDWEST);
+
+    const iv = s.rmf.intervals.at(-1)!;
+    // The interval ends where the Monitor I clock says, not where the gatherer stopped.
+    expect(iv.endTick).toBe(intervalTicks);
+    expect(iv.intervalSec).toBe(intervalTicks * TICK_SEC);
+    expect(iv.cfMaster).toBe(master);
+    expect(iv.cfGathererSec![master]).toBe(170 * TICK_SEC);
+    expect(iv.cfGathererSec![other]).toBe(intervalTicks * TICK_SEC);
+    expect(renderCfActivity(iv)).toContain(`MONITOR III GAPS: ${master} 1700 S OF 1800`);
+    // The master supplied the structure detail while it ran; the CF's own line keeps the interval.
+    expect(iv.cfStructures!.length).toBeGreaterThan(0);
+    expect(iv.cf.length).toBeGreaterThan(0);
+    // Monitor I keeps writing the other reports: every system keeps its CPU and WLMGL rows, and DASD its data.
+    for (const system of systems) {
+      expect(iv.cpu.some((row) => row.lparId === system)).toBe(true);
+      expect(iv.wlm.some((row) => row.lparId === system)).toBe(true);
+    }
+    expect(iv.dasd.iops).toBeGreaterThan(0);
+
+    // A control run's same 180 ticks: CPU Activity and DASD are untouched by the gatherer gap, and WLMGL moves only
+    // in SYSSTC, where the stopped task's own 0.01 engines ran before the cancel.
+    let control = initState(7, MIDWEST);
+    while (control.tick < intervalTicks) control = step(control, [], MIDWEST);
+    const ctl = control.rmf.intervals.at(-1)!;
+    expect(renderCpuActivity(iv)).toBe(renderCpuActivity(ctl));
+    expect(renderDasdSummary(iv)).toBe(renderDasdSummary(ctl));
+    const controlRows = renderWlmSummary(ctl).split('\n');
+    const got = renderWlmSummary(iv).split('\n');
+    expect(got).toHaveLength(controlRows.length);
+    got.forEach((line, i) => { if (line !== controlRows[i]) expect(line).toContain('SYSSTC'); });
+
+    // Interval 2 starts with the old master down, so the next active system by id takes the structure detail; that
+    // system stops midway, and both rows carry only their up ticks.
+    while (s.tick < 300) s = step(s, [], MIDWEST);
+    expect(s.rmf.acc.cfMaster).toBe(other);
+    s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: other }], MIDWEST);
+    while (s.tick < intervalTicks * 2) s = step(s, [], MIDWEST);
+    const iv2 = s.rmf.intervals.at(-1)!;
+    expect(iv2.endTick).toBe(intervalTicks * 2);
+    expect(iv2.cfMaster).toBe(other);
+    // The first master restarted after 10 minutes (tick 230); the second stopped at tick 300.
+    expect(iv2.cfGathererSec![master]).toBe(130 * TICK_SEC);
+    expect(iv2.cfGathererSec![other]).toBe(120 * TICK_SEC);
+    expect(renderCfActivity(iv2)).toContain(`MONITOR III GAPS: ${master} 1300 S OF 1800, ${other} 1200 S OF 1800`);
+    expect(iv2.cfStructures!.length).toBeGreaterThan(0);
+
+    // Interval 3: both gatherers are back, the first system is master again, and its data is whole.
+    while (s.tick < intervalTicks * 3) s = step(s, [], MIDWEST);
+    const iv3 = s.rmf.intervals.at(-1)!;
+    expect(iv3.endTick).toBe(intervalTicks * 3);
+    expect(iv3.cfMaster).toBe(master);
+    expect(iv3.cfGathererSec).toEqual(Object.fromEntries(systems.map((system) => [system, intervalTicks * TICK_SEC])));
+    expect(renderCfActivity(iv3)).not.toContain('MONITOR III GAPS');
+    // A CANCEL issued on the boundary itself is handled the same way: the master is down at the next interval's first
+    // sample, so another system is picked, and the stopped system's rows count only the ticks after its restart.
+    expect(s.tick).toBe(intervalTicks * 3);
+    s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: master }], MIDWEST);
+    while (s.tick < intervalTicks * 4) s = step(s, [], MIDWEST);
+    const iv4 = s.rmf.intervals.at(-1)!;
+    expect(iv4.endTick).toBe(intervalTicks * 4);
+    expect(iv4.cfMaster).toBe(other);
+    expect(iv4.cfGathererSec![master]).toBe(120 * TICK_SEC);
+    expect(renderCfActivity(iv4)).toContain(`MONITOR III GAPS: ${master} 1200 S OF 1800`);
+    // Whatever the gatherers did, every interval ended on the Monitor I clock grid.
+    for (const interval of s.rmf.intervals) expect(interval.endTick % intervalTicks).toBe(0);
+  });
 });

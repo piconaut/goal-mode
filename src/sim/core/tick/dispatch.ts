@@ -219,10 +219,11 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   let cpByWorkload: Record<string, CpuGrant> | undefined;
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
-    // Use the same grants as ScpTick, leaving IIPCP separate.
+    // Use the same grants as ScpTick, leaving IIPCP separate. A loaded entity is an address-space slice with its
+    // workload id (RF-11) and counts as that workload's CPU.
     const consumer = s.kind === 'AS' && s.role
       ? ((cpByRole ??= {})[s.role] ??= { cp: 0, ziip: 0, iipcp: 0 })
-      : s.kind === 'TXN' && s.workloadId
+      : s.workloadId
         ? ((cpByWorkload ??= {})[s.workloadId] ??= { cp: 0, ziip: 0, iipcp: 0 })
         : undefined;
     if (consumer) {
@@ -325,15 +326,16 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
         const measured = [res.scps.find((x) => x.scKey === ref.slice.scKey)!];
         // Report classes carry completions, RT and buckets too (WLM Planning 3.1 p.113).
         if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
+        // The job queue (initiator wait), which a DP move cannot change: kept apart for the batch RT projection
+        // (WT-12) and reported as the period's queue delay time (R723CQDT, RF-13) whatever its goal type. Real SMF
+        // records it for every period, not only a response-time goal's (MVS SMF 3.1 PDF p.646 (printed 618)).
+        const queueSec = (jr.job.startTick - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
         for (const target of measured) {
           target.completions += 1;
           target.rtSumSec += rtSec;
-          if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
-            // The initiator wait, which a DP move cannot change; kept apart for the batch RT projection (WT-12).
-            target.rtQueueSumSec = (target.rtQueueSumSec ?? 0) + (jr.job.startTick - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
-            // Buckets stay for response time goals: RMF's per-system distribution for velocity periods is not modelled.
-            addToBuckets(target.buckets, goal.rtSec, 1, rtSec, 0);
-          }
+          target.rtQueueSumSec = (target.rtQueueSumSec ?? 0) + queueSec;
+          // Buckets stay for response time goals: RMF's per-system distribution for velocity periods is not modelled.
+          if (goal?.kind === 'AVG' || goal?.kind === 'PCT') addToBuckets(target.buckets, goal.rtSec, 1, rtSec, 0);
         }
       }
       const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);

@@ -77,27 +77,12 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
-  findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
+  findings RT-28 … RT-31 follow them (RT-31 landed 2026-11-28); RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 (problem records) landed 2026-11-25 and stays; D1's proof gate (RT-24) was dropped (user, 2026-11-26) for PT-20's general operations.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
-
-### RT-31 · The CPU verdict reads the clock-hour average: test it and say so
-`list: rca-truth · status: ready · priority: low · size: S · area: game`
-
-Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed): a pin of one 30-minute RMF interval
-(CPC 90.1 % for 13:00–13:30) met "processor full" while `capacityBasis` (`src/game/sla.ts`) judged the clock-hour
-average (87.1 %). Decided 2026-11-23 (user): keep the clock-hour average as the truth's time base. The SLA is judged
-per clock hour; the worst RMF interval would let a reporting lever move the verdict (`rmfIntervalMin` is the
-player's, and Midwest starts coarse on purpose, F11); a share of ticks over the line is visible in no report (CAPPING
-can use a share because WLM% capped is one). The evidence predicates keep reading the pinned row. INC6 itself is
-covered by RT-32's bands: a CPU_PRIORITY primary on a host at or above `CPU_BANDS.hostRoomFrac` accepts CPU_CAPACITY
-(`game/rcaTruth.ts`). The residue (an interval ≥ 90 % in an hour under 85 %) is explained by RT-30's reply. Done when:
-a test of INC6's shape (one RMF interval over the 90 % line, the hour average inside the 85–95 % band, CPU_PRIORITY
-primary) shows CPU_CAPACITY accepted and its recipe scoring 3 from the interval pin; SPEC §10 and §17 and
-docs/rca-design.md §4.3 state the time base and why.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
@@ -181,58 +166,17 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-26 · Report lines for held recalls and gateway modes
-`list: pr-followups · status: ready · priority: low · size: S · area: game`
+### PR-28 · How far a runaway entity's CPU can reach
+`list: pr-followups · status: blocked: design · priority: low · size: S · area: sim`
 
-Source: PR #497 review (PT-56). PT-56 asked for report lines for held DFSMShsm recalls and gateway protection
-modes; the PR shows both only in Change Desk › Operations (`operationsView`), so a player reading the reports after
-the fact can't see why a channel shed work or why batch jobs failed with `HSM RECALL HELD`. Add a line for each to
-the day's reports (the gateway mode per channel while enabled, the recall hold and its queued backlog), join a
-report identity in `tests/helpers/reportIdentities.ts`, and point the `hsm-recall-hold` and `gateway-protection`
-Codex entries at them. Done when: both lines render from sim state, an identity ties each to it, and
-`npm run compare` against `dev` shows no sim difference.
+Source: review of PR #514 (RF-11, 2026-11-27). A loaded entity may demand up to its image's online CP+zIIP processors
+(`entityEngineCap`), so one DDF thread models as a parallel query: 3.1 engines on a measured Harbourline run. A thread
+without query parallelism is plausibly about one engine, but the books read do not settle it. Options: cap a
+`DDF_THREAD` load at one engine (or a content coefficient for query parallelism); keep the image cap and state the
+parallelism assumption; or make the reach a card/content property. Done when: the user decides and the cap, SPEC §17
+and the realism test match.
 
 ## realism-fixes
-
-### RF-10 · Utility drains on the settlement partition ignore online writers
-`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
-
-Source: PR #488 review (PT-51, finding N1). A drain prevents new claims in each claim class it drains and waits for
-existing claims in those classes to be released; `DRAIN ALL` and `DRAIN WRITERS` both include the write class
-([Db2 13 Managing Performance PDF pp.249–250 (printed 229–230)](https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=249)).
-The PT-51 model (`startDb2Contention`, `readClaims` in `src/sim/subsys/db2Contention.ts`) waits only for, and blocks
-only, the tracked BI readers: the authored writers (`MIDWEST_DB2_CONTENTION.writes`) see no drain wait, and a
-writers-only drain is granted at once and affects nothing. Design call needed: whether the Settlement REORG should
-delay online postings (an SLA cost the player then has to diagnose) and how long writer claims last.
-
-Done when: an all-class and a writers-only drain wait for and hold off the authored writers' claims, the writers'
-SMF 101 drain-lock wait shows it, a realism test covers both kinds, SPEC §17 drops the APPROX note, goldens are
-regenerated with a behaviour note and the three-scenario sweep is recorded.
-
-### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
-CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
-So the excess rises and falls with the image's arrival rate, and routing the workload off the culprit's image removes
-it, though a real runaway thread keeps running where it is. Model a loaded entity as its own constant demand (one
-enclave or address space in the workload's last period, at most its engines), sized so the card's average excess over
-its usual hours stays about the same. Done when: a realism test shows the excess independent of the arrival rate and
-of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
-three-scenario sweep is recorded.
-
-### RF-12 · A stopped Monitor III gatherer leaves holes in its SMF records
-`list: realism-fixes · status: blocked: design · priority: low · size: M · area: sim`
-
-Source: PR review of PT-56 (2026-11-26), docs/research.md "RMF". Monitor III writes SMF records too (Monitor I, II and
-III write types 70–79), and coupling facility structure detail for the CF Activity report is gathered only on the
-master gatherer system, picked among systems whose Monitor III gatherer is active (Data Gatherer User's Guide PDF p.23
-(printed 5), PDF p.99 (printed 81), PDF pp.102–103 (printed 84–85)). In the sim, cancelling RMFGAT gaps only the live
-Monitor III views; the Postprocessor intervals are untouched. Design first: which RMF intervals the sim should treat as
-Monitor III-written (the book's table of record types per monitor is the source), whether the master role moves when
-its gatherer stops (not stated in the pages read; check before modelling), and how a partial interval shows. Done when:
-cancelling RMFGAT on a system leaves the chosen records short for that interval and system, a realism test shows it,
-the report invariants still hold, and SPEC §17 and the ledger row are updated.
 
 ## balance
 
@@ -241,26 +185,6 @@ Tune after the RT entries that move truth labels have landed (RT-00, RT-02, RT-0
 the strategy bots do (docs/rca-design.md §4.8); tuning before them would be redone.
 
 ## cleanup
-
-### CL-19 · A guard test for the service-class accumulator fields
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16); design decided 2026-11-23 (user). The per-period accumulator fields are
-handled by hand in four places: `addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and
-`addAccInto`/`sumAcc` in `src/sim/wlm/runtime.ts`. The original entry proposed driving all four from one field
-table, either generated or looped. Declined: the four are not one field list in four layouts. They differ in which
-fields they carry (`addScp` has no `srv*`, `demand*`, `rtQueueSumSec`, `ziipEnginesView`), in formulas
-(`cpuEngines` is `cpEngines` in `addScp` but `cpEngines + iipcpEngines` in `decayInto`; `ziipEngines` and `demand*`
-seed at steady state; `srvDelayCap` has a compatibility fallback) and in presence rules and key order, which the
-state hash reads. A table would need a per-field rules language and would put the hashes at risk on the hot path.
-The real risk is a new field that misses one of the four functions, and a test catches that. Change, test-only:
-- A field list typed with `satisfies Record<keyof Required<ScpAcc>, …>` (and the same for `ScpTick`'s fields), so a
-  field added to either interface fails typecheck until it is listed.
-- A unit test that fills a tick (and two accumulators) with a distinct non-zero value in every field, runs `addScp`,
-  `decayInto`, `mergeAcc` and `sumAcc`, and asserts every listed field reaches each output non-zero, except fields a
-  function deliberately omits, each listed with its reason.
-No sim change. Done when: the test passes; removing any one field from any of the four functions makes it fail
-(checked by hand once, noted in the PR); `npm run typecheck` clean.
 
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
@@ -275,23 +199,6 @@ workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE
 strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
-
-### CL-64 · One helper for the "card is live" predicate
-`list: cleanup · status: ready · priority: low · size: S · area: game`
-
-Source: PR #502 simplify review (2026-11-26). The predicate "started, not ended, and not past its end tick" is spelled
-out at four sites: `endEventsByOperation` (`src/game/run/events.ts`), the bot chooser (`tools/botOperations.ts`),
-`gatewaySources` (`src/game/operations.ts`, as `!ended && startTick <= tick && …`), and `started && !ended` in
-`obviousHourly` and the fixer's on-sight loop (`tools/strategies.ts`), the regulator audit (`src/game/run.ts`) and
-`blockedHardware` (`src/game/run/changes.ts`), where the caller runs after `advance` has set `ended`. Add one
-`cardLive(event, tick)` helper and use it. Do not fold in `advance`'s local `running()`, which also counts a card whose
-`startTick` is this tick before its `started` flag is written; keep that tick-aware case explicit next to the helper.
-Leave the different questions alone: `inboxReply` (announced, not started), `activeIn`/`markMet`/`counterfactual`
-(window overlap), migration (scheduled today) and the begin/end/recycle triggers.
-
-No behaviour change. Done when: the equivalent sites call the one helper; a test pins a card that starts and another
-that ends in the current tick against both the live query and the engine's tick-aware case; `npm run compare --
---base origin/dev` reports no differences and `npm run typecheck` is clean.
 
 ## prologue
 

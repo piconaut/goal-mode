@@ -46,7 +46,7 @@ export function prepareDb2Reader(
     s.ziipEngines *= share;
     s.failFrac = 0; // Connection and admission losses are counted separately.
     s.timeoutSec = Infinity; // Existing admitted readers time out in the cohort, after holding their claims.
-    if (intake.waitSec > 0) s.extraParts!.drainLock = intake.waitSec;
+    if (intake.waitSec > 0) s.extraParts!.drainLock = (s.extraParts!.drainLock ?? 0) + intake.waitSec;
     s.extraOtherSec += intake.waitSec;
     freshCp += s.cpEngines;
     freshZiip += s.ziipEngines;

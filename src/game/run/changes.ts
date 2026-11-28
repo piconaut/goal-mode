@@ -16,7 +16,7 @@ import {
   type RunState
 } from '../types';
 import type { GameContent } from './shared';
-import { FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
+import { cardInForce, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
 export interface ChangeRequest {
   label: string;
@@ -52,7 +52,7 @@ export function previewContext(run: RunState, content?: GameContent) {
     capexRemaining: run.capexRemaining,
     incidentOpen: run.incidents.some((i) => i.endTick === null),
     constraints: run.constraints,
-    blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
+    blockedHardware: run.events.flatMap((e) => (cardInForce(e) ? (e.blocksHardware ?? []) : [])),
     cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
     ...(slow ? { staffSurcharge: { mult: slow.hoursMult, rtSec: slow.rtSec, goalSec: slow.goalSec, missedHours: slow.missedHours } } : {}),
   };

@@ -18,7 +18,7 @@ import { CF_FAILURE } from '../../content/cf';
 import { clockAt, formatClock } from './clock';
 import { applyCommands, commandLogLine, COMMAND_LOG_MAX, type Command } from './commands';
 import { rolloverOperations } from './operations';
-import { failHeldRecalls, gatewayTraffic, hsmIo, recycleRouting, startRecycles, type GatewayTraffic } from './tick/operatorEffects';
+import { failHeldRecalls, gatewayTraffic, hsmIo, recycleRouting, startRecycles } from './tick/operatorEffects';
 import { Rng } from './rng';
 import type { Scenario } from './scenario';
 import type { CpcConfig, EnvState, SimState, WorkloadRuntime } from './types';
@@ -49,7 +49,7 @@ export function lockBoostNow(s: SimState, jobs: readonly JobRuntime[]): number {
   return lockHolderJob(s.mods, jobs) ? s.mods.lockBoost : 0;
 }
 
-export function step(before: SimState, commands: readonly Command[], scenario: Scenario, sources?: Readonly<Record<string, GatewayTraffic>>): SimState {
+export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
   const commanded = rolloverOperations(applyCommands(before, commands, scenario.addressSpaces), scenario);
   const prev = startRecycles(restartStcs(updateRouting(commanded, scenario)));
   const rng = new Rng(prev.rng);
@@ -82,7 +82,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     rates[w.id] = offered;
     offeredRates[w.id] = offered;
     if (mode && gatewayFailed) {
-      const edge = gatewayTraffic(mode, organicRate, p.retryRate, sources?.[w.id]);
+      const edge = gatewayTraffic(mode, organicRate, p.retryRate, prev.mods.gatewaySources?.[w.id]);
       rates[w.id] = edge.admittedRate;
       gatewayFailed[w.id] = edge.failedRate * TICK_SEC;
     }
@@ -311,7 +311,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
   if (db2) {
-    nextEnv.db2Contention = db2.drain ? { readers: db2.readers, drain: db2.drain } : { readers: db2.readers };
+    nextEnv.db2Contention = {
+      readers: db2.readers,
+      ...(db2.drain ? { drain: db2.drain } : {}),
+      ...(db2.writerClaims ? { writerClaims: db2.writerClaims } : {}),
+    };
   }
   if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
   if (cf.length > 0) nextEnv.cfBySystem = cfBySystem;

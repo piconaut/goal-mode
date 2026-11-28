@@ -1,4 +1,5 @@
 import type { SubsystemType } from '../sim/wlm/types';
+import { RMF_GATHERER_JOBNAME } from './operations';
 
 /**
  * Analytics tool tree (SPEC §8). Tools are bought with Insight and unlock data; measurement tools
@@ -60,7 +61,7 @@ export const TOOLS: ToolDef[] = [
     insightCost: 10,
     prereqs: [],
     unlocks: ['MON3', 'WLM_ACTIVITY_LOG'],
-    overhead: { addressSpaces: { jobnames: ['RMFGAT'], cpuFrac: 1 } },
+    overhead: { addressSpaces: { jobnames: [RMF_GATHERER_JOBNAME], cpuFrac: 1 } },
     reveals: 'Live SYSSUM, SYSWKM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC and WFEX views (last ~120 s), today’s reports as each interval closes, and the live WLM activity log.',
   },
   {
@@ -90,7 +91,7 @@ export const TOOLS: ToolDef[] = [
     insightCost: 10,
     prereqs: ['RMF_MON3'],
     unlocks: ['MON3_CHARTS'],
-    overhead: { addressSpaces: { jobnames: ['RMFGAT'], cpuFrac: 0.5 } },
+    overhead: { addressSpaces: { jobnames: [RMF_GATHERER_JOBNAME], cpuFrac: 0.5 } },
     reveals: 'Today’s Monitor III data over time: PI, busy, delay breakdown, capping and PR/SM delay, DDF, with WLM decisions and changes marked.',
   },
   {

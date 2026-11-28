@@ -1,4 +1,5 @@
 import { MAX_OVERTIME } from '../catalog';
+import { applyCommands } from '../../sim/core/commands';
 import type { Scenario } from '../../sim/core/scenario';
 import { type EventDef } from '../../content/events/midwest-events';
 import { cardMechanisms } from '../../content/footprint';
@@ -14,7 +15,7 @@ import {
   type RunState
 } from '../types';
 import type { GameContent } from './shared';
-import { logLine, loseTrust, msg } from './shared';
+import { cardLive, logLine, loseTrust, msg } from './shared';
 import { previewContext, spendHours, type ChangeOutcome } from './changes';
 import { eventTargets, matchesEventEffect, type CardOperation } from './eventEffects';
 import { announceOtherTeamChange, profileOf } from './otherTeamChanges';
@@ -174,6 +175,17 @@ export function eventEndLog(run: RunState, def: EventDef, uid: string): string |
   return t === null ? null : `EVENT end: ${t.named ? def.name : t.text}`;
 }
 
+/** Settle the gateway source of a card that has reached its own end tick but whose end commands run on the next
+ * advance: the source only affects future ticks, and `cardLive` already says the card is over, so the published state
+ * and the BLOCK hint must not keep claiming its attack for that tick. Idempotent with the end command that runs then. */
+export function settleEndedGatewaySources(run: RunState): RunState {
+  const commands = run.events.flatMap((event) =>
+    event.started && !event.ended && event.endTick !== null && event.endTick <= run.sim.tick
+      ? event.endCommands.filter((cmd) => cmd.kind === 'SET_GATEWAY_SOURCE')
+      : []);
+  return commands.length > 0 ? { ...run, sim: applyCommands(run.sim, commands) } : run;
+}
+
 /** Apply card cleanup for a timely resolution. An intercepted card has no begin effects to undo. */
 export function resolveEvent(run: RunState, event: ActiveEvent, operation?: CardOperation): RunState {
   if (event.ended) return run;
@@ -181,10 +193,15 @@ export function resolveEvent(run: RunState, event: ActiveEvent, operation?: Card
   const commands = event.started ? event.endCommands.filter((cmd) =>
     operation?.kind !== 'CANCEL_ADDRESS_SPACE' || cmd.kind !== 'CANCEL_ADDRESS_SPACE' ||
     cmd.jobname !== operation.jobname || cmd.lparId !== operation.lparId) : [];
+  // A gateway source split only affects future ticks' shedding, and the card is over now: settle it here rather than
+  // one tick later, so the state the player reads (the BLOCK hint, the sim) stops claiming the attack the instant the
+  // card ends. The other end commands (rate, CPU) keep the ended tick's values, so they still run on the next advance.
+  const settle = commands.filter((cmd) => cmd.kind === 'SET_GATEWAY_SOURCE');
   return {
     ...run,
+    ...(settle.length > 0 ? { sim: applyCommands(run.sim, settle) } : {}),
     events: run.events.map((e) => e.uid === event.uid ? { ...resolved, ended: true, endTick: run.sim.tick } : e),
-    pendingCommands: [...run.pendingCommands, ...commands],
+    pendingCommands: [...run.pendingCommands, ...commands.filter((cmd) => cmd.kind !== 'SET_GATEWAY_SOURCE')],
   };
 }
 
@@ -192,7 +209,7 @@ export function resolveEvent(run: RunState, event: ActiveEvent, operation?: Card
 export function endEventsByOperation(before: RunState, after: RunState, scenario: Scenario, content: GameContent, op: CardOperation): RunState {
   let run = after;
   for (const event of before.events) {
-    if (!event.started || event.ended || (event.endTick !== null && event.endTick <= before.sim.tick)) continue;
+    if (!cardLive(event, before.sim.tick)) continue;
     const def = content.events.find((d) => d.id === event.defId);
     if (def?.endedBy && matchesEventEffect(def.endedBy, op, eventTargets(before, scenario, def, event))) {
       if (op.kind === 'RECYCLE_CICS' && def.endedBy.kind === 'RECYCLE_CICS') {

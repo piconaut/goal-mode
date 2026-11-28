@@ -73,9 +73,10 @@ export function createAdjustContext(input: AdjustInput) {
   for (const s of system.scps) accOf[s.scKey] = s;
   // Batch RT history can be projected only while the period still has address-space work in the evaluation. Without
   // it, a decayed rtQueueSumSec from an old job must not displace the analytic transaction projection when the class
-  // serves transactions (B1: shared JES/DDF classification or a policy reclassification).
+  // serves transactions (B1: shared JES/DDF classification or a policy reclassification). A loaded entity is an
+  // address-space slice in a transaction class (RF-11) and is not that work.
   const addressSpaceKeys = new Set<string>();
-  for (const s of input.evalInput.slices) if (s.kind === 'AS') addressSpaceKeys.add(s.scKey);
+  for (const s of input.evalInput.slices) if (s.kind === 'AS' && s.workloadId === null) addressSpaceKeys.add(s.scKey);
   // Receiver value and donor harm use PIs before the reporting ceilings (percentile 4.0, velocity 99), or
   // improvements far past a goal look flat and a safe plan can exhaust its step limit without receiver value.
   const instPi = (ticks: readonly ScpTick[]) => {

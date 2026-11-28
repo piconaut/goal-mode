@@ -13,6 +13,7 @@ const rec = (over: Partial<WlmRecord>): WlmRecord => ({
   endPerSec: 616.2,
   failed: 0,
   avgRtSec: 0.054,
+  avgQueueSec: null,
   execVelocity: 82.8,
   pi: 12.62,
   applCpPct: 616.2,
@@ -42,6 +43,25 @@ describe('WLMGL layout', () => {
   });
 });
 
+it('prints the queue part of response time beside ACTUAL (TRANS-TIME QUEUED, R723CQDT)', async () => {
+  const { renderWlmDetail } = await import('../../src/sim/measure/reports');
+  const iv = { startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P', wlm: [rec({ avgRtSec: 60, avgQueueSec: 20 })] } as unknown as RmfInterval;
+  const row = renderWlmSummary(iv).split('\n').find((l) => l.startsWith('ONLRETL'))!;
+  // A job that waited 20 s for an initiator and ran 40 s: ACTUAL 60, QUEUED 20, side by side.
+  expect(row).toMatch(/60\.0 +20\.0/);
+  expect(renderWlmDetail(iv, 'ONLRETL#1')).toContain('QUEUED 20.0000s');
+});
+
+it('prints QUEUED as - for a row saved before the field existed', async () => {
+  const { renderWlmDetail } = await import('../../src/sim/measure/reports');
+  // RMF intervals persist in v2 saves; a row written before RF-13 has no avgQueueSec at all.
+  const { avgQueueSec: _q, ...old } = rec({});
+  const iv = { startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P', wlm: [old] } as unknown as RmfInterval;
+  const row = renderWlmSummary(iv).split('\n').find((l) => l.startsWith('ONLRETL'))!;
+  expect(row).toMatch(/0\.054 +- +82\.8/);
+  expect(renderWlmDetail(iv, 'ONLRETL#1')).toContain('QUEUED -');
+});
+
 it('shows CICS work manager states and region sample owners without invented transaction resource percentages', async () => {
   const { renderWlmDetail } = await import('../../src/sim/measure/reports');
   const wm = { active: 4, ready: 2, idle: 0, waitingIo: 1, waitingLock: 0.25, waitingProd: 1.5, waitingMisc: 0.5, regionKeys: ['STCHI#1'] };
@@ -61,6 +81,9 @@ it('shows CICS work manager states and region sample owners without invented tra
   expect(summary).toContain('WORK MANAGER STATES');
   const row = summary.split('\n').find((l) => l.startsWith('ONLRETL'))!;
   expect(row.trimEnd().endsWith('-')).toBe(true);
+  // Only EX VEL% and the sample columns are masked: ACTUAL, QUEUED, PERF INDX, ENDED and END/S stand.
+  expect(row).toMatch(/0\.054 +- +- +12\.62 +1109155 +616\.2 +- +-/);
+  expect(row).not.toContain('82.8');
 });
 
 it('lists the CICS transaction classes a region class serves (RMF Report Analysis p.525)', async () => {

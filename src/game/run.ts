@@ -2,10 +2,11 @@ import { toolOn } from './run/shared';
 import { ALERTS } from '../content/alerts';
 import type { DifficultyId } from '../content/difficulty';
 import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
+import { ROSTERS } from '../content/entities';
 import { AUDIT } from '../content/events/midwest-events';
 import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
-import { chargeHeldRecalls, gatewaySources } from './operations';
+import { chargeHeldRecalls, gatewayStatus, recallStatus } from './operations';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { initState } from '../sim/core/init';
 import { Rng, streamRng } from '../sim/core/rng';
@@ -26,12 +27,12 @@ import { emptyPolicyBook, savedPolicy, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
 import { failRisk, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, eventEndLog, eventStartLog, resolveEvent, storyFor } from './run/events';
+import { drawEvents, eventEndLog, eventStartLog, resolveEvent, settleEndedGatewaySources, storyFor } from './run/events';
 import { applyBackout, landRoutineChanges } from './run/otherTeamChanges';
 import { accumulateHour, closeHour, copyHourForAdvance, newHour } from './run/hourly';
 import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
-import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
+import { BASE_HOURS, cardInForce, cardRunning, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
 import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
 import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, workScopeOf } from './sla';
@@ -232,7 +233,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       if (!e.started && !e.ended && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.culprits) {
-          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
+          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult, def.durationHours ?? ROSTERS.sizingHours);
           cmds.push(...c.commands);
           resolvedEnd.set(e.uid, [...e.endCommands, { kind: 'CLEAR_ENTITY_LOADS', tag: e.uid }]);
           resolvedCulprits.set(e.uid, c.ids);
@@ -266,7 +267,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         if (line) r = logLine(r, line);
       }
     }
-    const sim = step(r.sim, cmds, scenario, r.sim.gatewayModes ? gatewaySources(r, content) : undefined);
+    const sim = step(r.sim, cmds, scenario);
     r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
     // The workloads whose effective routing (pending commands and dynamic routing already applied for this tick)
@@ -284,8 +285,6 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     // SPEC §10). The last hour's union is kept when the cap ends.
     const hourStartTick = tick - (tick % TICKS_PER_HOUR);
     const affectsHour = new Map<string, number>();
-    const running = (e: RunState['events'][number]) =>
-      (e.started || e.startTick <= tick) && !e.ended && (e.endTick === null || e.endTick > tick);
     // Every running card's footprint reach follows the routing and address spaces the same way, with the hour keeping
     // the union of what it reached in it (RT-14). The world is built only on a tick with such a card.
     const resolvedReach = new Map<string, string[]>();
@@ -295,7 +294,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     for (const e of events) {
       const def = defs.get(e.defId);
       const reach = def?.reach;
-      if ((!e.capacityCpcs && !reach) || (!running(e) && e !== recallReplay)) continue;
+      if ((!e.capacityCpcs && !reach) || (!cardRunning(e, tick) && e !== recallReplay)) continue;
       const sameHour = e.affectsHour === hourStartTick;
       if (e.capacityCpcs) resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, scopeOf(new Set(e.capacityCpcs))));
       if (reach) {
@@ -323,13 +322,16 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || (!e.ended && e.startTick <= tick),
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
-      ...(e === recallReplay && !running(e) ? { footprintReplays: recordReplayTick(e.footprintReplays, tick) } : {}),
+      ...(e === recallReplay && !cardRunning(e, tick) ? { footprintReplays: recordReplayTick(e.footprintReplays, tick) } : {}),
       ...(resolvedCulprits.has(e.uid) ? { culprits: resolvedCulprits.get(e.uid) } : {}),
       ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
       ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
-    if (sim.hsmRecalls?.heldSinceTick != null) r = chargeHeldRecalls(r, tick);
+    // A card that just reached its end tick is over for the live queries; settle its gateway source now rather than
+    // one advance later, when its other end commands run.
+    r = settleEndedGatewaySources(r);
+    if (r.sim.hsmRecalls?.heldSinceTick != null) r = chargeHeldRecalls(r, tick);
     r = accumulateHour(r, hour ??= copyHourForAdvance(r));
     if ((tick + 1) % ALERTS.evalTicks === 0) {
       const before = r.alerts?.firing ?? [];
@@ -450,7 +452,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], nightStartTick(r.day), () => batchHosts) };
   }
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
-  const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
+  const auditing = r.events.some((e) => cardInForce(e) && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
   if (auditing) {
     const seen = Object.entries(sysotherByLpar(r.sim.rmf.intervals, day)).filter(([, v]) => v > AUDIT.minApplPct);
     if (seen.length > 0) {
@@ -499,6 +501,10 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     mlcEstimate: estimateMonth(r.sim.cost, scenario.products),
     events: r.events.filter((e) => e.started && e.startTick < r.sim.tick && e.startTick >= day * TICKS_PER_DAY).map((e) => e.name),
     piWorst: worstPiOfDay(r.sim.rmf.intervals, day),
+    // PT-20 rule 6: the gateway modes and the HSM recall hold in force when the day closed, so a player reading the
+    // report afterwards can see what was still shedding work or holding recalls.
+    gateway: gatewayStatus(r, scenario),
+    recalls: recallStatus(r),
   };
 
   const bonus = r.bonusHours.filter((b) => b.untilDay > day + 1);

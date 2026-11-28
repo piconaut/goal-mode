@@ -7,6 +7,7 @@ import type { WorkloadDef } from '../../sim/workload/types';
 import type { FootprintReach, FootprintResource } from '../footprint';
 import { MIDWEST_DB2_CONTENTION } from '../scenarios/midwest-db2';
 import { CICSXLOG_ENGINES } from '../scenarios/midwest-workloads';
+import { HSM_RECALL_STORM } from '../operations';
 
 /** Roster entities a card loads with its extra demand (PT-52): the culprits an operation can target. */
 export interface CulpritSpec {
@@ -83,6 +84,16 @@ export interface EventDef {
 export const AUDIT = { findingTrust: 5, cleanDayTrust: 1, minApplPct: 0.1 };
 
 const mod = (m: 'rate' | 'cpu' | 'asCpu' | 'rollbackFrac', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
+
+/** A gateway card's source split. All of the card's added demand is attack traffic or retries, so the edge's source
+ * multiplier is the card's rate multiplier: a card sets one with the other and clears it on its end. */
+const gatewaySource = (workloadId: string, source: 'attackRateMult' | 'retryRateMult', mult: number): Command =>
+  ({ kind: 'SET_GATEWAY_SOURCE', workloadId, source, mult });
+
+/** FICTIONAL: bot traffic offers four times the mobile channel's normal demand (BOT_ATTACK). */
+const BOT_RATE_MULT = 4;
+/** FICTIONAL: up to three client retries on a 2 s timeout, ~2.5x the offered mobile load (RETRY_STORM). */
+const RETRY_RATE_MULT = 2.5;
 
 /** FICTIONAL: the looping CICS journal archiver's CPU, reference engines (XLOG_LOOP). */
 const XLOG_LOOP_ENGINES = 0.9;
@@ -219,8 +230,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     reach: { hostsOf: ['MOBILE'] },
     startHour: [0, 23],
     durationHours: 1.5,
-    begin: [mod('rate', 'MOBILE', 4), mod('cpu', 'MOBILE', 0.4)],
-    end: [mod('rate', 'MOBILE', 1), mod('cpu', 'MOBILE', 1)],
+    begin: [mod('rate', 'MOBILE', BOT_RATE_MULT), mod('cpu', 'MOBILE', 0.4), gatewaySource('MOBILE', 'attackRateMult', BOT_RATE_MULT)],
+    end: [mod('rate', 'MOBILE', 1), mod('cpu', 'MOBILE', 1), gatewaySource('MOBILE', 'attackRateMult', 1)],
     endedBy: { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BLOCK' },
     forewarning: null,
     announcement: null,
@@ -246,8 +257,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // RT-23: a share of the units is backed out, as a client that gives up leaves a rollback in Db2 accounting
     // (QWACABRT). APPROX: a fixed share for the window, not a feedback loop on which client timed out; that a
     // rollback share means client retries is the game's inference, not IBM's.
-    begin: [mod('rate', 'MOBILE', 2.5), mod('rollbackFrac', 'MOBILE', 0.2)],
-    end: [mod('rate', 'MOBILE', 1), mod('rollbackFrac', 'MOBILE', 0)],
+    begin: [mod('rate', 'MOBILE', RETRY_RATE_MULT), mod('rollbackFrac', 'MOBILE', 0.2), gatewaySource('MOBILE', 'retryRateMult', RETRY_RATE_MULT)],
+    end: [mod('rate', 'MOBILE', 1), mod('rollbackFrac', 'MOBILE', 0), gatewaySource('MOBILE', 'retryRateMult', 1)],
     endedBy: { kind: 'SET_GATEWAY', workloadId: 'MOBILE', mode: 'BACKOFF' },
     forewarning: null,
     announcement: null,
@@ -582,7 +593,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 2.5,
     // FICTIONAL magnitude: 60_000 random I/Os per second on LCU 30 roughly doubles its response at day-0 load. The
     // curve is a cliff just above (75k ≈ 15×), and nightly growth moves the cliff closer, so stay below it.
-    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } }],
+    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: HSM_RECALL_STORM.randomIops } }],
     end: [{ kind: 'SET_LCU', lcuId: '30', extraIops: {} }],
     relief: 'HSM_RECALL',
     forewarning: null,

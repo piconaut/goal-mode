@@ -3,6 +3,7 @@
 import type { GameContent } from '../src/game/run';
 import { chooseDraft, submitRca } from '../src/game/run';
 import { requestOperation } from '../src/game/operations';
+import { cardInForce } from '../src/game/run/shared';
 import { requestBackout } from '../src/game/run/otherTeamChanges';
 import { operationsForEventReports, protectionReleases } from './botOperations';
 import type { RunState } from '../src/game/types';
@@ -226,7 +227,7 @@ function obviousHourly(r: RunState, scenario: Scenario, content: GameContent): R
   for (const j of run.sim.batch.jobs.filter((x) => x.status === 'ABENDED' && x.def.critical)) {
     run = requestChange(run, content, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
   }
-  for (const active of run.events.filter((e) => e.started && !e.ended && OBVIOUS_FIX_CARD_IDS.has(e.defId))) {
+  for (const active of run.events.filter((e) => cardInForce(e) && OBVIOUS_FIX_CARD_IDS.has(e.defId))) {
     const pointed = run.incidents.some((i) => i.endTick === null && active.affects.includes(i.workloadId));
     if (pointed) run = remedy(run, scenario, content, active);
   }
@@ -259,7 +260,7 @@ const fixer: Strategy = {
     let run = obviousHourly(releaseProtection(moveStructuresHome(r, content), scenario, content), scenario, content);
     const cards = scenario.id === 'harbourline' ? [...ON_SIGHT_CARDS, ...HARBOURLINE_ON_SIGHT_CARDS] : ON_SIGHT_CARDS;
     for (const id of cards) {
-      const event = run.events.find((e) => e.defId === id && e.started && !e.ended);
+      const event = run.events.find((e) => e.defId === id && cardInForce(e));
       if (event) run = remedy(run, scenario, content, event);
     }
     return run;

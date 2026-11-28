@@ -15,6 +15,11 @@ export const MIDWEST_DB2_CONTENTION: Db2ContentionProfile = {
   // IRLMRWT's default resource timeout, which also covers claim waits (Db2 13 Installation and Migration Guide
   // PDF p.284 (printed 266)). APPROX: IRLM detects it on its deadlock timer, so the real wait is rarely exactly this.
   claimTimeoutSec: 30,
+  // FICTIONAL: an online posting commits per transaction, so its write claim lasts about its own response time; the
+  // floor rounds a sub-100 ms posting's claim up, though only a claim longer than a tick spans a drain's start.
+  writerClaimFloorSec: 0.2,
   // FICTIONAL: a short weekday drain phase during BI hours, with a longer wait budget than a claim attempt.
+  // The drain is REORG TABLESPACE SHRLEVEL CHANGE's last log iteration and switch phase (Db2 13 Utility Guide and
+  // Reference PDF p.628 (printed 606)).
   drain: { name: 'Settlement REORG', member: 'DB1B', startMinute: 14 * 60 + 50, kind: 'ALL', waitSec: 120, runSec: 20 },
 };

@@ -63,10 +63,25 @@ function sameSession(a: RosterTarget, b: RosterTarget): boolean {
 export function operatorRoster(s: SimState, scenario: Scenario, kind: RosterKind, workloadId?: string): (RosterEntry & { day: number })[] {
   const day = dayAt(s.tick);
   const subsystem = kind === 'DDF_THREAD' ? 'DDF' : 'TSO';
-  return effectiveWorkloads(scenario, s)
-    .filter((w) => w.subsystem === subsystem && (workloadId === undefined || workloadId === w.id))
-    .flatMap((w) => dailyRoster(s.seed, day, w, w.routing, kind).map((entry) => ({ ...entry, day })))
-    .filter((entry) => !s.cancelledSessions?.some((old) => sameSession(old, entry)));
+  const workloads = effectiveWorkloads(scenario, s)
+    .filter((w) => w.subsystem === subsystem && (workloadId === undefined || workloadId === w.id));
+  const entries: (RosterEntry & { day: number })[] = workloads
+    .flatMap((w) => dailyRoster(s.seed, day, w, w.routing, kind).map((entry) => ({ ...entry, day })));
+  // RF-11: a loaded entity is its own demand and stays on its image, so it is still a target after its workload is
+  // routed away (the day's roster only deals ids to images the routing sends work to).
+  const seen = new Set(entries.map((e) => `${e.kind}|${e.id}|${e.workloadId}|${e.lparId}`));
+  for (const load of s.entityLoads ?? []) {
+    if (load.kind !== kind || (workloadId !== undefined && load.workloadId !== workloadId)) continue;
+    const w = workloads.find((x) => x.id === load.workloadId);
+    const key = `${load.kind}|${load.id}|${load.workloadId}|${load.lparId}`;
+    if (!w || seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      kind, id: load.id, workloadId: load.workloadId, lparId: load.lparId, shareFrac: 0, day,
+      ...(kind === 'DDF_THREAD' ? { authid: w.work.UI ?? w.id, corrid: w.work.CI ?? w.id } : {}),
+    });
+  }
+  return entries.filter((entry) => !s.cancelledSessions?.some((old) => sameSession(old, entry)));
 }
 
 export function gatewayChannels(s: SimState, scenario: Scenario) {

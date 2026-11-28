@@ -3,18 +3,21 @@
 // through ordinary commands. Nothing here names a scenario, LPAR, service class or workload.
 //
 // The run keeps what the player can read at each RMF interval end (the interval, Monitor III, the header view) and,
-// beside it, sums of the sim state taken tick by tick, so an identity can compare a report with its source.
+// beside it, sums of the sim state taken tick by tick, so an identity can compare a report with its source. It also
+// closes the day on a clone to keep the day report card beside the state it was written from.
 
 import { packOf } from '../../src/content/packs';
+import { HSM_RECALL, HSM_RECALL_STORM } from '../../src/content/operations';
 import { buildMon3, type Mon3View } from '../../src/game/mon3';
 import { advance, newRun, startDay, type GameContent } from '../../src/game/run';
 import { quoteTfp } from '../../src/game/tfp';
-import type { RunState } from '../../src/game/types';
+import type { DayReport, RunState } from '../../src/game/types';
 import { CAPACITY_SETTING_FRAC } from '../../src/content/hardware';
-import type { Command } from '../../src/sim/core/commands';
+import { applyCommands, type Command } from '../../src/sim/core/commands';
+import { applyOperation, gatewayChannels } from '../../src/sim/core/operations';
 import type { Scenario } from '../../src/sim/core/scenario';
 import type { LparConfig, WorldConfig } from '../../src/sim/core/types';
-import { TICKS_PER_HOUR, TICK_SEC } from '../../src/sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR, TICK_SEC } from '../../src/sim/core/units';
 import { effectiveDispatchEngines, msuPerCp } from '../../src/sim/hw/cpc';
 import { classify } from '../../src/sim/wlm/classify';
 import { allWorkloads } from '../../src/game/workloads';
@@ -85,6 +88,8 @@ export interface ReportRun {
   /** Run state when Tailored Fit Pricing started, and at the end of the run. */
   tfpStart: RunState | null;
   final: RunState;
+  /** The played day's report card and the run state at its close (the suite's `final` stays live at 22:00). */
+  dayReports: { report: DayReport; end: RunState }[];
   /** Report class generated for each service class by the report-class policy. */
   reportClassOf: Record<string, string>;
   /** The resource group the run put on its largest goal class (its type changes from phase to phase). */
@@ -378,7 +383,7 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
   // which the reports don't depend on.)
   const content: GameContent = { ...packOf(scenario.id).game, events: [] };
   let run = startDay(newRun(scenario, content, seed), content);
-  const out: ReportRun = { scenario, content, seed, intervals: [], windows: [], hours: [], phases: [], tfpStart: null, final: run, reportClassOf: {}, resourceGroup: null };
+  const out: ReportRun = { scenario, content, seed, intervals: [], windows: [], hours: [], phases: [], tfpStart: null, final: run, dayReports: [], reportClassOf: {}, resourceGroup: null };
   const note = { reportClassOf: out.reportClassOf, resourceGroup: null as ReportRun['resourceGroup'] };
 
   let phase = 'baseline';
@@ -488,5 +493,36 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
   }
   if (left > 0) play(left - debt, [...atNight, ...batchResponseGoal(scenario, run)]);
   out.final = run;
+  out.dayReports = captureDayReport(run, scenario, content);
   return out;
+}
+
+/** Close the played day on a clone (the suite's own run stops at 22:00 and must stay live) and keep the day report
+ * card with the state at its close. This is the suite's most expensive step: the clone plays 22:00 → 06:00, about
+ * 6 s per scenario on the development host, and it is the only way to get `endDay`'s report. One unprotected gateway
+ * channel is protected and, where the scenario has the recall volume, recalls are held for the last hour over the
+ * recall storm's I/O, so both operation lines have a state to render from on every scenario that has the feature: a
+ * mode, and a hold with a non-empty backlog. Applied through the sim's own command and operation layers, exactly as
+ * the Change Desk does; a setup failure is a test failure, not a silently empty report line. */
+function captureDayReport(run: RunState, scenario: Scenario, content: GameContent): ReportRun['dayReports'] {
+  const remaining = TICKS_PER_DAY - run.sim.tick;
+  if (remaining <= 0) return [];
+  const early = Math.max(0, remaining - TICKS_PER_HOUR);
+  let end = advance(run, scenario, content, early);
+  let sim = end.sim;
+  const channel = gatewayChannels(sim, scenario).find((w) => sim.gatewayModes?.[w.id] === undefined);
+  if (channel) {
+    const applied = applyOperation(sim, scenario, { kind: 'SET_GATEWAY', workloadId: channel.id, mode: 'LIMIT' });
+    if (!applied.ok) throw new Error(`${scenario.id}: gateway setup failed: ${applied.message}`);
+    sim = applied.state;
+  }
+  if (sim.config.dasd.lcus.some((l) => l.id === HSM_RECALL.lcuId)) {
+    sim = applyCommands(sim, [{ kind: 'SET_LCU', lcuId: HSM_RECALL.lcuId, extraIops: { RANDOM: HSM_RECALL_STORM.randomIops } }], scenario.addressSpaces);
+    const applied = applyOperation(sim, scenario, { kind: 'HOLD_HSM_RECALL', held: true });
+    if (!applied.ok) throw new Error(`${scenario.id}: recall setup failed: ${applied.message}`);
+    sim = applied.state;
+  }
+  end = advance({ ...end, sim }, scenario, content, remaining - early);
+  const report = end.reports.at(-1);
+  return report ? [{ report, end }] : [];
 }

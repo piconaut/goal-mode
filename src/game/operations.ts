@@ -1,16 +1,15 @@
-import { GATEWAY_TRAFFIC_CARDS, OPERATION_TRUST, OPERATIONS } from '../content/operations';
+import { OPERATION_TRUST, OPERATIONS } from '../content/operations';
 import { STC_AUTOMATION } from '../content/entities';
-import { applyOperation, gatewayChannels, operatorRoster, type Operation } from '../sim/core/operations';
+import { applyOperation, gatewayChannels, operatorRoster, type GatewayMode, type Operation } from '../sim/core/operations';
 import type { Scenario } from '../sim/core/scenario';
 import { effectiveAddressSpaces } from '../sim/core/tick/helpers';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
-import { recallIncomingIops, type GatewayTraffic } from '../sim/core/tick/operatorEffects';
+import { recallIncomingIops } from '../sim/core/tick/operatorEffects';
 import { activeUtilities } from '../sim/subsys/utilities';
 import { rosterCpuSec, type RosterEntry, type RosterKind } from '../sim/workload/rosters';
 import { endEventsByOperation } from './run/events';
 import { previewContext, spendHours, type ChangeOutcome } from './run/changes';
 import { poolUse } from './displaceable';
-import { difficultyOf, scaleExcess } from './difficulty';
 import { hostImages } from './footprint';
 import { allWorkloads } from './workloads';
 import { facetOf, logLine, loseTrust, type GameContent } from './run/shared';
@@ -30,28 +29,31 @@ export function operationHours(op: Operation, staffMult = 1): number {
   }
 }
 
-/** Legacy cards already describe the additional traffic as an arrival multiplier. The edge reads the cards, not the
- * live `mods.rate`, so overlapping rate cards keep the pre-existing last-begin-wins approximation. */
-export function gatewaySources(run: RunState, content: GameContent): Record<string, GatewayTraffic> {
-  const result: Record<string, GatewayTraffic> = {};
-  for (const e of run.events) {
-    const source = GATEWAY_TRAFFIC_CARDS[e.defId];
-    if (!source || e.ended || e.startTick > run.sim.tick || (e.endTick !== null && e.endTick <= run.sim.tick)) continue;
-    const def = content.events.find((d) => d.id === e.defId);
-    const severity = def?.fixedSeverity ? 1 : difficultyOf(run.difficulty).eventSeverityMult;
-    for (const cmd of def?.begin ?? []) {
-      if (cmd.kind !== 'SET_MODIFIER' || cmd.mod !== 'rate') continue;
-      (result[cmd.key] ??= {})[source] = scaleExcess(cmd.value, severity);
-    }
-  }
-  return result;
-}
-
 /** The first of `facets` the run tracks (none when it has none of them). */
 const firstFacet = (run: RunState, facets: readonly string[]): string[] => {
   const facet = facets.find((f) => run.trust[f] !== undefined);
   return facet === undefined ? [] : [facet];
 };
+
+/** External channels under a gateway protection mode, for the day's report card (PT-20 rule 6: toggled state is
+ * visible). The mode in force when the report is taken; a channel switched off before the day closed is not listed. */
+export function gatewayStatus(run: RunState, scenario: Scenario): { id: string; name: string; mode: GatewayMode }[] {
+  const modes = run.sim.gatewayModes;
+  if (!modes) return [];
+  return gatewayChannels(run.sim, scenario).flatMap(({ id, name }) => {
+    const mode = modes[id];
+    return mode === undefined ? [] : [{ id, name, mode }];
+  });
+}
+
+/** The DFSMShsm recall state for a report: held (and since when) and the I/O queued. Null when recalls are neither
+ * held nor backlogged, so a released-and-drained queue prints no line. */
+export function recallStatus(run: RunState): { held: boolean; heldSinceTick: number | null; backlogIo: number } | null {
+  const recalls = run.sim.hsmRecalls;
+  if (!recalls) return null;
+  const held = recalls.heldSinceTick != null;
+  return held || recalls.backlogIo > 0 ? { held, heldSinceTick: recalls.heldSinceTick, backlogIo: recalls.backlogIo } : null;
+}
 
 export function chargeHeldRecalls(run: RunState, tick: number): RunState {
   const since = run.sim.hsmRecalls?.heldSinceTick;
@@ -84,7 +86,7 @@ export function requestOperation(run: RunState, scenario: Scenario, content: Gam
   } else if (op.kind === 'SET_GATEWAY' && op.mode !== null) {
     const owner = gatewayChannels(run.sim, scenario).find((w) => w.id === op.workloadId)!.stakeholder;
     next = loseTrust(next, [owner], OPERATIONS.gatewayTrust);
-    if (op.mode === 'BLOCK' && gatewaySources(run, content)[op.workloadId]?.attackRateMult === undefined) message += '. Edge team: no unusual source addresses.';
+    if (op.mode === 'BLOCK' && run.sim.mods.gatewaySources?.[op.workloadId]?.attackRateMult === undefined) message += '. Edge team: no unusual source addresses.';
   }
   return { run: logLine(endEventsByOperation(run, next, scenario, content, op), message), ok: true, message };
 }
@@ -109,7 +111,9 @@ function rosterView(run: RunState, scenario: Scenario, kind: RosterKind) {
   return [...groups.values()].flatMap(({ workloadId, lparId, shareSum, entries }) => {
     const grant = sim.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.[workloadId];
     const measuredCpuSec = grant ? (poolUse(grant, 'CP') + poolUse(grant, 'ZIIP')) * TICK_SEC : 0;
-    const cpuSec = rosterCpuSec(entries.map((e) => ({ ...e, shareFrac: e.shareFrac / shareSum })), measuredCpuSec, sim.entityLoads);
+    // A routed-away entity's group has only the load's synthetic entry (share 0): nothing of its own to share out.
+    const shares = entries.map((e) => ({ ...e, shareFrac: shareSum > 0 ? e.shareFrac / shareSum : 0 }));
+    const cpuSec = rosterCpuSec(shares, measuredCpuSec, sim.entityLoads);
     const member = sim.config.db2.find((m) => m.lparId === lparId)?.ssid;
     return entries.map((e) => ({ ...e, cpuSec: cpuSec[e.id] ?? 0, member }));
   }).sort((a, b) => b.cpuSec - a.cpuSec);

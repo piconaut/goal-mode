@@ -1,13 +1,15 @@
 import { packOf } from '../../content/packs';
 import type { Scenario } from '../../sim/core/scenario';
 import { TICKS_PER_DAY } from '../../sim/core/units';
+import type { EntityLoad, GatewayTraffic } from '../../sim/core/types';
+import { difficultyOf, scaleExcess } from '../difficulty';
 import { requestOperation } from '../operations';
 import type { DayTrace } from '../dayTrace';
 import type { PlannedChange, RunState } from '../types';
 import { otherTeamChangeId, operationsForEvent } from './eventEffects';
 import { resolveEvent } from './events';
 import { applyBackout } from './otherTeamChanges';
-import { logLine, loseTrust, type GameContent } from './shared';
+import { cardLive, logLine, loseTrust, type GameContent } from './shared';
 
 /** Translation for v2 saves written before PT-54. Only the loader reads the old fix IDs. */
 const LEGACY_EVENT: Readonly<Record<string, string>> = {
@@ -46,12 +48,75 @@ function migratedEventId(run: RunState, oldId: string | null | undefined): strin
 
 type LegacyChange = PlannedChange & { endsEvent?: string | null; fixId?: string; armedEvents?: string[] };
 
+/** PR-27 back-compat: the gateway attack/retry split used to be derived from the live cards every tick. A save
+ * written before it moved into `mods.gatewaySources` has the cards' rate modifiers but no split, so a gateway mode
+ * over the rest of the card would shed differently. Re-apply the live cards' begin source commands here; a save that
+ * already carries the same values is returned unchanged, so loading is idempotent and adds no command-log lines. */
+function restoreGatewaySources(run: RunState, content: GameContent): RunState {
+  const sources: Record<string, GatewayTraffic> = { ...run.sim.mods.gatewaySources };
+  let changed = false;
+  for (const event of run.events) {
+    if (!cardLive(event, run.sim.tick)) continue;
+    const def = content.events.find((d) => d.id === event.defId);
+    if (!def) continue;
+    const severity = def.fixedSeverity ? 1 : difficultyOf(run.difficulty).eventSeverityMult;
+    for (const cmd of def.begin) {
+      if (cmd.kind !== 'SET_GATEWAY_SOURCE') continue;
+      const mult = scaleExcess(cmd.mult, severity);
+      const entry: GatewayTraffic = { ...sources[cmd.workloadId] };
+      const before = entry[cmd.source];
+      if (mult === 1) delete entry[cmd.source];
+      else entry[cmd.source] = mult;
+      if ((mult === 1 ? before !== undefined : before !== mult)) changed = true;
+      if (Object.keys(entry).length > 0) sources[cmd.workloadId] = entry;
+      else delete sources[cmd.workloadId];
+    }
+  }
+  if (!changed) return run;
+  const { gatewaySources: _old, ...mods } = run.sim.mods;
+  return { ...run, sim: { ...run.sim, mods: Object.keys(sources).length > 0 ? { ...mods, gatewaySources: sources } : mods } };
+}
+
+/** RF-11: a save written before an entity load carried its own constant demand has `extraCpuFrac`, the multiplier on
+ * its workload's CPU on the image. The old tick's `cpByWorkload` already includes that multiplier, so the load's own
+ * engines are frac/(1 + Σfrac over the loads on that workload and image) of the saved grant. A contended image's grant
+ * is below its demand, so such a save converts the load a little smaller (APPROX). A load that already has `cpEngines`
+ * is left as it is, so loading is idempotent. */
+function convertEntityLoads(run: RunState): RunState {
+  const loads = run.sim.entityLoads;
+  if (!loads?.some((l) => (l as { cpEngines?: number }).cpEngines === undefined)) return run;
+  // The old tick multiplied the workload's whole flow by 1 + ΣextraCpuFrac, so `last` holds the loaded grant.
+  const extraOf = (l: Partial<EntityLoad>) => (l.extraCpuFrac ?? 0);
+  const denominator = (group: { workloadId: string; lparId: string }) => {
+    let sum = 1;
+    for (const l of loads) if (l.workloadId === group.workloadId && l.lparId === group.lparId) sum += extraOf(l);
+    return sum;
+  };
+  const converted: EntityLoad[] = loads.map((l) => {
+    const legacy = l as Partial<EntityLoad> & { extraCpuFrac?: number };
+    if (legacy.cpEngines !== undefined) {
+      const { extraCpuFrac: _old, ...rest } = legacy;
+      return rest as EntityLoad;
+    }
+    const grant = run.sim.last.lpars.find((x) => x.lparId === l.lparId)?.cpByWorkload?.[l.workloadId];
+    const frac = extraOf(legacy);
+    const own = frac / denominator({ workloadId: l.workloadId, lparId: l.lparId });
+    return {
+      tag: legacy.tag!, kind: legacy.kind!, id: legacy.id!, workloadId: legacy.workloadId!, lparId: legacy.lparId!,
+      cpEngines: own * ((grant?.cp ?? 0) + (grant?.iipcp ?? 0)),
+      ziipEngines: own * (grant?.ziip ?? 0),
+    };
+  });
+  return { ...run, sim: { ...run.sim, entityLoads: converted } };
+}
+
 export function migrateRunState(run: RunState): RunState {
   const { game: content } = packOf(run.scenarioId);
   const oldChanges: LegacyChange[] = run.changes;
   const extraAddressSpaces = run.sim.extraAddressSpaces.filter((a) => a.jobname !== 'CICSXLOG');
+  const restored = convertEntityLoads(restoreGatewaySources(run, content));
   let next = extraAddressSpaces.length === run.sim.extraAddressSpaces.length
-    ? run : { ...run, sim: { ...run.sim, extraAddressSpaces } };
+    ? restored : { ...restored, sim: { ...restored.sim, extraAddressSpaces } };
   const replies = new Map<string, string>();
   for (const event of run.events) {
     const def = content.events.find((d) => d.id === event.defId);

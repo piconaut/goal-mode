@@ -43,14 +43,16 @@ function stepN(s: SimState, n: number, scenario: Scenario, first: Command[] = []
 }
 
 describe('runaway thread and shadow IT load roster entities, not a workload modifier', () => {
-  it('RUNAWAY puts ×10 of the analytics CPU on one DDF thread and its end clears it', () => {
+  it('RUNAWAY puts its own constant CPU on one DDF thread and its end clears it', () => {
     const def = card(MIDWEST_EVENTS, 'RUNAWAY');
     let r = advance(runWith(def, MIDWEST, MIDWEST_GAME), MIDWEST, contentOf(def, MIDWEST_GAME), 3);
     const loads = r.sim.entityLoads ?? [];
     expect(loads).toHaveLength(1);
     expect(loads[0]).toMatchObject({ kind: 'DDF_THREAD', workloadId: 'ADHOC', lparId: 'PROD2' });
-    // ADHOC runs only on PROD2 in Midwest, so its one thread carries the whole ×10.
-    expect(1 + loads[0]!.extraCpuFrac).toBeCloseTo(10, 6);
+    // ADHOC runs only on PROD2 in Midwest, so its one thread carries the whole excess as engines of its own.
+    expect(loads[0]!.cpEngines).toBeGreaterThan(0);
+    expect(loads[0]!.ziipEngines).toBeGreaterThan(0);
+    expect('extraCpuFrac' in loads[0]!).toBe(false);
     expect(r.sim.mods.cpu.ADHOC).toBeUndefined();
     expect(r.events[0]!.culprits).toEqual([loads[0]!.id]);
     r = { ...r, events: r.events.map((e) => ({ ...e, endTick: r.sim.tick + 1 })) };
@@ -72,7 +74,10 @@ describe('runaway thread and shadow IT load roster entities, not a workload modi
     const loads = r.sim.entityLoads ?? [];
     expect(loads.length).toBeGreaterThanOrEqual(2);
     expect(loads.length).toBeLessThanOrEqual(3);
-    for (const l of loads) expect(l).toMatchObject({ kind: 'TSO_USER', workloadId: 'TSO', lparId: 'DEVT' });
+    for (const l of loads) {
+      expect(l).toMatchObject({ kind: 'TSO_USER', workloadId: 'TSO', lparId: 'DEVT' });
+      expect(l.cpEngines).toBeGreaterThan(0);
+    }
     expect(new Set(loads.map((l) => l.id)).size).toBe(loads.length);
     expect(r.sim.mods.cpu.TSO).toBeUndefined();
   });

@@ -5,7 +5,7 @@ import { blockedDbats, slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
 import { OPERATIONS } from '../../../content/operations';
 import { bpIoMultiplier, DB2 } from '../../subsys/db2';
-import { buildSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
+import { buildSlices, entityLoadSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
 import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
 import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
@@ -15,7 +15,7 @@ import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { prepareDb2Reader } from './db2Contention';
 import { atOrFind } from './plan';
-import { applyCpuModifiers, applyEntityLoads, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
+import { applyCpuModifiers, aorFailFrac, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, scaleSliceCpu, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
  * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
@@ -62,7 +62,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const lostIds = Object.keys(lostShare);
   const imageRates = lostIds.length ? { ...rates } : rates;
   for (const id of lostIds) imageRates[id] = (rates[id] ?? 0) * Math.max(0, 1 - lostShare[id]!);
-  const base = applyEntityLoads(applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods), prev.entityLoads, l.id);
+  const base = [
+    ...applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates: imageRates, addressSpaces, scope: workloadScope.get(workloads), residentReader }), prev.mods),
+    // RF-11: a loaded entity is its own constant demand, outside the workload's arrival-driven flow and its modifiers.
+    ...entityLoadSlices(def, l, workloads, prev.entityLoads),
+  ];
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;
@@ -71,7 +75,8 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     const mult = OPERATIONS.staleStatsCpuMult;
     for (let i = 0; i < base.length; i++) {
       const slice = base[i]!;
-      if (!slice.workloadId || !usesDb2(workloadById[slice.workloadId]!)) continue;
+      // A loaded entity's demand is its own engines, not the workload's CPU per transaction (RF-11).
+      if (slice.kind === 'AS' || !slice.workloadId || !usesDb2(workloadById[slice.workloadId]!)) continue;
       base[i] = scaleSliceCpu(slice, mult);
     }
   }
@@ -166,6 +171,31 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
       const ddfLock = profile ? content!.lockSec * (profile.writes[w.id] ?? 0) : 0;
       if (ddfLock > 0) parts.ddfLock = ddfLock;
       extra += parts.cf + parts.lock + ddfLock;
+      // RF-10: a settled posting holds a write claim on the shared partition. A drain stops new claims in the write
+      // class for its whole window, so the posting waits it out; a wait past the resource timeout fails it.
+      const writeFrac = profile ? (profile.writes[w.id] ?? 0) : 0;
+      if (writeFrac > 0) {
+        const drain = content!.drain;
+        if (drain) {
+          const remainSec = Math.max(0, (drain.untilTick - prev.tick) * TICK_SEC);
+          if (remainSec > profile!.claimTimeoutSec) {
+            failFrac = Math.max(failFrac, writeFrac);
+          } else {
+            const holdSec = writeFrac * remainSec;
+            extra += holdSec;
+            s.drainHoldSec = holdSec;
+            parts.drainLock = (parts.drainLock ?? 0) + holdSec;
+          }
+        } else if (s.rate > 0) {
+          // The claim lasts the posting's own transaction on this image. Keep its release so a drain that starts
+          // before then waits for it (the drain's claim-release wait, Db2 13 Managing Performance PDF p.108
+          // (printed 88)). No arrivals, no claim: a stale response time must not hold a later drain.
+          const rt = env.rtByWorkloadLpar[img.wlKey[w.id] ?? wlLparKey(w.id, l.id)] ?? 0;
+          const untilTick = prev.tick + Math.max(profile!.writerClaimFloorSec, rt) / TICK_SEC;
+          const held = content!.writerClaims;
+          if (!held || held.heldUntilTick < untilTick) content!.writerClaims = { heldUntilTick: untilTick };
+        }
+      }
       cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
     }
     let outside = 0;
@@ -175,7 +205,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
       extra += parts.qr;
       outside += mxt.waitSec;
       outsideRef += mxt.refSec;
-      failFrac = Math.max(qr.failFrac, mxt.failFrac);
+      failFrac = Math.max(failFrac, qr.failFrac, mxt.failFrac);
     }
     if (w.subsystem === 'DDF') {
       outside += dbat.waitSec;

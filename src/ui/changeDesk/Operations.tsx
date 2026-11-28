@@ -3,7 +3,8 @@ import { CANCEL_WARNINGS } from '../../content/operations';
 import { operationHours, type OfferedBasis } from '../../game/operations';
 import type { ViewModel } from '../../game/view';
 import type { Command } from '../../sim/core/commands';
-import type { GatewayMode, Operation } from '../../sim/core/operations';
+import type { Operation } from '../../sim/core/operations';
+import { GATEWAY_MODE_LABEL } from '../labels';
 import { CodexHints } from '../CodexHint';
 import { Empty } from '../Empty';
 import type { GameHandle } from '../useGame';
@@ -78,12 +79,6 @@ export function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
 }
 
 type OperationOption = { label: string; op: Operation; warning?: string };
-
-const GATEWAY_MODE_LABEL: Record<GatewayMode, string> = {
-  LIMIT: 'Rate limit',
-  BACKOFF: 'Client backoff',
-  BLOCK: 'Block source addresses',
-};
 
 const OFFERED_BASIS_LABEL: Record<OfferedBasis, string> = {
   CLOSED: 'offered avg (last hour)',

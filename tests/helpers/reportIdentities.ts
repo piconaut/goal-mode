@@ -1,6 +1,7 @@
 // The identities of the cross-report invariant suite (tests/sim/report-invariants.test.ts). Each one states a
 // relation between figures a player can read (RMF interval reports, Partition Data, Monitor III, the SMF views,
-// Finance) or between a figure and the sim state it is measured from, and walks whatever the run's reports contain:
+// Finance, the day report card) or between a figure and the sim state it is measured from, and walks whatever the
+// run's reports contain:
 // no identity names a scenario, LPAR, service class or workload.
 //
 // `basis` says what the identity is: 'z/OS' = how the real report behaves (book and page in `source`, checked with
@@ -23,6 +24,7 @@ import { billLines, closeMonth, tfpCharge } from '../../src/sim/cost/mlc';
 import { msuPerCp } from '../../src/sim/hw/cpc';
 import { REPORT_KINDS, renderReport, renderScrt } from '../../src/sim/measure/reports';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
+import { gatewayChannels } from '../../src/sim/core/operations';
 import { classify } from '../../src/sim/wlm/classify';
 import { BUCKET_BOUNDS } from '../../src/sim/wlm/goals';
 import { ACC_DECAY, goalInfo } from '../../src/sim/wlm/runtime';
@@ -114,6 +116,8 @@ function plexSum(c: Check, o: IntervalObs, rows: readonly WlmRecord[], what: str
     c.close(p.applIipPct, sum(parts.map((r) => r.applIipPct)), ROUNDING, w('APPL% IIP'));
     const rt = sum(parts.map((r) => (r.avgRtSec ?? 0) * r.ended));
     if (p.avgRtSec !== null) c.close(p.avgRtSec * p.ended, rt, ROUNDING, w('response time × ENDED'));
+    const queue = sum(parts.map((r) => (r.avgQueueSec ?? 0) * r.ended));
+    if (p.avgQueueSec !== null) c.close(p.avgQueueSec * p.ended, queue, ROUNDING, w('queue time × ENDED'));
     if (!p.reportClass || p.members?.length === 1) p.buckets.forEach((b, i) => c.close(b, sum(parts.map((r) => r.buckets[i] ?? 0)), ROUNDING, w(`bucket ${i}`)));
   }
 }
@@ -166,6 +170,27 @@ export const IDENTITIES: Identity[] = [
     source: 'RMF Report Analysis 3.1 p.530 Table 222',
     check: (run, c) => {
       for (const o of run.intervals) for (const r of [...o.iv.wlm, ...(o.iv.wlmRc ?? [])]) c.close(r.endPerSec * o.iv.intervalSec, r.ended, ROUNDING, () => `${at(o)} ${r.lparId} ${r.scKey}`);
+    },
+  },
+  {
+    id: 'wlmgl-queue-time',
+    title: 'WLMGL: QUEUED is a non-negative part of ACTUAL response time, never more than it',
+    basis: 'z/OS',
+    // TRANS-TIME ACTUAL includes EXECUTION, QUEUED, R/S AFFIN and INELIGIBLE, and QUEUED "basically includes the
+    // time a job was delayed for initiation" (RMF Report Analysis 3.1 PDF p.531 (printed 491)). The SMF field is the
+    // period's total queue delay time R723CQDT, in 1024-microsecond units; for batch it is "the time jobs spent
+    // waiting for an initiator" (MVS SMF 3.1 PDF p.646 (printed 618)). That the row's weighted queue is the ended
+    // jobs' wait is checked against SMF 30 by `smf30-vs-wlmgl`; here it only has to be a part of the response time
+    // it sits in.
+    source: 'RMF Report Analysis 3.1 PDF p.531 (printed 491) (TRANS-TIME); MVS SMF 3.1 PDF p.646 (printed 618) (R723CQDT)',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        for (const r of [...o.iv.wlm, ...(o.iv.wlmRc ?? [])]) {
+          if (r.avgQueueSec === null) continue;
+          c.ok(r.avgQueueSec >= -1e-9, () => `${at(o)} ${r.lparId} ${r.scKey} QUEUED ${r.avgQueueSec} below zero`);
+          if (r.avgRtSec !== null) c.atMost(r.avgQueueSec, r.avgRtSec, ROUNDING, () => `${at(o)} ${r.lparId} ${r.scKey} QUEUED above ACTUAL`);
+        }
+      }
     },
   },
   {
@@ -717,18 +742,37 @@ export const IDENTITIES: Identity[] = [
     // than the sum of the individual structure values" (facility management commands, not modelled): here it is equal.
     source: 'RMF Report Analysis 3.1 p.365–378 (Tables 144–146)',
     check: (run, c) => {
+      // A Monitor III gatherer gap makes a row's sampled time shorter than the interval, so it cannot add up to a
+      // figure gathered over the whole interval (RF-12); and a system down for the whole interval has no row at all
+      // while its requests still appear in the CF line. A stopped gatherer on a system with samples and no CF traffic
+      // removes nothing. An interval with no gatherer data (closed before RF-12) is checked as before.
+      const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
+      const systemsGap = (iv: RmfInterval) =>
+        (iv.cfSystems ?? []).some((row) => short(iv, row.system)) ||
+        Object.entries(iv.cfGathererSec ?? {}).some(([system, sec]) => sec <= 1e-9 && (iv.cfSystems ?? []).every((row) => row.system !== system));
+      // The CF's own line is gathered by any active gatherer, so it is short only when every one was down for a while.
+      const lineGap = (iv: RmfInterval) => {
+        if (!iv.cfGathererSec) return false;
+        const secs = Object.values(iv.cfGathererSec);
+        return secs.length === 0 || Math.max(...secs) < iv.intervalSec - 1e-6;
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
+        const gap = short(iv, iv.cfMaster ?? '') || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
-          c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
-          c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
+          if (!gap) {
+            c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
+            c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
+          }
           c.ok(cf.busyPct >= 0 && cf.busyPct <= 100 && cf.asyncPct >= -1e-9 && cf.asyncPct <= 100 + 1e-9, () => `${at(o)} ${cf.lparId} UTIL% / ASYNC % outside 0–100`);
         }
-        // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
-        c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
+        if (!gap) {
+          // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
+          c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
+        }
         for (const st of iv.cfStructures) {
-          c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
+          if (!gap) c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
           c.ok(iv.cf.some((cf) => cf.lparId === st.cfLparId), () => `${at(o)} ${st.name} in ${st.cfLparId}, which has no CF line`);
         }
         for (const s of iv.cfSystems ?? []) {
@@ -750,10 +794,23 @@ export const IDENTITIES: Identity[] = [
         c.close(got.asyncPct, (100 * (req - syncReq)) / req, WEIGHTED, where('ASYNC %'));
         if (syncReq > 0) c.close(got.syncUs, sum(lines.map((s) => ((s.reqPerSec * s.syncPct) / 100) * s.syncUs)) / syncReq, WEIGHTED, where('SYNC SERV'));
       };
+      const short = (iv: RmfInterval, system: string) => iv.cfGathererSec?.[system] !== undefined && iv.cfGathererSec[system]! < iv.intervalSec - 1e-6;
+      const systemsGap = (iv: RmfInterval) =>
+        (iv.cfSystems ?? []).some((row) => short(iv, row.system)) ||
+        Object.entries(iv.cfGathererSec ?? {}).some(([system, sec]) => sec <= 1e-9 && (iv.cfSystems ?? []).every((row) => row.system !== system));
+      const lineGap = (iv: RmfInterval) => {
+        if (!iv.cfGathererSec) return false;
+        const secs = Object.values(iv.cfGathererSec);
+        return secs.length === 0 || Math.max(...secs) < iv.intervalSec - 1e-6;
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
+        // The CF line and the structure summary are gathered over different windows when a gatherer stopped (RF-12).
+        // A stopped gatherer on a system with samples and no CF traffic changes neither, so only those rows count.
+        const gap = short(iv, iv.cfMaster ?? '') || systemsGap(iv) || lineGap(iv);
         for (const cf of iv.cf) {
+          if (gap) continue;
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);
           const req = sum(sts.map((s) => s.reqPerSec));
           const where = (x: string) => () => `${at(o)} ${cf.lparId} ${x} vs structures`;
@@ -763,6 +820,33 @@ export const IDENTITIES: Identity[] = [
         for (const s of iv.cfSystems ?? []) {
           weigh(c, (iv.cfStructSystems ?? []).filter((x) => x.cfLparId === s.cfLparId && x.system === s.system), s, (x) => () => `${at(o)} ${s.system}→${s.cfLparId} ${x} vs its structure lines`);
         }
+      }
+    },
+  },
+  {
+    id: 'cf-gap-consistency',
+    title: 'CF Activity: the sampled time and rows agree with the Monitor III gatherers, and the structure detail has the interval master',
+    basis: 'game',
+    // RF-12: `cfGathererSec` is the sampled time behind each system's CF rows and `cfMaster` the gatherer whose samples
+    // carry the structure summary. A row exists only for a system that sampled, and the summary only with a master.
+    // The books give the SMF split and the master gatherer, not these report fields, so this is a game identity.
+    source: 'SPEC §17 (RF-12 model); Data Gatherer User\'s Guide PDF p.39 (printed 21) for the SYNC interval',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        if (!o.steady || !o.iv.cfGathererSec) continue;
+        const iv = o.iv;
+        const secs = iv.cfGathererSec!;
+        for (const [system, sec] of Object.entries(secs)) {
+          c.ok(sec >= 0 && sec <= iv.intervalSec + 1e-6, () => `${at(o)} ${system} sampled ${sec} s of ${iv.intervalSec}`);
+          const rows = (iv.cfSystems ?? []).filter((row) => row.system === system);
+          c.ok(rows.length === 0 || sec > 0, () => `${at(o)} ${system} has CF rows but no sampled time`);
+        }
+        for (const row of iv.cfSystems ?? []) c.ok(secs[row.system] !== undefined, () => `${at(o)} ${row.system} has a CF row but no sampled time`);
+        if (iv.cfMaster !== undefined) {
+          c.ok(secs[iv.cfMaster] !== undefined && secs[iv.cfMaster]! > 0, () => `${at(o)} master ${iv.cfMaster} has no sampled time`);
+          c.ok((iv.cfStructures ?? []).length > 0, () => `${at(o)} master ${iv.cfMaster} supplied no structure detail`);
+        }
+        c.ok((iv.cfStructures ?? []).length === 0 || iv.cfMaster !== undefined, () => `${at(o)} structure detail without a master gatherer`);
       }
     },
   },
@@ -940,6 +1024,9 @@ export const IDENTITIES: Identity[] = [
             const rows = scRows(o.iv, lparId).filter((r) => !r.reportClass && r.serviceClass === sc);
             c.close(sum(rows.map((r) => r.ended)), inClass.length, ROUNDING, () => `${at(o)} ${lparId} ${sc} ENDED vs jobs ended`);
             c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inClass.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} response time vs queue + elapsed`);
+            // The queue/execution split of ACTUAL (RF-13): R723CQDT is the jobs' initiator wait, EXECUTION the rest.
+            c.close(sum(rows.map((r) => (r.avgQueueSec ?? 0) * r.ended)), sum(inClass.map((j) => j.queuedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} QUEUED vs initiator wait`);
+            c.close(sum(rows.map((r) => ((r.avgRtSec ?? 0) - (r.avgQueueSec ?? 0)) * r.ended)), sum(inClass.map((j) => j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} ${sc} execution time vs elapsed`);
           }
           for (const rc of new Set(mine.map((j) => j.cls.reportClass).filter((x): x is string => x !== null))) {
             if (workloadRcs.has(rc)) continue;
@@ -947,6 +1034,7 @@ export const IDENTITIES: Identity[] = [
             const rows = (o.iv.wlmRc ?? []).filter((r) => r.lparId === lparId && r.serviceClass === rc);
             c.close(sum(rows.map((r) => r.ended)), inRc.length, ROUNDING, () => `${at(o)} ${lparId} report class ${rc} ENDED vs jobs ended`);
             c.close(sum(rows.map((r) => (r.avgRtSec ?? 0) * r.ended)), sum(inRc.map((j) => j.queuedSec + j.elapsedSec)), ROUNDING, () => `${at(o)} ${lparId} report class ${rc} response time vs queue + elapsed`);
+            c.close(sum(rows.map((r) => (r.avgQueueSec ?? 0) * r.ended)), sum(inRc.map((j) => j.queuedSec)), ROUNDING, () => `${at(o)} ${lparId} report class ${rc} QUEUED vs initiator wait`);
           }
         }
       }
@@ -1311,6 +1399,36 @@ export const IDENTITIES: Identity[] = [
       }
     },
   },
+  // ---------------------------------------------------------------- The day report card
+  {
+    id: 'day-report-operations',
+    title: "The day's report card names the gateway protection modes and the DFSMShsm recall hold the sim had when the day closed",
+    basis: 'game',
+    source: 'PT-20 design §2 rule 6 (toggled state is visible in a report), §3 (gateway modes, HSM hold)',
+    check: (run, c) => {
+      for (const { report, end } of run.dayReports) {
+        const where = (x: string) => () => `day ${report.day + 1} ${x}`;
+        const names = new Map(gatewayChannels(end.sim, run.scenario).map((w) => [w.id, w.name]));
+        const modes = end.sim.gatewayModes ?? {};
+        const lines = report.gateway ?? [];
+        c.ok(lines.length === Object.keys(modes).length, where(`${lines.length} gateway lines for ${Object.keys(modes).length} protected channels`));
+        for (const line of lines) {
+          c.ok(line.mode === modes[line.id], where(`${line.id} gateway mode ${line.mode} vs ${modes[line.id] ?? 'off'}`));
+          c.ok(line.name === (names.get(line.id) ?? line.id), where(`${line.id} gateway name`));
+        }
+        const rec = end.sim.hsmRecalls;
+        const held = rec?.heldSinceTick != null;
+        const backlog = rec?.backlogIo ?? 0;
+        if (report.recalls) {
+          c.ok(report.recalls.held === held, where(`recall held ${report.recalls.held} vs ${held}`));
+          c.ok(report.recalls.heldSinceTick === (rec?.heldSinceTick ?? null), where('recall hold start'));
+          c.close(report.recalls.backlogIo, backlog, ROUNDING, where('recall backlog'));
+        } else {
+          c.ok(!held && backlog <= 0, where('no recall line with a hold or a backlog'));
+        }
+      }
+    },
+  },
   // ---------------------------------------------------------------- Every figure
   {
     id: 'figures-finite',
@@ -1378,6 +1496,7 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
   'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
   'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
+  'a batch period reporting initiator queue time': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => (r.avgQueueSec ?? 0) > 0)),
   'batch jobs ended in a class': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
     const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick);
     const sc = rt && classify(o.def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
