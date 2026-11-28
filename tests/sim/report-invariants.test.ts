@@ -112,6 +112,21 @@ describe('CF Activity identity under a gatherer gap (RF-12)', () => {
     expect(c.failures.length).toBeGreaterThan(0);
   });
 
+  it('checks a gap interval with the sampled-time identity', () => {
+    const gap = IDENTITIES.find((i) => i.id === 'cf-gap-consistency')!;
+    const ok = new Check();
+    gap.check(run(iv({ PROD1: 300 })), ok);
+    expect(ok.failures).toEqual([]);
+    expect(ok.n).toBeGreaterThan(0);
+    // A row without sampled time, and a master without samples, are contradictions.
+    const rowless = new Check();
+    gap.check(run(iv({ PROD1: 0 })), rowless);
+    expect(rowless.failures.length).toBeGreaterThan(0);
+    const masterless = new Check();
+    gap.check(run(iv({ PROD1: 0, PROD2: 600 })), masterless);
+    expect(masterless.failures.length).toBeGreaterThan(0);
+  });
+
   it('applies the same gap rule to the CF service-time identity', () => {
     const service = IDENTITIES.find((i) => i.id === 'cf-service-times')!;
     const gap = new Check();

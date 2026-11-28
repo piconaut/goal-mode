@@ -824,6 +824,33 @@ export const IDENTITIES: Identity[] = [
     },
   },
   {
+    id: 'cf-gap-consistency',
+    title: 'CF Activity: the sampled time and rows agree with the Monitor III gatherers, and the structure detail has the interval master',
+    basis: 'game',
+    // RF-12: `cfGathererSec` is the sampled time behind each system's CF rows and `cfMaster` the gatherer whose samples
+    // carry the structure summary. A row exists only for a system that sampled, and the summary only with a master.
+    // The books give the SMF split and the master gatherer, not these report fields, so this is a game identity.
+    source: 'SPEC §17 (RF-12 model); Data Gatherer User\'s Guide PDF p.39 (printed 21) for the SYNC interval',
+    check: (run, c) => {
+      for (const o of run.intervals) {
+        if (!o.steady || !o.iv.cfGathererSec) continue;
+        const iv = o.iv;
+        const secs = iv.cfGathererSec!;
+        for (const [system, sec] of Object.entries(secs)) {
+          c.ok(sec >= 0 && sec <= iv.intervalSec + 1e-6, () => `${at(o)} ${system} sampled ${sec} s of ${iv.intervalSec}`);
+          const rows = (iv.cfSystems ?? []).filter((row) => row.system === system);
+          c.ok(rows.length === 0 || sec > 0, () => `${at(o)} ${system} has CF rows but no sampled time`);
+        }
+        for (const row of iv.cfSystems ?? []) c.ok(secs[row.system] !== undefined, () => `${at(o)} ${row.system} has a CF row but no sampled time`);
+        if (iv.cfMaster !== undefined) {
+          c.ok(secs[iv.cfMaster] !== undefined && secs[iv.cfMaster]! > 0, () => `${at(o)} master ${iv.cfMaster} has no sampled time`);
+          c.ok((iv.cfStructures ?? []).length > 0, () => `${at(o)} master ${iv.cfMaster} supplied no structure detail`);
+        }
+        c.ok((iv.cfStructures ?? []).length === 0 || iv.cfMaster !== undefined, () => `${at(o)} structure detail without a master gatherer`);
+      }
+    },
+  },
+  {
     id: 'cf-failed',
     title: 'CF Activity: a failed CF reports no requests and holds no structure; a duplexed structure shows PRIM and SEC in two CFs',
     basis: 'game',
