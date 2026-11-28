@@ -5,6 +5,7 @@ import { DIFFICULTIES, type DifficultyId } from '../../content/difficulty';
 import { PACKS } from '../../content/packs';
 import { dailySeed } from '../../game/daily';
 import type { GameHandle } from '../useGame';
+import { PrologueOffer } from '../tutor/PrologueOffer';
 import { SeedInput, seedOr } from './SeedInput';
 
 export function NewRun({ game }: { game: GameHandle }) {
@@ -13,6 +14,7 @@ export function NewRun({ game }: { game: GameHandle }) {
   const [seed, setSeed] = useState('');
   return (
     <>
+      <PrologueOffer game={game} />
       <div role="radiogroup" aria-label="Scenario">
         {Object.values(PACKS).map((p) => (
           <label key={p.id} style={{ display: 'block', margin: '4px 0' }}>

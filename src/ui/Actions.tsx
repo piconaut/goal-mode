@@ -171,6 +171,7 @@ function Section({ id, title, summary, codex = [], wide = false, children }: { i
   const [open, setOpen] = useState(() => !loadClosed().includes(id));
   return (
     <details
+      data-tour={`changes.${id}`}
       className="panel section"
       open={open}
       style={wide ? { gridColumn: '1 / -1' } : undefined}

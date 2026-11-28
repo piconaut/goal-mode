@@ -1,5 +1,4 @@
 // PRO-02: the prologue engine (docs/prologue-design.md §11.1–§11.3, §11.6) on its two-beat test script.
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { PACKS, PROLOGUE_SCENARIOS, packOf } from '../../src/content/packs';
@@ -11,7 +10,8 @@ import { applyGameCommand, type GameCommand } from '../../src/game/commands';
 import { advance, newRun, requestChange, startDay } from '../../src/game/run';
 import { backoutList } from '../../src/game/tutor/backout';
 import { beatTick, currentStep } from '../../src/game/tutor/engine';
-import { replayToChapter, type ReplayLog } from '../../src/game/tutor/replay';
+import { replayToChapter } from '../../src/game/tutor/replay';
+import { PROLOGUE_REFERENCE } from '../../src/game/tutor/reference';
 import type { RunState } from '../../src/game/types';
 import { tickOfPlayedHour } from '../../src/sim/core/clock';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
@@ -147,7 +147,7 @@ describe('the prologue engine (PRO-02)', () => {
   });
 
   it('a chapter start state replays from the reference command log, identically', () => {
-    const log = JSON.parse(readFileSync('tests/fixtures/prologue/reference.json', 'utf8')) as ReplayLog;
+    const log = PROLOGUE_REFERENCE;
     const a = replayToChapter(log, null);
     const b = replayToChapter(log, null);
     expect(JSON.stringify(a.run)).toBe(JSON.stringify(b.run));

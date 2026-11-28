@@ -58,3 +58,13 @@ export function floorTrust(trust: Record<Facet, number>, content: GameContent): 
   const floor = content.prologue!.trustFloor;
   return Object.fromEntries(Object.entries(trust).map(([f, v]) => [f, Math.max(floor, v)])) as Record<Facet, number>;
 }
+
+/** Ruth's "want me to put it back?" (§6.4): a change the player made in this chapter is in, and an SLA incident today
+ *  fell below the content's line. The offer reloads the chapter's start state; it never undoes the sim. */
+export function putBackOffered(run: RunState, content: GameContent): boolean {
+  if (!inPrologue(run, content)) return false;
+  const chapter = content.prologue!.chapters[run.tutor!.chapter];
+  if (!chapter) return false;
+  const changed = run.changes.some((c) => c.status === 'APPLIED' && c.plannedDay >= chapter.day);
+  return changed && run.incidents.some((i) => i.day === run.day && i.worstAttainmentPct < content.prologue!.putBackAttainmentPct);
+}

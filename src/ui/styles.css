@@ -338,3 +338,30 @@ button.link { background: none; border: none; padding: 0; font-weight: 600; colo
 .change-status { white-space: nowrap; width: 1%; }
 .change-status .tag { display: inline-block; }
 .change-status .tag + .tag { margin-left: 4px; }
+
+/* The prologue (PRO-03, docs/prologue-design.md §6.1, §11.4): Ruth's panel docks bottom right, a bottom sheet at phone
+   width; the spotlight is a thick outline plus a text label (never colour alone) and never takes a click. */
+.mentor { position: fixed; right: 16px; bottom: 16px; z-index: 18; width: min(400px, calc(100vw - 32px)); max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); font-size: 14px; }
+.mentor-min { width: auto; padding: 6px; }
+.mentor-head { display: flex; gap: 8px; align-items: center; }
+.mentor-head > span:nth-child(2) { flex: 1; min-width: 0; }
+.mentor-portrait { display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--accent); color: var(--bg); font-weight: 700; }
+.mentor-x { padding: 2px 8px; }
+.mentor-say p { margin: 0 0 6px; }
+.mentor-hints { margin: 0 0 6px; padding-left: 20px; color: var(--muted); }
+.mentor-putback { border-left: 3px solid var(--warn); padding-left: 8px; }
+.mentor-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mentor-spacer { flex: 1; }
+.app.prologue { padding-bottom: 240px; }
+.app.prologue .overlay { padding-bottom: 260px; }
+.app.prologue .toast { bottom: auto; top: 16px; }
+.spotlight { position: fixed; z-index: 17; pointer-events: none; outline: 4px solid var(--accent); outline-offset: 3px; border-radius: 6px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.3); }
+.spotlight-label { position: absolute; left: -4px; bottom: calc(100% + 8px); padding: 2px 8px; border-radius: 4px; background: var(--accent); color: var(--bg); font-size: 12px; font-weight: 700; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
+.spotlight-label.below { bottom: auto; top: calc(100% + 8px); }
+[data-tour] { scroll-margin-top: 48px; }
+.prologue-offer { margin-bottom: 8px; border-color: var(--accent); }
+@media (max-width: 600px) {
+  .mentor { left: 0; right: 0; bottom: 0; width: auto; max-height: 45vh; border-radius: 12px 12px 0 0; border-width: 2px 0 0; }
+  .app.prologue { padding-bottom: 50vh; }
+  .app.prologue .overlay { padding-bottom: 50vh; }
+}

@@ -118,7 +118,13 @@ export type ToWorker =
   /** Dev builds only: grant Insight for UI testing. */
   | { type: 'DEV_INSIGHT'; amount: number }
   | { type: 'DEV_FAST_DAYS'; days: number }
-  | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean };
+  | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean }
+  /** The prologue's mentor panel (PRO-03): Next or Skip step, a hint rung, a navigation the script may wait for. */
+  | { type: 'TUTOR_ACK' }
+  | { type: 'TUTOR_HINT' }
+  | { type: 'TUTOR_NOTE'; kind: string; ref: string }
+  /** Load a prologue chapter's start state (skip, replay, put it back), replayed from the reference log. */
+  | { type: 'PROLOGUE_CHAPTER'; chapterId: string };
 
 export type FromWorker =
   | { type: 'CAREER'; career: CareerState; lastRunXp: number | null }

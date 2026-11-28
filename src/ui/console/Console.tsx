@@ -103,7 +103,7 @@ export function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] 
         )}
       </div>
 
-      <div className="panel">
+      <div className="panel" data-tour="console.pi-heatmap">
         <h3>
           WLM performance index (sysplex)
           <CodexHints ids={['perf-index', 'policy-adjustment']} />

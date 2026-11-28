@@ -14,6 +14,8 @@ export const PROLOGUE_TUNING = {
   // FICTIONAL: high enough that no prologue day can end near a loss; the week's trust still moves visibly.
   trustFloor: 20,
   refilesPerRca: 1,
+  // FICTIONAL: "breaks the system badly" (§6.4): an SLA hour this far down is no tuning slip.
+  putBackAttainmentPct: 50,
 } as const;
 
 /** The engine's test script: one chapter, two beats (PRO-02). */

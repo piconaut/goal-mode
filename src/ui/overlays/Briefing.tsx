@@ -4,6 +4,7 @@ import type { ViewModel } from '../../game/view';
 import type { GameHandle } from '../useGame';
 import { FirstDayDifficulty, StartingPerk } from '../newRun';
 import { InboxReply } from '../Inbox';
+import { PrologueOffer } from '../tutor/PrologueOffer';
 import { DaySummary } from './DaySummary';
 
 export function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () => void }) {
@@ -11,9 +12,10 @@ export function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hi
   const planned = v.changes.filter((c) => c.status === 'PLANNED' && c.activateDay === v.day);
   return (
     <>
-      <h2>Morning briefing: day {v.day + 1}, {v.weekday}</h2>
-      {v.day === 0 && <FirstDayDifficulty v={v} game={game} />}
-      {v.day === 0 && <StartingPerk v={v} game={game} />}
+      <h2>{v.tutor ? `Morning briefing: ${v.tutor.dateLabel}` : `Morning briefing: day ${v.day + 1}, ${v.weekday}`}</h2>
+      {v.day === 0 && !v.tutor && !v.daily && <PrologueOffer game={game} />}
+      {v.day === 0 && !v.tutor && <FirstDayDifficulty v={v} game={game} />}
+      {v.day === 0 && !v.tutor && <StartingPerk v={v} game={game} />}
       {today.length === 0 && <p className="muted">Quiet inbox this morning.</p>}
       {today.map((m, i) => (
         <div key={i} className="panel" style={{ marginBottom: 8 }}>

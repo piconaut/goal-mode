@@ -208,31 +208,8 @@ goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare -- --base
 Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
 design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
 
-### PRO-03 · Prologue UI shell: mentor panel, spotlight, anchors, date, entry point
-`list: prologue · status: ready · priority: high · size: L · area: ui`
-
-Design doc §6 and §11.4.
-- **Panel and spotlight:**
-  - `src/ui/tutor/` with `MentorPanel.tsx` (bottom right; bottom sheet at phone width; Hint, Next, Skip step;
-    minimisable), `Spotlight.tsx` and `anchors.ts`;
-  - the spotlight opens the tab and Change Desk section, scrolls to the target and moves focus to it, and never
-    blocks clicks.
-- **Hints:** the three-rung ladder (nudge, pointer, show me), where show me fills the Change Desk draft without
-  submitting it.
-- **Top bar:** "Mon 26 · Shadow week" in place of "Day N / 40" while the prologue runs.
-- **New-run screen:** "Shadow week with Ruth (recommended, ~70 min)" / "Go straight to Day 1", skip and leave
-  controls, and a chapter list after a first finish or skip.
-- **Accessibility:** the outline is not colour alone, the panel is an ARIA live region, and no new single-key
-  shortcuts.
-- **Put it back:** Ruth's offer after a change that breaks the system badly reloads the chapter's start state (a
-  reload, not an undo of the sim; design §6.4, §11.4).
-- The day-1 corner tutorial (`src/ui/Tutorial.tsx`) stays as it is.
-
-Done when the test script from PRO-02 plays end to end in the browser at desktop and phone width, with no horizontal
-page scroll, and a render test asserts each test step's target anchor is on screen in that step's state.
-
 ### PRO-04 · Prologue Mon 26 and Tue 27, with the DDFLIMIT flaw
-`list: prologue · status: blocked: after PRO-03 · priority: high · size: L · area: content`
+`list: prologue · status: ready · priority: high · size: L · area: content`
 
 Design doc §3.4, §5.1, §5.2.
 - **Content:** `src/content/prologue/` (`game-prologue.ts`, `flaw.ts`, `schedule.ts`, `script.ts`, `tuning.ts`), with
