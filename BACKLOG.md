@@ -176,6 +176,28 @@ without query parallelism is plausibly about one engine, but the books read do n
 parallelism assumption; or make the reach a card/content property. Done when: the user decides and the cap, SPEC §17
 and the realism test match.
 
+### PR-29 · A posting's drain wait leaves out the drain's own run
+`list: pr-followups · status: ready · priority: low · size: S · area: sim`
+
+Source: review of PR #517 (RF-10, N3, 2026-11-28). While a drain is `WAITING` (`src/sim/subsys/db2Contention.ts`),
+`drain.untilTick` is the wait deadline, so the posting's remaining time in `src/sim/core/tick/demand.ts` (the RF-10
+block, `remainSec`) leaves out the run window that follows. With 25 s of wait left and a 20 s run, a posting is
+held 25 s when its real wait is 45 s, past the 30 s claim timeout. Postings early in the window also fail on the
+deadline even when the readers release sooner. Change: while `WAITING`, count the remaining wait plus the run
+window, or keep it and mark it `// APPROX:` with the reason. Done when: a test pins the posting's held time or
+failure in both phases, SPEC §17 states the rule, and goldens and the sweep follow the sim-entry rules.
+
+### PR-30 · Does RMF hand the CF master gatherer to another system within an interval?
+`list: pr-followups · status: blocked: research · priority: low · size: S · area: sim`
+
+Source: review of PR #517 (RF-12, N4, 2026-11-28). `src/sim/measure/rmf.ts` gates CF Usage on any gatherer being up,
+but the structure detail on the interval's master (`cfMaster`, the first system by id whose gatherer is active),
+which is re-picked only at the next interval. Whether real RMF Monitor III moves the sysplex master role to another
+system mid-interval when the master's gatherer stops is unverified (the reviewer's books clone failed to load). Check
+with the `zos-docs` skill (`piconaut/ibm-zos-books`; RMF User's Guide and Report Analysis on the CF Activity data
+gatherer). Done when: a docs/research.md row records the answer with page citations, and either the model is
+confirmed (a citation in the code comment) or this entry is rewritten as the fix and set to `ready`.
+
 ## realism-fixes
 
 ## balance
@@ -207,6 +229,18 @@ is the optional scenario `midwest-prologue`, on the Midwest plant as is. Hard ru
 goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare -- --base origin/dev` and the Midwest and
 Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
 design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
+
+### PRO-08 · Test that no loss condition ends the prologue
+`list: prologue · status: ready · priority: high · size: S · area: game`
+
+Source: review of PR #518 (N1, 2026-11-28). The engine test "the trust floor holds … and no loss condition ends the
+prologue" (`tests/game/prologueEngine.test.ts`) still passes with `endReason = null` and the `!inPrologue` guard on
+the batch-miss line removed from `endDay` (`src/game/run.ts`): the trust floor alone keeps trust above zero, and
+`consecutiveBatchMisses` resets unless a miss happens that day. So the opex-overrun and two-batch-miss losses are
+untested, and the opex one matters once PRO-05 and PRO-06 seed the month and close a bill on Friday night. Add a case
+with a written bill over the opex limit and one with a batch miss on a day that starts with
+`consecutiveBatchMisses: 1`, each asserting the phase is not `GAMEOVER`, and the same two on a Midwest run asserting
+it is. Done when: each new case fails with its guard removed, and compare is identical.
 
 ### PRO-04 · Prologue Mon 26 and Tue 27, with the DDFLIMIT flaw
 `list: prologue · status: ready · priority: high · size: L · area: content`
@@ -266,7 +300,10 @@ Design doc §5.5, §8.2, §8.3, §3.2.
   - the handover note, with the back-out list and the "never got round to" list naming only F6 and F9 (design §3.2,
     so Story's Day 1 message stays consistent);
   - Ruth's notebook in the Codex;
-  - the transition to the new-run screen.
+  - the transition to the new-run screen;
+  - the end of the run: today the prologue ends in VICTORY with "Quarter closed. You kept the bank running." while the
+    Regulator mail still warns of a formal review that can't happen in it (review of PR #518, N4). Give the prologue
+    its own end text and no Regulator review warning.
 - **Rewards:** 50 career XP once (`src/content/career.ts`), Ruth's terminal (amber theme in `ThemeToggle` and
   `styles.css`, passing the existing contrast checks) and Ruth's pager (an alert sound in `sound.ts`). The two
   cosmetics are viewer preferences unlocked by finishing.
