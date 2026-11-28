@@ -798,6 +798,10 @@ Content types gain `GameContent.scheduledCards?`, `GameContent.startingCommands?
   - Weekday arithmetic is untouched, so Monday stays Monday.
   - About 18 call sites read `dayOfMonth` or the other calendar fields and need the scenario's value passed
     through. It is mechanical, and it is the only change under `src/sim`. `npm run compare` must show no difference.
+  - **As built (PRO-01):** `clockAt(tick, monthDayAtStart = DEFAULT_MONTH_DAY_AT_START)`; `initState` copies a set
+    `Scenario.monthDayAtStart` into `SimState.monthDayAtStart` (absent on the default, so saves and hashes are
+    unchanged), and every date reader passes the state's value: arrivals and the batch network (`step`), `closeMonth`
+    (`tick/control.ts`), the MLC month fraction and TFP switch, entity sizing, and the game's batch-network callers.
   - With 26, Thursday and Friday get the existing month-end multipliers and batch volumes, and the month closes at
     Friday's midnight through the existing `closeMonth`.
 - **Scheduled cards** start through the same path as drawn cards (the daily draw in the game layer). A run with

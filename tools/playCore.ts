@@ -863,7 +863,7 @@ export function financeText(file: PlayFile): string {
   const tfp = run.sim.cost.tfp;
   if (f.tfp && tfp) {
     // The baseline is prorated over the TFP part of the month; project consumption over that same part.
-    const tfpElapsed = monthElapsedFrac(run.sim.tick) - (1 - tfp.monthFrac);
+    const tfpElapsed = monthElapsedFrac(run.sim.tick, run.sim.monthDayAtStart) - (1 - tfp.monthFrac);
     const scale = tfpElapsed > 1e-6 ? tfp.monthFrac / tfpElapsed : null;
     out.push('', `TFP: ${scale ? (100 / scale).toFixed(0) : 0}% of this month's TFP period elapsed. The baseline is paid in full, used or not; MSU-hours above it cost ${Math.round(100 * tfp.terms.overageFrac)}% of price. zIIP MSU is not counted.`);
     out.push(

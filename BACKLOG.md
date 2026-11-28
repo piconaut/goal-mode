@@ -208,24 +208,6 @@ goldens, bench hashes, bots or sweeps. Each PR pastes `npm run compare -- --base
 Harbourline bench hashes, and keeps the prologue out of `SCENARIOS`. Mentor text that states z/OS behaviour follows the
 design doc's §12 (an existing SPEC or research.md citation, or a `zos-docs` check).
 
-### PRO-01 · A scenario's calendar can start on another day of the month
-`list: prologue · status: ready · priority: high · size: M · area: sim`
-
-`clockAt` hard-wires a run's first Monday to the 3rd of a 30-day month (`src/sim/core/clock.ts`,
-`dayOfMonth: ((calendarDay + 2) % 30) + 1`).
-- Add `monthDayAtStart?` to the sim `Scenario` (default 3) and pass it to every reader of `dayOfMonth` (arrivals'
-  payday and month-end multipliers, the batch network's month-end volumes, `closeMonth` in `tick/control.ts`, the MLC
-  month fraction, the game layer's callers).
-- Weekday arithmetic is unchanged, so day 0 stays a Monday.
-- This is a sim change with no behaviour change: goldens untouched, no "Behaviour change" note, no sweep. Prove it
-  with `npm run compare` (exit 0) and the bench hashes.
-
-Done when:
-- `npm run compare -- --base origin/dev` reports no difference, and the Midwest and Harbourline bench hashes match the
-  base;
-- a unit test shows that with 26, day 0 is Monday the 26th, day 3 has the month-end multiplier, day 4's night closes
-  the month and writes a bill, and the tick after midnight is Saturday the 1st with the payday multiplier.
-
 ### PRO-02 · Prologue engine: scheduled cards, starting state, tutorial state, stop ticks
 `list: prologue · status: ready · priority: high · size: L · area: game`
 
@@ -288,7 +270,7 @@ Done when the test script from PRO-02 plays end to end in the browser at desktop
 page scroll, and a render test asserts each test step's target anchor is on screen in that step's state.
 
 ### PRO-04 · Prologue Mon 26 and Tue 27, with the DDFLIMIT flaw
-`list: prologue · status: blocked: after PRO-01, PRO-03 · priority: high · size: L · area: content`
+`list: prologue · status: blocked: after PRO-03 · priority: high · size: L · area: content`
 
 Design doc §3.4, §5.1, §5.2.
 - **Content:** `src/content/prologue/` (`game-prologue.ts`, `flaw.ts`, `schedule.ts`, `script.ts`, `tuning.ts`), with

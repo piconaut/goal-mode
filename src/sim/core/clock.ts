@@ -17,7 +17,12 @@ export interface ClockInfo {
   dayOfMonth: number;
 }
 
-export function clockAt(tick: number): ClockInfo {
+/** The day of the month a run's first Monday falls on unless its scenario says otherwise (`Scenario.monthDayAtStart`):
+ * the 3rd, so the first payday (15th) lands mid-run. */
+export const DEFAULT_MONTH_DAY_AT_START = 3;
+
+/** `monthDayAtStart` moves only the date: weekdays stay counted from the run's first Monday. */
+export function clockAt(tick: number, monthDayAtStart: number = DEFAULT_MONTH_DAY_AT_START): ClockInfo {
   const day = Math.floor(tick / TICKS_PER_DAY);
   const secOfPlayedDay = (tick - day * TICKS_PER_DAY) * TICK_SEC;
   const absSec = day * DAY_SEC + DAY_START_HOUR * 3600 + secOfPlayedDay;
@@ -31,8 +36,7 @@ export function clockAt(tick: number): ClockInfo {
     calendarDay,
     dayOfWeek,
     isWeekend: dayOfWeek >= 5,
-    // Runs start on the 3rd so the first payday (15th) lands mid-run.
-    dayOfMonth: ((calendarDay + 2) % 30) + 1,
+    dayOfMonth: ((calendarDay + monthDayAtStart - 1) % 30) + 1,
   };
 }
 

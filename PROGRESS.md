@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-28: PRO-01 lets a scenario's calendar start on another day of the month (`monthDayAtStart`, default the 3rd); compare identical.
 - 2026-11-28: RT-31 tests the CPU verdict's time base (the clock-hour average; a pin reads its interval) on INC6's shape and states it in SPEC §10/§17 and docs/rca-design.md §4.3.
 - 2026-11-27: RF-12 makes the Postprocessor CF Activity report follow its Monitor III source: a cancelled RMFGAT contributes CF samples only while it runs, the per-system Subchannel and Structure Activity rows average over that short sampled time, and the sysplex structure detail comes from the interval master (the first active gatherer by id), which the next interval re-picks when the master stops; CPU Activity, WLMGL and DASD come from Monitor I and stay whole (measured: cancelling RMFGAT on a system leaves its CF rows short while CPU Activity and DASD are byte-identical and only the SYSSTC class row moves, by the stopped task's own CPU). Goldens change only by the new interval fields (`cfMaster`, `cfGathererSec`); bench and sweep are recorded in the PR.
 - 2026-11-27: `sweep:remote --fetch` refuses a bare `--fetch` (it used to start and push a new sweep) and a non-hex value, and expands a 7+ char sha against the last 100 sweep runs (the runs API matches full shas only, so a short one used to poll for 5 min and fail). Tooling only.

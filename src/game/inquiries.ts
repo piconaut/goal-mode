@@ -121,7 +121,7 @@ const shrug = (k: InquiryKind, rng: Rng) => SHRUGS[k][Math.floor(rng.float() * S
 const pick = <T,>(rng: Rng, xs: readonly T[]): T => xs[Math.floor(rng.float() * xs.length) % xs.length]!;
 
 function answer(run: RunState, scenario: Scenario, content: GameContent, p: PendingInquiry, revealed: readonly string[], rng: Rng): { text: string; key: string | null } {
-  const network = scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth);
+  const network = scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick, run.sim.monthDayAtStart).dayOfMonth);
   const fresh = <T,>(items: { key: string; v: T }[]) => items.filter((x) => !revealed.includes(x.key));
   switch (p.topic) {
     case 'CRITICAL_PATH': {

@@ -48,16 +48,16 @@ const SAMPLE_TICKS = Math.max(1, Math.round((ROSTERS.sizingSampleMin * 60) / TIC
 /** Mean deterministic arrival rate (transactions/s, sysplex) over the card's window from `startTick`, including the
  * day's weekly and calendar factors. The random noise and bursts are left out: they average out, and the entity's
  * demand is constant. */
-export function meanReferenceRate(w: WorkloadDef, startTick: number, hours: number): number {
-  if (!(hours > 0)) return baseRate(w, clockAt(startTick));
+export function meanReferenceRate(w: WorkloadDef, startTick: number, hours: number, monthDayAtStart?: number): number {
+  if (!(hours > 0)) return baseRate(w, clockAt(startTick, monthDayAtStart));
   const end = startTick + Math.round(hours * (60 * 60) / TICK_SEC);
   let sum = 0;
   let n = 0;
   for (let t = startTick; t < end; t += SAMPLE_TICKS) {
-    sum += baseRate(w, clockAt(t));
+    sum += baseRate(w, clockAt(t, monthDayAtStart));
     n++;
   }
-  return n > 0 ? sum / n : baseRate(w, clockAt(startTick));
+  return n > 0 ? sum / n : baseRate(w, clockAt(startTick, monthDayAtStart));
 }
 
 /** Processors the image has online: the most one enclave or address space can run on. APPROX: a single DDF thread
