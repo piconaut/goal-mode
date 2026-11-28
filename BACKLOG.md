@@ -181,19 +181,17 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-28 · How far a runaway entity's CPU can reach
+`list: pr-followups · status: blocked: design · priority: low · size: S · area: sim`
+
+Source: review of PR #514 (RF-11, 2026-11-27). A loaded entity may demand up to its image's online CP+zIIP processors
+(`entityEngineCap`), so one DDF thread models as a parallel query: 3.1 engines on a measured Harbourline run. A thread
+without query parallelism is plausibly about one engine, but the books read do not settle it. Options: cap a
+`DDF_THREAD` load at one engine (or a content coefficient for query parallelism); keep the image cap and state the
+parallelism assumption; or make the reach a card/content property. Done when: the user decides and the cap, SPEC §17
+and the realism test match.
+
 ## realism-fixes
-
-### RF-11 · A runaway entity's CPU should not follow its image's arrival rate
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: PT-52 (2026-11-26). A card's culprit (RUNAWAY's DDF thread, SHADOW_IT's TSO userids) carries its excess as a
-CPU multiplier on its workload on its image (`SimState.entityLoads`), the shape of the workload modifier it replaced.
-So the excess rises and falls with the image's arrival rate, and routing the workload off the culprit's image removes
-it, though a real runaway thread keeps running where it is. Model a loaded entity as its own constant demand (one
-enclave or address space in the workload's last period, at most its engines), sized so the card's average excess over
-its usual hours stays about the same. Done when: a realism test shows the excess independent of the arrival rate and
-of a routing change, SPEC §17 drops the APPROX note, goldens are regenerated with a behaviour note and the
-three-scenario sweep is recorded.
 
 ### RF-12 · A stopped Monitor III gatherer leaves holes in CF Activity (SMF 74.4)
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`

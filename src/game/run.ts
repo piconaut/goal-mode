@@ -2,6 +2,7 @@ import { toolOn } from './run/shared';
 import { ALERTS } from '../content/alerts';
 import type { DifficultyId } from '../content/difficulty';
 import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
+import { ROSTERS } from '../content/entities';
 import { AUDIT } from '../content/events/midwest-events';
 import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
@@ -232,7 +233,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       if (!e.started && !e.ended && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], def?.fixedSeverity ? 1 : difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.culprits) {
-          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult);
+          const c = resolveCulprits(r.sim, effectiveWorkloads(scenario, r.sim), def.culprits, e.uid, difficultyOf(r.difficulty).eventSeverityMult, def.durationHours ?? ROSTERS.sizingHours);
           cmds.push(...c.commands);
           resolvedEnd.set(e.uid, [...e.endCommands, { kind: 'CLEAR_ENTITY_LOADS', tag: e.uid }]);
           resolvedCulprits.set(e.uid, c.ids);

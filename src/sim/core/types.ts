@@ -223,7 +223,8 @@ export interface LparTick {
   scps: ScpTick[];
   /** Reporting only: address-space grants by server role; absent without role slices or in old saves. */
   cpByRole?: Record<string, CpuGrant>;
-  /** Reporting only: transaction grants by workload; absent without transaction slices or in old saves. */
+  /** Reporting only: grants by workload, from its transaction slices and any loaded entity (RF-11); absent without
+   *  either or in old saves. */
   cpByWorkload?: Record<string, CpuGrant>;
   rcs?: ReportClassTick[];
   /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
@@ -308,8 +309,9 @@ export interface GatewayTraffic {
   retryRateMult?: number;
 }
 
-/** Extra demand a card put on one roster entity (PT-52): its workload's CPU on that image is multiplied by
- *  1 + the extraCpuFrac of every load there. `tag` groups the loads one card placed, so its end clears them. */
+/** Extra demand a card put on one roster entity (PT-52, RF-11): the entity is its own constant demand on its image,
+ *  in engines, so it does not follow its workload's arrival rate or routing. `tag` groups the loads one card placed,
+ *  so its end clears them. */
 export interface EntityLoad {
   tag: string;
   kind: 'DDF_THREAD' | 'TSO_USER';
@@ -317,7 +319,13 @@ export interface EntityLoad {
   id: string;
   workloadId: string;
   lparId: string;
-  extraCpuFrac: number;
+  /** Constant demand on this image's engines (RF-11). */
+  cpEngines: number;
+  /** zIIP-eligible part of that demand, engines. */
+  ziipEngines: number;
+  /** Legacy saves only: the CPU multiplier this load replaced. `migrateRunState` converts it to engines at load; the
+   *  tick never reads it. */
+  extraCpuFrac?: number;
 }
 
 /** An address space ended by CANCEL (PT-52). A started task comes back when automation restarts it. */

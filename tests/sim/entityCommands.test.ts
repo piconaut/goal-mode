@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { STC_AUTOMATION } from '../../src/content/entities';
 import { MIDWEST } from '../../src/content/scenarios';
 import { applyCommand } from '../../src/sim/core/commands';
+import { applyOperation, operatorRoster } from '../../src/sim/core/operations';
 import { initState } from '../../src/sim/core/init';
 import { lockBoostNow, step } from '../../src/sim/core/step';
 import { aorFailFrac, effectiveAddressSpaces } from '../../src/sim/core/tick/helpers';
@@ -10,7 +11,7 @@ import { TICK_SEC } from '../../src/sim/core/units';
 import type { JobRuntime } from '../../src/sim/subsys/batch';
 
 const fresh = (): SimState => initState(1, MIDWEST);
-const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 'c1', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 1, ...over });
+const load = (over: Partial<EntityLoad> = {}): EntityLoad => ({ tag: 'c1', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', cpEngines: 0.5, ziipEngines: 0, ...over });
 const base = MIDWEST.addressSpaces;
 
 describe('entity loads', () => {
@@ -18,9 +19,9 @@ describe('entity loads', () => {
     let s = applyCommand(fresh(), { kind: 'SET_ENTITY_LOAD', load: load() }).state;
     s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ id: 'DEV002' }) }).state;
     s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ tag: 'c2' }) }).state;
-    s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ extraCpuFrac: 5 }) }).state;
+    s = applyCommand(s, { kind: 'SET_ENTITY_LOAD', load: load({ cpEngines: 2.5, ziipEngines: 0.5 }) }).state;
     expect(s.entityLoads).toHaveLength(3);
-    expect(s.entityLoads!.find((l) => l.tag === 'c1' && l.id === 'DEV001')!.extraCpuFrac).toBe(5);
+    expect(s.entityLoads!.find((l) => l.tag === 'c1' && l.id === 'DEV001')).toMatchObject({ cpEngines: 2.5, ziipEngines: 0.5 });
     expect(s.entityLoads!.some((l) => l.id === 'DEV002')).toBe(true);
     expect(s.entityLoads!.some((l) => l.tag === 'c2')).toBe(true);
   });
@@ -32,6 +33,21 @@ describe('entity loads', () => {
     expect(s.entityLoads!.map((l) => l.tag)).toEqual(['c2']);
     s = applyCommand(s, { kind: 'CLEAR_ENTITY_LOADS', tag: 'c2' }).state;
     expect('entityLoads' in s).toBe(false);
+  });
+
+  it('a loaded entity stays listed and cancellable when its workload is routed away (RF-11)', () => {
+    const before = operatorRoster(fresh(), MIDWEST, 'TSO_USER', 'TSO').find((e) => e.lparId === 'DEVT');
+    expect(before).toBeDefined();
+    // Route TSO off the test image after the card put its load there: the day's roster no longer deals DEVT entries.
+    const moved = applyCommand(fresh(), { kind: 'SET_ROUTING', workloadId: 'TSO', routing: { DEVT: 0, PROD1: 1, PROD2: 0 } }).state;
+    expect(operatorRoster(moved, MIDWEST, 'TSO_USER', 'TSO').some((e) => e.lparId === 'DEVT')).toBe(false);
+    const loaded = applyCommand(moved, { kind: 'SET_ENTITY_LOAD', load: load({ id: before!.id }) }).state;
+    expect(operatorRoster(loaded, MIDWEST, 'TSO_USER', 'TSO')).toContainEqual(
+      expect.objectContaining({ kind: 'TSO_USER', id: before!.id, workloadId: 'TSO', lparId: 'DEVT', day: 0 }),
+    );
+    const r = applyOperation(loaded, MIDWEST, { kind: 'CANCEL_SESSION', target: { kind: 'TSO_USER', id: before!.id, workloadId: 'TSO', lparId: 'DEVT', day: 0 } });
+    expect(r.ok).toBe(true);
+    expect(r.state.entityLoads).toBeUndefined();
   });
 });
 

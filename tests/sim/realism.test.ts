@@ -24,6 +24,8 @@ import { projectionInput } from '../../src/sim/wlm/projection';
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { committedMoves } from '../helpers/wlmMoves';
 import type { SimState } from '../../src/sim/core/types';
+import * as evaluator from '../../src/sim/wlm/evaluate';
+import { vi } from 'vitest';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -805,6 +807,61 @@ describe('event cards (SPEC §9)', () => {
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
     expect(shadow.prod1MobileRtMs).toBeGreaterThan(asIs.prod1MobileRtMs);
+  }, 60_000);
+
+  it('a runaway entity is its own constant demand when the rate falls and when the work is routed away (RF-11)', () => {
+    // The card's load, as the game places it at 10:00.
+    const def = MIDWEST_EVENTS.find((e) => e.id === 'RUNAWAY')!;
+    const cmds = [...def.begin, ...resolveCulprits(base, MIDWEST.workloads, def.culprits!, 'RUNAWAY@0', 1, def.durationHours!).commands];
+    const prodCpu = (s: SimState, lparId: string) => {
+      const g = s.last.lpars.find((l) => l.lparId === lparId)?.cpByWorkload?.ADHOC;
+      return g ? g.cp + g.iipcp + g.ziip : 0;
+    };
+    // Demand the evaluator sees for the entity: what the sim asks the dispatcher for, not what contention grants.
+    let entityDemand: number | null = null;
+    const original = evaluator.evaluateLpar;
+    const spy = vi.spyOn(evaluator, 'evaluateLpar').mockImplementation((input) => {
+      const r = original(input);
+      if (!input.scpsOnly) {
+        const d = input.slices.filter((s) => s.kind === 'AS' && s.workloadId === 'ADHOC').reduce((n, s) => n + s.cpEngines + s.ziipEngines, 0);
+        if (d > 0) entityDemand = d;
+      }
+      return r;
+    });
+    try {
+      // 10:20 the analytics rate is cut to 5 %; 10:30 ADHOC is routed off PROD2 entirely.
+      const changes: Record<number, Parameters<typeof step>[1]> = {
+        20: [{ kind: 'SET_MODIFIER', mod: 'rate', key: 'ADHOC', value: 0.05 }],
+        30: [{ kind: 'SET_ROUTING', workloadId: 'ADHOC', routing: { PROD1: 1, PROD2: 0 } }],
+      };
+      const series = (c: Parameters<typeof step>[1]) => {
+        entityDemand = null;
+        let s = step(base, c, MIDWEST);
+        const out: SimState[] = [s];
+        const demand: (number | null)[] = [entityDemand];
+        for (let i = 0; i < 40; i++) {
+          entityDemand = null;
+          out.push(s = step(s, changes[i] ?? [], MIDWEST));
+          demand.push(entityDemand);
+        }
+        return { out, demand };
+      };
+      const withCard = series(cmds);
+      const start = withCard.demand[5]!;
+      expect(start).toBeGreaterThan(0.5);
+      // The same constant demand at a twentieth of the arrivals and after the work has moved to PROD1.
+      expect(withCard.demand[25]!).toBeCloseTo(start, 9);
+      expect(withCard.demand[40]!).toBeCloseTo(start, 9);
+      // Delivered CPU follows contention, but the entity still runs on PROD2 while ADHOC's own work is on PROD1.
+      entityDemand = null;
+      const asIs = series([]);
+      expect(asIs.demand.every((d) => d === null)).toBe(true);
+      expect(prodCpu(withCard.out[40]!, 'PROD2')).toBeGreaterThan(0.2);
+      expect(prodCpu(asIs.out[40]!, 'PROD2')).toBeCloseTo(0, 9);
+      expect(prodCpu(withCard.out[40]!, 'PROD1')).toBeGreaterThan(0.005);
+    } finally {
+      spy.mockRestore();
+    }
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {

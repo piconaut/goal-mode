@@ -3,7 +3,7 @@ import { cardMechanisms } from '../../src/content/footprint';
 import { MIDWEST } from '../../src/content/scenarios';
 import { failRiskFor } from '../../src/game/catalog';
 import { migrateRunState } from '../../src/game/run/migrate';
-import { newRun, requestChange, startDay } from '../../src/game/run';
+import { advance, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { applyCommands } from '../../src/sim/core/commands';
 import { streamRng } from '../../src/sim/core/rng';
@@ -43,6 +43,33 @@ describe('legacy card save migration', () => {
     expect(live.changes[0]!.status).toBe('APPLIED');
     expect(live.events[0]!.ended).toBe(true);
     expect(live.sim.cancelledAddressSpaces?.some((a) => a.jobname === 'CICSXLOG' && a.lparId === 'PROD1')).toBe(true);
+  });
+
+  it('converts a legacy rate-proportional entity load to the engines the save measured (RF-11)', () => {
+    const content = { ...MIDWEST_GAME, events: [] };
+    const r = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 1);
+    // A pre-RF-11 save: `cpByWorkload` holds the workload's grant *with* the old multiplier, so 9 CP / 3 zIIP here is
+    // 3 CP / 1 zIIP of the workload's own CPU plus the loads' extra.
+    const withGrant = (loads: object[]) => {
+      const lpars = r.sim.last.lpars.map((l) => l.lparId === 'DEVT'
+        ? { ...l, cpByWorkload: { ...l.cpByWorkload, TSO: { cp: 6, iipcp: 3, ziip: 3 } } }
+        : l);
+      return { ...r, sim: { ...r.sim, last: { ...r.sim.last, lpars }, entityLoads: loads } } as unknown as RunState;
+    };
+    const one = { tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT', extraCpuFrac: 2 };
+    const migrated = migrateRunState(withGrant([one]));
+    expect(migrated.sim.entityLoads).toEqual([{
+      tag: 'SHADOW_IT@0', kind: 'TSO_USER', id: 'DEV001', workloadId: 'TSO', lparId: 'DEVT',
+      cpEngines: (2 / 3) * 9, ziipEngines: (2 / 3) * 3,
+    }]);
+    // Two loads on one image share the old inflated grant by their own fractions.
+    const split = migrateRunState(withGrant([one, { ...one, id: 'DEV002', extraCpuFrac: 3 }]));
+    expect(split.sim.entityLoads!.map((l) => [l.cpEngines, l.ziipEngines])).toEqual([
+      [(2 / 6) * 9, (2 / 6) * 3],
+      [(3 / 6) * 9, (3 / 6) * 3],
+    ]);
+    // Loading again changes nothing.
+    expect(migrateRunState(migrated)).toEqual(migrated);
   });
 
   it("restores a live gateway card's source split into a save written before it lived in sim state", () => {

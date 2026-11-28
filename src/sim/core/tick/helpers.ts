@@ -12,8 +12,7 @@ import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../../content/wlm/tuning';
 import { ACC_DECAY, goalPi, goalInfo, type ScpState } from '../../wlm/runtime';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
-import type { CancelledAddressSpace, CpcConfig, EntityLoad, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
-import { entityLoadMult } from '../../workload/rosters';
+import type { CancelledAddressSpace, CpcConfig, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
 import { TICK_SEC } from '../units';
 
 // A running job is classified every tick; remember the last answer per job definition (the service
@@ -193,15 +192,6 @@ export function aorFailFrac(table: Readonly<Record<string, number>>, workloadId:
 /** A slice's CPU-side fields scaled by `m` (1 returns the same object). */
 export function scaleSliceCpu(s: SliceSpec, m: number): SliceSpec {
   return m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
-}
-
-/** Multiply each transaction slice of a loaded workload by its entity loads on this image (PT-52). */
-export function applyEntityLoads(slices: SliceSpec[], loads: readonly EntityLoad[] | undefined, lparId: string): SliceSpec[] {
-  if (!loads?.some((l) => l.lparId === lparId)) return slices;
-  return slices.map((s) => {
-    if (s.kind !== 'TXN' || !s.workloadId) return s;
-    return scaleSliceCpu(s, entityLoadMult(loads, s.workloadId, lparId));
-  });
 }
 
 export function addParts(into: Record<string, number>, p: NonNullable<import('../../wlm/evaluate').SliceResult['parts']>, n: number): void {
