@@ -77,27 +77,12 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   confirmed the CPU split and the baselines as the worst remaining judging problems, and the user unblocked RT-16 and
   RT-17 on it (2026-11-21). RT-16 goes first (user, 2026-11-21; docs/rca-design.md §6), split into RT-16, RT-32 and RT-33
   (docs/rt-16-design.md §7, user 2026-11-21), then RT-17; the playtest's
-  findings RT-28 … RT-31 follow them; RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
+  findings RT-28 … RT-31 follow them (RT-31 landed 2026-11-28); RT-29 was decided 2026-11-23 and split into RT-34 and RT-35. RT-18 … RT-21 still wait for a human playtest. RT-14 (card footprints) landed
   after the `wlm-truth` core (user decision 2026-11-10). RT-22 (problem records) landed 2026-11-25 and stays; D1's proof gate (RT-24) was dropped (user, 2026-11-26) for PT-20's general operations.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
-
-### RT-31 · The CPU verdict reads the clock-hour average: test it and say so
-`list: rca-truth · status: ready · priority: low · size: S · area: game`
-
-Source: agent playtest 2026-11-21, Midwest seed 11 D2 INC6 (run not committed): a pin of one 30-minute RMF interval
-(CPC 90.1 % for 13:00–13:30) met "processor full" while `capacityBasis` (`src/game/sla.ts`) judged the clock-hour
-average (87.1 %). Decided 2026-11-23 (user): keep the clock-hour average as the truth's time base. The SLA is judged
-per clock hour; the worst RMF interval would let a reporting lever move the verdict (`rmfIntervalMin` is the
-player's, and Midwest starts coarse on purpose, F11); a share of ticks over the line is visible in no report (CAPPING
-can use a share because WLM% capped is one). The evidence predicates keep reading the pinned row. INC6 itself is
-covered by RT-32's bands: a CPU_PRIORITY primary on a host at or above `CPU_BANDS.hostRoomFrac` accepts CPU_CAPACITY
-(`game/rcaTruth.ts`). The residue (an interval ≥ 90 % in an hour under 85 %) is explained by RT-30's reply. Done when:
-a test of INC6's shape (one RMF interval over the 90 % line, the hour average inside the 85–95 % band, CPU_PRIORITY
-primary) shows CPU_CAPACITY accepted and its recipe scoring 3 from the interval pin; SPEC §10 and §17 and
-docs/rca-design.md §4.3 state the time base and why.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
 `list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`

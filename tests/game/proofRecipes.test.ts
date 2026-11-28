@@ -20,7 +20,10 @@ import { judgeProof, proofLines } from '../../src/game/proof';
 import { db2Accounting } from '../../src/game/smf';
 import { advance, chooseDraft, startDay, submitRca } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
-import { MECHANISMS, TRIGGERS } from '../../src/game/sla';
+import { MECHANISMS, TRIGGERS, capacityBasis, mechanismOf } from '../../src/game/sla';
+import { acceptedAnswers } from '../../src/game/rcaTruth';
+import { newHour } from '../../src/game/run/hourly';
+import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from '../../src/game/types';
 import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { minPins } from '../helpers/proofPins';
@@ -946,5 +949,74 @@ describe('every recipe from a replayed incident (RT-13)', () => {
 
   it('the replays above and earlier cover every mechanism and trigger', () => {
     expect([...CLAIMS].filter((c) => !REPLAYED.has(c))).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// RT-31: the truth's CPU verdict reads the clock-hour average (SPEC §10, docs/rca-design.md §4.3), while a pin reads
+// the one RMF interval it was taken from. INC6's shape: one 30-minute interval over the 90 % line, the hour inside
+// the 85–95 % band, CPU_PRIORITY primary.
+
+describe('the CPU verdict\'s time base (RT-31)', () => {
+  const hosts = [{ lparId: 'PROD1', cpcId: 'CPCA', importance: 2 }];
+  /** An hour whose CPC averaged `cpcPct` with plenty displaceable, so the primary is CPU_PRIORITY. */
+  const hourAt = (cpcPct: number): HourAcc => ({
+    ...newHour(0), ticks: 100, cpcBusyById: { CPCA: cpcPct }, lparBusyById: { PROD1: 80 },
+    cpuWaitByWorkloadLpar: { MOBILE: { PROD1: { cp: 100, ziip: 0, backlog: 0, completions: 100 } } },
+  });
+  const cpuSubjects: IncidentSubjects = { classes: [], lpars: ['PROD1'], hosts: ['PROD1'], servers: [], serverClasses: [], cpu: {
+    PROD1: { CP: { engines: 6, classes: { 'DDFPRD#2': { used: 2, displaceable: 2, workloads: [] } }, jobs: {} }, ZIIP: { engines: 0, classes: {}, jobs: {} } },
+  } };
+  const judge = { workloadId: 'MOBILE', baseline: {}, subjects: cpuSubjects };
+  const acceptedAt = (cpcPct: number) => {
+    const hour = hourAt(cpcPct);
+    const basis = capacityBasis(hour, hosts, judge);
+    const mechanism = mechanismOf({ cpuQueue: 1 }, {}, hour, hosts, judge);
+    return { mechanism, basis, accepted: acceptedAnswers({ workloadId: 'MOBILE', hour, basis, mechanism, trigger: 'GROWTH', hosts, events: [], lpars: [], content: MIDWEST_GAME, isNew: false }).accepted };
+  };
+  /** CPU delay on the hurt class and the CPC busy of one RMF interval, read from that interval's row. */
+  const intervalPins = (cpcBusyPct: number): EvidencePin[] => {
+    const pins = fixturePins(fixtureRun, 'DDF', MECHANISM_RECIPES.CPU_CAPACITY.predicates)!;
+    expect(pins.map((p) => p.metric)).toContain('CPC_BUSY');
+    return pins.map((p) => (p.metric === 'CPC_BUSY' ? { ...p, value: cpcBusyPct } : p));
+  };
+  /** File CPU_CAPACITY against an incident whose truth and basis are the test hour's, with one interval's pins. */
+  const fileAt = (hourPct: number, pinPct: number) => {
+    const { mechanism, basis, accepted } = acceptedAt(hourPct);
+    const inc = { ...fixtureIncident(fixtureRun, 'DDF', { ...truthOf(mechanism, 'GROWTH'), accepted }), basis: basis! };
+    const pins = intervalPins(pinPct);
+    const run = { ...fixtureRun, incidents: [inc], pins };
+    return submitRca(run, inc.id, 'CPU_CAPACITY', 'GROWTH', MIDWEST, pins.map((p) => p.id)).incidents[0]!.rca!;
+  };
+
+  it('INC6: an interval at 90.1 % in an hour at 87.1 % accepts CPU_CAPACITY, and the interval pin proves it for 3', () => {
+    const { mechanism, basis, accepted } = acceptedAt(87.1);
+    expect(mechanism).toBe('CPU_PRIORITY');
+    // The verdict's figure is the hour's, not the interval's.
+    expect(basis!.cpcBusyPct).toBeCloseTo(87.1, 6);
+    expect(accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
+    // The recipe's "processor full" predicate reads the pinned interval's row: 90.1 % clears the 90 % line.
+    expect(PROOF.busyPct).toBe(90);
+    const rca = fileAt(87.1, 90.1);
+    expect(rca.proof!.mechanism).toMatchObject({ complete: true, accepted: true });
+    expect(rca.evidencePoints).toBe(PROOF.recipePoints);
+    expect(PROOF.recipePoints).toBe(3);
+    // The hour note says the truth reads the clock hour, under the line the pin met.
+    expect(rca.hourNote).toContain('averaged 87.1 % busy');
+    // 89.9 % misses the line: only the CPU-delay predicate is shown.
+    const under = fileAt(87.1, 89.9);
+    expect(under.proof!.mechanism.complete).toBe(false);
+    expect(under.evidencePoints).toBe(PROOF.partialPoints);
+  });
+
+  it('the residue: an interval over 90 % in an hour under 85 % proves the recipe but earns nothing', () => {
+    const { mechanism, accepted } = acceptedAt(84);
+    expect(mechanism).toBe('CPU_PRIORITY');
+    expect(accepted.mechanisms).not.toContain('CPU_CAPACITY');
+    const rca = fileAt(84, 90.1);
+    // RT-30's reply: proven, not accepted, so the proof earns nothing, and the note names the hour's figure.
+    expect(rca.proof!.mechanism).toMatchObject({ complete: true, accepted: false });
+    expect(rca.evidencePoints).toBe(0);
+    expect(rca.hourNote).toContain('averaged 84.0 % busy');
   });
 });
