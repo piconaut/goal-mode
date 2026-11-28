@@ -742,18 +742,28 @@ export const IDENTITIES: Identity[] = [
     // than the sum of the individual structure values" (facility management commands, not modelled): here it is equal.
     source: 'RMF Report Analysis 3.1 p.365–378 (Tables 144–146)',
     check: (run, c) => {
+      // A Monitor III gatherer gap makes a system's (or the master's) samples shorter than the interval, so its rows
+      // cannot add up to a CF line gathered over the whole interval (RF-12). The internal identities a sampled row
+      // still satisfies are checked; the cross-window sums are only meaningful when every gatherer ran.
+      const cfGap = (iv: typeof run.intervals[number]['iv']) =>
+        !iv.cfMaster || (iv.cfGathererSec !== undefined && Object.values(iv.cfGathererSec).some((sec) => sec < iv.intervalSec - 1e-6));
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
+        const gap = cfGap(iv);
         for (const cf of iv.cf) {
-          c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
-          c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
+          if (!gap) {
+            c.close(sum(iv.cfStructures.filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ structures vs CF`);
+            c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
+          }
           c.ok(cf.busyPct >= 0 && cf.busyPct <= 100 && cf.asyncPct >= -1e-9 && cf.asyncPct <= 100 + 1e-9, () => `${at(o)} ${cf.lparId} UTIL% / ASYNC % outside 0–100`);
         }
-        // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
-        c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
+        if (!gap) {
+          // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
+          c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
+        }
         for (const st of iv.cfStructures) {
-          c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
+          if (!gap) c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
           c.ok(iv.cf.some((cf) => cf.lparId === st.cfLparId), () => `${at(o)} ${st.name} in ${st.cfLparId}, which has no CF line`);
         }
         for (const s of iv.cfSystems ?? []) {
@@ -778,7 +788,9 @@ export const IDENTITIES: Identity[] = [
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
+        const gap = !iv.cfMaster || (iv.cfGathererSec !== undefined && Object.values(iv.cfGathererSec).some((sec) => sec < iv.intervalSec - 1e-6));
         for (const cf of iv.cf) {
+          if (gap) continue;
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);
           const req = sum(sts.map((s) => s.reqPerSec));
           const where = (x: string) => () => `${at(o)} ${cf.lparId} ${x} vs structures`;

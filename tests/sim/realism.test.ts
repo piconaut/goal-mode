@@ -8,6 +8,7 @@ import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { resolveCulprits } from '../../src/game/culprits';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
+import { TICK_SEC } from '../../src/sim/core/units';
 import { tickOfClock } from '../../src/sim/core/clock';
 import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { MIDWEST_ADDRESS_SPACES } from '../../src/content/scenarios/midwest-workloads';
@@ -15,7 +16,7 @@ import type { RegionMode } from '../../src/sim/wlm/types';
 import { accPi, decayInto, emptyAcc, goalInfo, goalPi, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
-import { renderWlmSummary } from '../../src/sim/measure/reports';
+import { renderCfActivity, renderCpuActivity, renderDasdSummary, renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
@@ -1470,4 +1471,62 @@ describe('Db2 work runs only where Db2 is licensed', () => {
       }
     });
   }
+});
+
+// RF-12: CF Activity is the only Postprocessor report built from Monitor III's SMF 74.4 records. Each system's
+// gatherer writes its own per-system rows; the first system by id with an active gatherer is the sysplex master that
+// supplies the structure detail (Data Gatherer User's Guide pp.23–24 (printed 5–6), pp.102–103 (printed 84–85)).
+describe('RMFGAT cancellation leaves gaps in CF Activity only (RF-12)', () => {
+  const intervalTicks = Math.round((MIDWEST.world.rmfIntervalMin * 60) / TICK_SEC);
+
+  it('shortens the cancelled systems rows, moves structure detail next interval, and leaves the other reports whole', () => {
+    let control = initState(7, MIDWEST);
+    while (control.tick < intervalTicks) control = step(control, [], MIDWEST);
+
+    let s = initState(7, MIDWEST);
+    for (let i = 0; i < 5; i++) s = step(s, [], MIDWEST);
+    const systems = MIDWEST.world.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id).sort();
+    const master = s.rmf.acc.cfMaster!;
+    expect(master).toBe(systems[0]);
+    const other = systems.find((x) => x !== master)!;
+    // A non-master gatherer stops early in the interval; the master stops late, still down when the next begins.
+    s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: other }], MIDWEST);
+    while (s.tick < intervalTicks - 5) s = step(s, [], MIDWEST);
+    s = step(s, [{ kind: 'CANCEL_ADDRESS_SPACE', jobname: 'RMFGAT', lparId: master }], MIDWEST);
+    while (s.tick < intervalTicks) s = step(s, [], MIDWEST);
+
+    const iv = s.rmf.intervals.at(-1)!;
+    const civ = control.rmf.intervals.at(-1)!;
+    expect(iv.endTick).toBe(civ.endTick);
+    expect(iv.cfMaster).toBe(master);
+    // Sampled time is short for both systems: the rest of the interval has no samples from them.
+    expect(iv.cfGathererSec![master]).toBe((intervalTicks - 5) * TICK_SEC);
+    expect(iv.cfGathererSec![other]).toBeLessThan(iv.cfGathererSec![master]!);
+    expect(iv.cfGathererSec![other]).toBeGreaterThan(0);
+    // Their rows are still there, averaged over the sampled time, and the structure detail stops with the master.
+    expect(iv.cfSystems!.some((row) => row.system === other)).toBe(true);
+    expect(renderCfActivity(iv)).toContain('STRUCTURE SUMMARY');
+    expect(renderCfActivity(iv)).not.toBe(renderCfActivity(civ));
+    // Monitor I (the RMF address space) keeps writing the other reports: their rows stay whole.
+    for (const system of [master, other]) {
+      expect(iv.cpu.some((row) => row.lparId === system)).toBe(true);
+      expect(iv.wlm.some((row) => row.lparId === system)).toBe(true);
+    }
+    expect(renderCpuActivity(iv)).toBe(renderCpuActivity(civ));
+    expect(renderDasdSummary(iv)).toBe(renderDasdSummary(civ));
+    // WLMGL: the only row that moves is SYSSTC, where the stopped RMFGAT's own 0.01 engines ran; the gatherer gap
+    // itself removes no row and changes no other class (Monitor I wrote every class's samples).
+    const controlRows = renderWlmSummary(civ).split('\n');
+    const got = renderWlmSummary(iv).split('\n');
+    expect(got).toHaveLength(controlRows.length);
+    got.forEach((line, i) => { if (line !== controlRows[i]) expect(line).toContain('SYSSTC'); });
+
+    // The next interval picks another active gatherer as master, and its structure detail is whole again.
+    while (s.tick < intervalTicks * 2) s = step(s, [], MIDWEST);
+    const next = s.rmf.intervals.at(-1)!;
+    const expectedMaster = systems.filter((id) => id !== master).sort()[0]!;
+    expect(next.cfMaster).toBe(expectedMaster);
+    expect(next.cfGathererSec![master]).toBeLessThan(intervalTicks * TICK_SEC);
+    expect(next.cfStructSystems!.length).toBeGreaterThan(0);
+  });
 });

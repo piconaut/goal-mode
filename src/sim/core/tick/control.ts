@@ -11,6 +11,7 @@ import { clockAt } from '../clock';
 import type { LparConfig, EnvState, SimState } from '../types';
 import { CLUE_LOG_EVERY } from '../../../content/wlm/tuning';
 import { PRSM } from '../../../content/hardware';
+import { RMF_GATHERER_JOBNAME } from '../../../content/operations';
 import { TICKS_PER_HOUR, TICK_SEC } from '../units';
 import { RMF_KEEP, type TickCtx, WLM_LOG_MAX } from './ctx';
 import { atOrFind } from './plan';
@@ -248,7 +249,15 @@ export function stepRmf(
       stretch: j.stretch,
     });
   }
-  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf, cfBySystem, lockIndex);
+  // RF-12: CF Activity (SMF 74.4) is Monitor III data. Only the gatherers it needs gate it; Monitor I (the RMF
+  // address space) keeps writing the other reports. `prev` has this tick's commands applied and restarts removed.
+  const gatherers = {
+    systems: config.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id),
+    down: (prev.cancelledAddressSpaces ?? [])
+      .filter((a) => a.jobname === RMF_GATHERER_JOBNAME && (a.restartTick === null || a.restartTick > prev.tick))
+      .map((a) => a.lparId),
+  };
+  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf, cfBySystem, lockIndex, gatherers);
   let jobsThisInterval = jobsEnded.length ? [...prev.rmf.jobsThisInterval, ...jobsEnded] : prev.rmf.jobsThisInterval;
   let intervals = prev.rmf.intervals;
   const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));

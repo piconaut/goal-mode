@@ -26,6 +26,10 @@ export const OPERATION_TRUST = {
   utilityFacets: ['Finance'],
 } as const;
 
+/** The Monitor III data gatherer's started task (z/OS 3.1 RMF User's Guide SC27-4936 PDF p.247 (printed 223)). Its
+ *  SMF 74.4 records are the Postprocessor CF Activity report, unlike Monitor I's 70.1/72.3/74.1 (RF-12). */
+export const RMF_GATHERER_JOBNAME = 'RMFGAT';
+
 // What cancelling a started task stops, shown before the player issues it (N4 of the PT-56 review). RMFGAT is the
 // Monitor III data gatherer (z/OS 3.1 RMF User's Guide SC27-4936 PDF p.247 (printed 223)); MONAGENT running the alert
 // rules and the Regulator watching CICSXLOG are game rules.
