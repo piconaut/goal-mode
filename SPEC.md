@@ -1610,7 +1610,7 @@ says the truth reads the clock hour. **Time base (RT-31, user decision 2026-11-2
 displaceable share, the RT-07 bands) read the clock-hour average, the basis the SLA is judged on; a pin reads the one
 RMF interval it came from. The worst interval would let a reporting lever move the verdict (`rmfIntervalMin` is the
 player's, and Midwest starts coarse on purpose), and a share of ticks over the line is visible in no report (CAPPING's
-tick share is, as WLMGL % capped). So one interval at 90.1 % in an hour averaging 87.1 % proves the CPU_CAPACITY recipe
+tick share is, as Partition Data WLM%, z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.401 (printed 361)). So one interval at 90.1 % in an hour averaging 87.1 % proves the CPU_CAPACITY recipe
 and is accepted through the 85–95 % band beside a CPU_PRIORITY primary; in an hour under 85 % the same pin proves the
 recipe and earns nothing, and the reply says why. The RCA card renders the same text from
 the same functions (`recipeHeading`, `predicateText`, `pinVerdictLines`, `hourBaseNote`).

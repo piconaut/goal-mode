@@ -609,14 +609,14 @@ For a CPU-family primary, or a `serverCpu` dependency:
    learned, always adds CPU_CAPACITY to the accepted set. The numbers are FICTIONAL and belong in
    `content/incidents.ts`.
 
-**Time base (RT-31, decided 2026-11-23, Q12).** Every line above reads the clock-hour average, never the worst RMF
-interval or a share of ticks over the line. The SLA is judged per clock hour; the RMF interval is the player's lever
+**Time base (RT-31, decided 2026-11-23, Q12).** The busy and displaceable lines and the bands (items 4 and 5) read the
+clock-hour average, never the worst RMF interval or a share of ticks over the line. The SLA is judged per clock hour; the RMF interval is the player's lever
 (`rmfIntervalMin`, coarse at Midwest's start on purpose), so judging the worst interval would let a reporting setting
-move the verdict; and no report shows a share of ticks above a busy line (CAPPING can use a tick share because WLMGL
-% capped is one). The proof predicates keep reading the pinned interval's row. INC6's shape (one 30-minute interval at
+move the verdict; and no report shows a share of ticks above a busy line (item 3's CAPPING line can use a tick share
+because Partition Data WLM% is one, z/OS 3.1 RMF Report Analysis SC34-2665-60 PDF p.401 (printed 361)). The proof predicates keep reading the pinned interval's row. INC6's shape (one 30-minute interval at
 90.1 % in an hour at 87.1 %, CPU_PRIORITY primary) is inside the band, so CPU_CAPACITY is accepted and the interval
-pin proves it for 3; an interval over 90 % in an hour under 85 % proves the recipe and earns nothing, which RT-30's
-reply explains (`tests/game/proofRecipes.test.ts`, "the CPU verdict's time base").
+pin proves it for 3 evidence points; an interval over 90 % in an hour under 85 % proves the recipe and earns nothing,
+which RT-30's reply and hour note explain (`tests/game/proofRecipes.test.ts`, "the CPU verdict's time base").
 
 Built on the repros (RT-32): R-13 is `CPU_PRIORITY/POLICY` on days 0, 5 and 8, with 83.1, 79.5 and 80.4 % of the
 judged pool displaceable (overnight batch and happy CICS work). R-2 judges PROD2 (PROD1 carries none of the excess);

@@ -20,7 +20,7 @@ import { judgeProof, proofLines } from '../../src/game/proof';
 import { db2Accounting } from '../../src/game/smf';
 import { advance, chooseDraft, startDay, submitRca } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
-import { MECHANISMS, TRIGGERS, capacityBasis, mechanismOf, scoreAccepted } from '../../src/game/sla';
+import { MECHANISMS, TRIGGERS, capacityBasis, mechanismOf } from '../../src/game/sla';
 import { acceptedAnswers } from '../../src/game/rcaTruth';
 import { newHour } from '../../src/game/run/hourly';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
@@ -980,8 +980,14 @@ describe('the CPU verdict\'s time base (RT-31)', () => {
     expect(pins.map((p) => p.metric)).toContain('CPC_BUSY');
     return pins.map((p) => (p.metric === 'CPC_BUSY' ? { ...p, value: cpcBusyPct } : p));
   };
-  const proven = (pins: EvidencePin[]) =>
-    judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, 'DDF', truthOf('CPU_PRIORITY', 'GROWTH'))], 'CPU_CAPACITY', 'GROWTH', pins).mechanism.complete;
+  /** File CPU_CAPACITY against an incident whose truth and basis are the test hour's, with one interval's pins. */
+  const fileAt = (hourPct: number, pinPct: number) => {
+    const { mechanism, basis, accepted } = acceptedAt(hourPct);
+    const inc = { ...fixtureIncident(fixtureRun, 'DDF', { ...truthOf(mechanism, 'GROWTH'), accepted }), basis: basis! };
+    const pins = intervalPins(pinPct);
+    const run = { ...fixtureRun, incidents: [inc], pins };
+    return submitRca(run, inc.id, 'CPU_CAPACITY', 'GROWTH', MIDWEST, pins.map((p) => p.id)).incidents[0]!.rca!;
+  };
 
   it('INC6: an interval at 90.1 % in an hour at 87.1 % accepts CPU_CAPACITY, and the interval pin proves it for 3', () => {
     const { mechanism, basis, accepted } = acceptedAt(87.1);
@@ -989,19 +995,28 @@ describe('the CPU verdict\'s time base (RT-31)', () => {
     // The verdict's figure is the hour's, not the interval's.
     expect(basis!.cpcBusyPct).toBeCloseTo(87.1, 6);
     expect(accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
-    expect(scoreAccepted(accepted, { mechanism: 'CPU_CAPACITY', trigger: 'DEMAND_SURGE' })).toBe(3);
     // The recipe's "processor full" predicate reads the pinned interval's row: 90.1 % clears the 90 % line.
     expect(PROOF.busyPct).toBe(90);
-    expect(proven(intervalPins(90.1))).toBe(true);
-    expect(proven(intervalPins(89.9))).toBe(false);
+    const rca = fileAt(87.1, 90.1);
+    expect(rca.proof!.mechanism).toMatchObject({ complete: true, accepted: true });
+    expect(rca.evidencePoints).toBe(PROOF.recipePoints);
+    expect(PROOF.recipePoints).toBe(3);
+    // The hour note says the truth reads the clock hour, under the line the pin met.
+    expect(rca.hourNote).toContain('averaged 87.1 % busy');
+    // 89.9 % misses the line: only the CPU-delay predicate is shown.
+    const under = fileAt(87.1, 89.9);
+    expect(under.proof!.mechanism.complete).toBe(false);
+    expect(under.evidencePoints).toBe(PROOF.partialPoints);
   });
 
   it('the residue: an interval over 90 % in an hour under 85 % proves the recipe but earns nothing', () => {
     const { mechanism, accepted } = acceptedAt(84);
     expect(mechanism).toBe('CPU_PRIORITY');
     expect(accepted.mechanisms).not.toContain('CPU_CAPACITY');
-    expect(scoreAccepted(accepted, { mechanism: 'CPU_CAPACITY', trigger: 'DEMAND_SURGE' })).toBe(0);
-    // RT-30's reply says why: the claim is proven, and the truth did not accept it.
-    expect(proven(intervalPins(90.1))).toBe(true);
+    const rca = fileAt(84, 90.1);
+    // RT-30's reply: proven, not accepted, so the proof earns nothing, and the note names the hour's figure.
+    expect(rca.proof!.mechanism).toMatchObject({ complete: true, accepted: false });
+    expect(rca.evidencePoints).toBe(0);
+    expect(rca.hourNote).toContain('averaged 84.0 % busy');
   });
 });
